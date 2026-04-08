@@ -54,12 +54,13 @@ export type StaffRole =
 
 export type SubscriptionStatus =
   | 'ACTIVE'
+  | 'TRIALING'
   | 'PAUSED'
   | 'CANCELLED'
   | 'PAST_DUE'
   | 'EXPIRED'
 
-export type BillingCycle = 'MONTHLY' | 'QUARTERLY' | 'ANNUAL'
+export type BillingCycle = 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'ANNUAL'
 
 export type OrderStatus =
   | 'PENDING'
@@ -139,6 +140,8 @@ export interface Location {
   city: string
   postcode: string
   timezone: string
+  /** Soft delete / visibility toggle (mock + UI only for now). */
+  isActive?: boolean
   phone?: string
   email?: string
   settings: LocationSettings
@@ -544,6 +547,253 @@ export interface StaffShift {
 }
 
 // ============================================
+// CLIENT MANAGEMENT (APPENDED)
+// ============================================
+
+export const CreditPackStatusEnum = {
+  ACTIVE: 'ACTIVE',
+  EXPIRED: 'EXPIRED',
+  EXHAUSTED: 'EXHAUSTED',
+} as const
+
+export type CreditPackStatus =
+  (typeof CreditPackStatusEnum)[keyof typeof CreditPackStatusEnum]
+
+export const CreditTransactionTypeEnum = {
+  PURCHASE: 'PURCHASE',
+  DEDUCTION: 'DEDUCTION',
+  REFUND: 'REFUND',
+  EXPIRY: 'EXPIRY',
+  MANUAL_ADD: 'MANUAL_ADD',
+  MANUAL_REMOVE: 'MANUAL_REMOVE',
+} as const
+
+export type CreditTransactionType =
+  (typeof CreditTransactionTypeEnum)[keyof typeof CreditTransactionTypeEnum]
+
+export const DocumentTypeEnum = {
+  WAIVER: 'WAIVER',
+  PARENTAL_CONSENT: 'PARENTAL_CONSENT',
+  MEMBERSHIP_TERMS: 'MEMBERSHIP_TERMS',
+  FACILITY_RULES: 'FACILITY_RULES',
+  CONTRACT: 'CONTRACT',
+  CUSTOM: 'CUSTOM',
+} as const
+
+export type DocumentType =
+  (typeof DocumentTypeEnum)[keyof typeof DocumentTypeEnum]
+
+export interface ContactTag {
+  id: string
+  tenantId: string
+  name: string
+  color: string
+  isSystem: boolean
+  description?: string
+}
+
+export interface ContactTagAssignment {
+  id: string
+  tenantId: string
+  contactId: string
+  tagId: string
+  tag?: ContactTag
+  createdAt: string
+  createdByStaffId?: string
+}
+
+export interface ContactMetadata {
+  marketingOptIn: boolean
+  preferredChannel?: 'EMAIL' | 'SMS' | 'WHATSAPP'
+  preferredLocationId?: string
+  notes?: string
+  allergies?: string
+  medicalNotes?: string
+  schoolName?: string
+  yearGroup?: string
+}
+
+export interface MembershipPlan {
+  id: string
+  tenantId: string
+  name: string
+  description?: string
+  billingCycle: BillingCycle
+  price: number
+  benefits: string[]
+  isActive: boolean
+  isFeatured: boolean
+  minTermMonths?: number
+  cancellationNoticeDays?: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ContactSubscription {
+  id: string
+  tenantId: string
+  contactId: string
+  contact?: Contact
+  planId: string
+  plan?: MembershipPlan
+  status: SubscriptionStatus
+  startedAt: string
+  currentPeriodStart: string
+  currentPeriodEnd: string
+  cancelledAt?: string
+  pauseStart?: string
+  pauseEnd?: string
+  renewalAt?: string
+}
+
+export interface CmCreditPackDefinition {
+  id: string
+  tenantId: string
+  name: string
+  description?: string
+  creditCount: number
+  price: number
+  validityDays: number
+  applicableServiceTypes: ServiceType[]
+  isActive: boolean
+  isFeatured: boolean
+  displayOrder: number
+}
+
+export interface CmCreditPackPurchase {
+  id: string
+  tenantId: string
+  contactId: string
+  contact?: Contact
+  creditPackDefinitionId: string
+  creditPackDefinition?: CmCreditPackDefinition
+  creditsPurchased: number
+  creditsRemaining: number
+  purchasedAt: string
+  expiresAt: string
+  status: CreditPackStatus
+}
+
+export interface CreditLedgerEntry {
+  id: string
+  tenantId: string
+  contactId: string
+  contact?: Contact
+  creditPackPurchaseId?: string
+  creditPackPurchase?: CmCreditPackPurchase
+  transactionType: CreditTransactionType
+  creditsChange: number
+  balanceAfter: number
+  description?: string
+  createdAt: string
+}
+
+export type DocumentSubType = 'GUEST' | 'HOST'
+
+export interface ClientDocument {
+  id: string
+  tenantId: string
+  title: string
+  description?: string
+  documentType: DocumentType
+  documentSubType?: DocumentSubType
+  isRequired: boolean
+  serviceTypeScope?: ServiceType[]
+  validFrom?: string
+  validTo?: string
+  version: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CmDocumentSignature {
+  id: string
+  tenantId: string
+  documentId: string
+  document?: ClientDocument
+  contactId: string
+  contact?: Contact
+  signedAt: string
+  expiresAt?: string
+  ipAddress?: string
+  userAgent?: string
+  signatureDataUrl?: string
+}
+
+export interface CmContactRelationship {
+  id: string
+  tenantId: string
+  contactId: string
+  relatedContactId: string
+  relationshipType: RelationshipType
+  isPrimaryGuardian?: boolean
+  canBookFor?: boolean
+  canViewDocuments?: boolean
+  canManageMembership?: boolean
+  notes?: string
+  createdAt: string
+}
+
+export interface ContactSummary {
+  id: string
+  fullName: string
+  contactType: ContactType
+  email?: string
+  phone?: string
+  creditBalance: number
+  activeMembership?: string
+  activePackCount: number
+}
+
+export interface CmContact {
+  id: string
+  tenantId: string
+  contactType: ContactType
+  firstName: string
+  lastName: string
+  email?: string
+  phone?: string
+  dateOfBirth?: string
+  gender?: 'MALE' | 'FEMALE' | 'OTHER' | 'PREFER_NOT_TO_SAY'
+  addressLine1?: string
+  addressLine2?: string
+  city?: string
+  postcode?: string
+  country?: string
+  avatarUrl?: string
+  metadata?: ContactMetadata
+  tags?: ContactTagAssignment[]
+  relationships?: CmContactRelationship[]
+  subscriptions?: ContactSubscription[]
+  creditPacks?: CmCreditPackPurchase[]
+  creditLedger?: CreditLedgerEntry[]
+  documents?: CmDocumentSignature[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ContactFilters {
+  search?: string
+  contactTypes?: ContactType[]
+  tagIds?: string[]
+  subscriptionStatuses?: SubscriptionStatus[]
+  hasActiveMembership?: boolean
+  hasActivePack?: boolean
+}
+
+export interface ContactNote {
+  id: string
+  tenantId: string
+  contactId: string
+  contact?: Contact
+  authorStaffId?: string
+  authorName?: string
+  content: string
+  isPinned: boolean
+  createdAt: string
+}
+
+// ============================================
 // INVENTORY & ORDERS
 // ============================================
 
@@ -650,6 +900,90 @@ export interface Coupon {
 }
 
 // ============================================
+// INVENTORY & SHOP (UI + ADMIN EXTENSIONS)
+// ============================================
+
+export type StockStatus = 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK' | 'BACKORDER'
+
+export interface CouponValidation {
+  valid: boolean
+  discountAmount: number
+  message: string
+  coupon: Coupon | null
+}
+
+export interface ProductFilters {
+  categoryId?: string
+  stockStatus?: StockStatus
+  availableOnline?: boolean
+  availablePOS?: boolean
+  search?: string
+  minPrice?: number
+  maxPrice?: number
+}
+
+export interface OrderFilters {
+  status?: OrderStatus
+  channel?: Order['channel']
+  from?: string
+  to?: string
+  search?: string
+}
+
+export interface CartState {
+  items: CartItem[]
+  couponCode: string | null
+  couponDiscount: number
+  contactId: string | null
+  contactName: string | null
+}
+
+// Interface merges (append-only) — extend core models for richer shop/admin flows.
+export interface Product {
+  compareAtPrice?: number | null
+  subscriptionPrice?: number | null
+  taxable?: boolean
+  taxRate?: number
+  trackInventory?: boolean
+  availableOnline?: boolean
+  availablePOS?: boolean
+  galleryUrls?: string[]
+}
+
+export interface StockMovement {
+  createdBy?: string
+  referenceId?: string | null
+  balanceAfter?: number
+}
+
+export interface OrderItem {
+  sku?: string
+  imageUrl?: string | null
+}
+
+export type PaymentMethod = 'CARD' | 'CASH' | 'BANK_TRANSFER'
+
+export interface Order {
+  contactName?: string | null
+  contactEmail?: string | null
+  couponCode?: string | null
+  couponDiscount?: number
+  paymentMethod?: PaymentMethod | null
+  paymentReference?: string | null
+  refundAmount?: number | null
+  refundReason?: string | null
+  fulfilledAt?: string | null
+}
+
+export interface Coupon {
+  maxRedemptions?: number | null
+  perContactLimit?: number | null
+  redemptionCount?: number
+  applicableBookingTypes?: string[]
+  applicableServiceIds?: string[]
+}
+
+// ============================================
 // LEADS & MARKETING
 // ============================================
 
@@ -743,7 +1077,7 @@ export interface Invoice {
   tax: number
   total: number
   paidAmount: number
-  status: 'DRAFT' | 'SENT' | 'PAID' | 'OVERDUE' | 'CANCELLED'
+  status: 'DRAFT' | 'SENT' | 'PAID' | 'OVERDUE' | 'CANCELLED' | 'VOID'
   dueDate: string
   pdfFileId?: string
   notes?: string
@@ -968,7 +1302,7 @@ export interface Event {
   capacity: number
   status: 'DRAFT' | 'PUBLISHED' | 'CANCELLED' | 'COMPLETED' | 'Upcoming' | 'Ongoing' | 'Past'
   organizer: string
-  agenda: { time: string; description: string }[]
+  agenda: { time: string; title?: string; description: string }[]
   tags: string[]
 }
 
@@ -1025,13 +1359,13 @@ export interface EventRegistration {
 }
 
 export interface Inventory {
+  id: string
+  tenantId: string
   name: string
   quantity: number
   unit: string
-  id: 'inv-1'
-  tenantId: 'tenant-1'
-  createdAt: '2024-01-01T00:00:00Z'
-  updatedAt: '2024-01-01T00:00:00Z'
+  createdAt: string
+  updatedAt: string
   sku: string
   category: string
   price: number
@@ -1055,5 +1389,627 @@ export interface Users {
   totalSpent: number
   joinedAt: string
 
+}
+
+// ============================================
+// SCHEDULING (MODULE EXTENSION)
+// Append-only additions for the Scheduling Module.
+// ============================================
+
+export const SchedulingBookingModeEnum = {
+  SCHEDULED: 'SCHEDULED',
+  OPEN: 'OPEN',
+} as const
+
+export type SchedulingBookingMode =
+  (typeof SchedulingBookingModeEnum)[keyof typeof SchedulingBookingModeEnum]
+
+export const SchedulingServiceTypeEnum = {
+  GYM_CLASS: 'GYM_CLASS',
+  COURT_BOOKING: 'COURT_BOOKING',
+  COACHING_SESSION: 'COACHING_SESSION',
+  OPEN_PLAY: 'OPEN_PLAY',
+  CAMP: 'CAMP',
+  PARTY_PACKAGE: 'PARTY_PACKAGE',
+  PRIVATE_HIRE: 'PRIVATE_HIRE',
+  WORKSHOP: 'WORKSHOP',
+  SWIM_CLASS: 'SWIM_CLASS',
+  FITNESS_ASSESSMENT: 'FITNESS_ASSESSMENT',
+} as const
+
+export type SchedulingServiceType =
+  (typeof SchedulingServiceTypeEnum)[keyof typeof SchedulingServiceTypeEnum]
+
+export const SchedulingSlotStatusEnum = {
+  SCHEDULED: 'SCHEDULED',
+  CANCELLED: 'CANCELLED',
+  COMPLETED: 'COMPLETED',
+  FULL: 'FULL',
+} as const
+
+export type SchedulingSlotStatus =
+  (typeof SchedulingSlotStatusEnum)[keyof typeof SchedulingSlotStatusEnum]
+
+export const SchedulingBookingStatusEnum = {
+  PENDING: 'PENDING',
+  CONFIRMED: 'CONFIRMED',
+  CANCELLED: 'CANCELLED',
+  COMPLETED: 'COMPLETED',
+  NO_SHOW: 'NO_SHOW',
+  WAITLISTED: 'WAITLISTED',
+} as const
+
+export type SchedulingBookingStatus =
+  (typeof SchedulingBookingStatusEnum)[keyof typeof SchedulingBookingStatusEnum]
+
+export const RecurFrequency = {
+  DAILY: 'DAILY',
+  WEEKLY: 'WEEKLY',
+  BIWEEKLY: 'BIWEEKLY',
+  MONTHLY: 'MONTHLY',
+} as const
+
+export type RecurFrequency =
+  (typeof RecurFrequency)[keyof typeof RecurFrequency]
+
+export const AddOnPricingType = {
+  FLAT: 'FLAT',
+  PER_PERSON: 'PER_PERSON',
+  PER_HOUR: 'PER_HOUR',
+} as const
+
+export type AddOnPricingType =
+  (typeof AddOnPricingType)[keyof typeof AddOnPricingType]
+
+export const WaitlistStatus = {
+  WAITING: 'WAITING',
+  NOTIFIED: 'NOTIFIED',
+  CONVERTED: 'CONVERTED',
+  EXPIRED: 'EXPIRED',
+  REMOVED: 'REMOVED',
+} as const
+
+export type WaitlistStatus =
+  (typeof WaitlistStatus)[keyof typeof WaitlistStatus]
+
+export type OpenPricingModel = 'flat' | 'per_hour' | 'per_person'
+export type CalendarView = 'month' | 'week' | 'day' | 'agenda'
+
+export interface SchedulingCategory {
+  id: string
+  name: string
+  icon: string | null
+  displayOrder: number
+  isActive: boolean
+}
+
+/** Catalog add-on offered on a scheduling service (consumer booking options). */
+export interface SchedulingServiceAddOn {
+  id: string
+  name: string
+  description?: string
+  price: number
+  pricingType: AddOnPricingType
+  isActive: boolean
+}
+
+export interface SchedulingService {
+  id: string
+  locationId: string | null
+  categoryId: string
+  category: SchedulingCategory
+  serviceType: SchedulingServiceType
+  bookingMode: SchedulingBookingMode
+  name: string
+  description: string | null
+  durationMinutes: number
+  capacity: number
+  basePrice: number
+  subscriptionPrice: number | null
+  requiresWaiver: boolean
+  /** Which waivers/documents must be signed when `requiresWaiver` is true. */
+  requiredDocumentIds?: string[]
+  ageMin: number | null
+  ageMax: number | null
+  isActive: boolean
+  minDurationMinutes: number | null
+  maxDurationMinutes: number | null
+  slotIncrementMinutes: number | null
+  maxConcurrent: number | null
+  minAdvanceHours: number | null
+  maxAdvanceHours: number | null
+  pricingModel: OpenPricingModel
+  imageUrl: string | null
+  tags: string[]
+  /** Facility-style listing / detail. */
+  rating?: number
+  reviewCount?: number
+  amenities?: string[]
+  floor?: number
+  sport?: string
+  /** Class-style catalog. */
+  level?: Class['level']
+  instructorId?: string
+  instructorName?: string
+  schedule?: { dayOfWeek: string; startTime: string; endTime: string }[]
+  facilityName?: string
+  /** Event-style catalog. */
+  organizer?: string
+  agenda?: { time: string; title?: string; description: string }[]
+  startDate?: string
+  endDate?: string
+  startTime?: string
+  endTime?: string
+  location?: string
+  eventStatus?: Event['status']
+  maxAttendees?: number
+  registeredCount?: number
+  /** Optional add-ons available at checkout (catalog). */
+  addOns?: SchedulingServiceAddOn[]
+}
+
+export interface SchedulingSlot {
+  id: string
+  serviceId: string
+  service: SchedulingService
+  locationId: string
+  staffId: string | null
+  staffName: string | null
+  startAt: string
+  endAt: string
+  capacityOverride: number | null
+  priceOverride: number | null
+  bookedCount: number
+  effectiveCapacity: number
+  effectivePrice: number
+  status: SchedulingSlotStatus
+  isRecurring: boolean
+  notes: string | null
+}
+
+export interface SchedulingBookingAddOn {
+  id: string
+  name: string
+  quantity: number
+  unitPrice: number
+  totalPrice: number
+}
+
+export interface SchedulingBooking {
+  id: string
+  bookingType: SchedulingServiceType
+  serviceSlotId: string | null
+  serviceSlot: SchedulingSlot | null
+  serviceId: string
+  service: SchedulingService
+  contactId: string
+  contactName: string
+  participantName: string | null
+  locationId: string
+  locationName: string
+  status: SchedulingBookingStatus
+  startAt: string | null
+  endAt: string | null
+  guestCount: number
+  totalAmount: number
+  balanceDue: number
+  checkedInAt: string | null
+  cancelledAt: string | null
+  cancellationReason: string | null
+  notes: string | null
+  source: 'ONLINE' | 'ADMIN' | 'WALK_IN'
+  addOns: SchedulingBookingAddOn[]
+  createdAt: string
+}
+
+export interface SchedulingWaitlistEntry {
+  id: string
+  serviceSlotId: string
+  contactId: string
+  contactName: string
+  position: number
+  status: WaitlistStatus
+  notifiedAt: string | null
+  createdAt: string
+}
+
+export interface AvailableWindow {
+  startAt: string
+  endAt: string
+  spotsRemaining: number
+}
+
+export interface AvailableWindowsResponse {
+  date: string
+  serviceId: string
+  windows: AvailableWindow[]
+  operatingHours: { open: string; close: string } | null
+}
+
+export interface SlotFilters {
+  serviceType?: SchedulingServiceType
+  status?: SchedulingSlotStatus
+  locationId?: string
+  staffId?: string
+  from?: string
+  to?: string
+  ageMin?: number
+  ageMax?: number
+  serviceId?: string
+}
+
+export interface BookingFilters {
+  status?: SchedulingBookingStatus
+  serviceType?: SchedulingServiceType
+  contactId?: string
+  from?: string
+  to?: string
+  serviceId?: string
+}
+
+// ============================================
+// CALENDAR & PRIVATE HIRE (MODULE EXTENSION)
+// Append-only additions for calendar views and private hire inquiries.
+// ============================================
+
+export const PrivateHireStatusEnum = {
+  PENDING: 'PENDING',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+} as const
+
+export type PrivateHireStatus =
+  (typeof PrivateHireStatusEnum)[keyof typeof PrivateHireStatusEnum]
+
+export const PrivateHireEventTypeEnum = {
+  BIRTHDAY_PARTY: 'BIRTHDAY_PARTY',
+  CORPORATE: 'CORPORATE',
+  OTHER: 'OTHER',
+} as const
+
+export type PrivateHireEventType =
+  (typeof PrivateHireEventTypeEnum)[keyof typeof PrivateHireEventTypeEnum]
+
+/** One cell in the admin availability heatmap (hour × day). */
+export interface AvailabilityCell {
+  date: string
+  hour: number
+  totalSessions: number
+  bookedCount: number
+  capacityTotal: number
+  utilizationPct: number
+  slots: Pick<
+    SchedulingSlot,
+    | 'id'
+    | 'service'
+    | 'staffName'
+    | 'bookedCount'
+    | 'effectiveCapacity'
+    | 'status'
+    | 'startAt'
+    | 'endAt'
+  >[]
+}
+
+export interface PrivateHireInquiry {
+  id: string
+  contactName: string
+  contactEmail: string
+  contactPhone: string
+  eventType: PrivateHireEventType
+  serviceId: string
+  service: SchedulingService
+  locationId: string
+  locationName: string
+  preferredDate: string
+  alternateDate: string | null
+  guestCount: number
+  notes: string | null
+  status: PrivateHireStatus
+  depositAmount: number | null
+  internalNotes: string | null
+  submittedAt: string
+  reviewedAt: string | null
+  reviewedBy: string | null
+}
+
+export interface PrivateHireFilters {
+  status?: PrivateHireStatus
+  locationId?: string
+  from?: string
+  to?: string
+}
+
+export interface ConflictResult {
+  hasConflict: boolean
+  conflictingSlots: Pick<
+    SchedulingSlot,
+    'id' | 'service' | 'startAt' | 'endAt' | 'staffName'
+  >[]
+}
+
+export interface CalendarFilters {
+  locationId: string | null
+  serviceTypes: SchedulingServiceType[]
+  staffId: string | null
+}
+
+/** Applied when building utilisation cells so heatmap respects the same scope as the session grid. */
+export type AvailabilityGridSlotFilter = Pick<CalendarFilters, 'serviceTypes' | 'staffId'>
+
+// ============================================
+// SHOP & INVENTORY (PAYMENTS EXTENSION)
+// Append-only additions for saved cards and POS checkout.
+// ============================================
+
+export interface SavedPaymentMethod {
+  id: string
+  tenantId: string
+  contactId: string
+  brand: string
+  last4: string
+  expMonth: number
+  expYear: number
+  isDefault: boolean
+  createdAt: string
+}
+
+// ============================================
+// REPORTS & ANALYTICS (MODULE EXTENSION)
+// Append-only — KPI dashboard, revenue, cohorts, referrals, invoices UI.
+// ============================================
+
+export type DateRangePreset =
+  | 'today'
+  | 'this_week'
+  | 'this_month'
+  | 'last_30_days'
+  | 'last_3_months'
+  | 'custom'
+
+export interface DateRange {
+  from: string
+  to: string
+}
+
+export interface KpiDashboard {
+  netRevenue: number
+  netRevenuePrev: number
+  newContacts: number
+  newContactsPrev: number
+  activeMemberships: number
+  activeMembershipsPrev: number
+  sessionsCompleted: number
+  sessionsCompletedPrev: number
+  pendingPrivateHires: number
+}
+
+export interface DailyRevenue {
+  date: string
+  gross: number
+  refunds: number
+  net: number
+}
+
+export interface MonthlyRevenue {
+  month: string
+  gross: number
+  refunds: number
+  net: number
+}
+
+export interface CategoryRevenue {
+  category: string
+  total: number
+  percentage: number
+}
+
+export interface GatewayRevenue {
+  gateway: string
+  total: number
+  count: number
+}
+
+export interface TopServiceRevenue {
+  serviceId: string
+  serviceName: string
+  serviceType: SchedulingServiceType
+  bookingCount: number
+  totalRevenue: number
+  avgPerBooking: number
+}
+
+export interface RevenueSummary {
+  gross: number
+  refunds: number
+  net: number
+  avgTransactionValue: number
+  transactionCount: number
+  byCategory: CategoryRevenue[]
+  byGateway: GatewayRevenue[]
+  daily: DailyRevenue[]
+  topServices: TopServiceRevenue[]
+}
+
+export interface PeriodComparison {
+  current: number
+  previous: number
+  changePercent: number
+  changeDirection: 'up' | 'down' | 'flat'
+}
+
+export interface AgeGroupDistribution {
+  label: string
+  count: number
+}
+
+export interface BookingChannelBreakdown {
+  channel: string
+  count: number
+  percentage: number
+}
+
+/** Analytics client insights (reports module) — distinct from legacy ClientInsights. */
+export interface ReportClientInsights {
+  newContacts: number
+  returningContacts: number
+  churnRate: number
+  avgLifetimeValue: number
+  ageGroups: AgeGroupDistribution[]
+  bookingChannels: BookingChannelBreakdown[]
+  newVsReturningDaily: { date: string; new: number; returning: number }[]
+}
+
+export interface TopContact {
+  rank: number
+  contactId: string
+  contactName: string
+  totalSpend: number
+  bookingCount: number
+  lastBookingDate: string | null
+}
+
+export interface CohortRow {
+  cohortLabel: string
+  cohortMonth: string
+  startCount: number
+  retention: (number | null)[]
+}
+
+export interface CohortMatrix {
+  rows: CohortRow[]
+  maxMonths: number
+}
+
+export interface ReferralSourceBreakdown {
+  source: string
+  referrals: number
+  converted: number
+  conversionRate: number
+}
+
+export interface TopReferrer {
+  rank: number
+  contactId: string
+  contactName: string
+  referralsSent: number
+  converted: number
+  revenueAttributed: number
+  rewardsIssued: number
+}
+
+export interface ReferralOverview {
+  totalReferrals: number
+  converted: number
+  conversionRate: number
+  totalRewardValue: number
+  bySources: ReferralSourceBreakdown[]
+  timeline: { date: string; referrals: number; conversions: number }[]
+  topReferrers: TopReferrer[]
+}
+
+export interface PayrollEntry {
+  staffId: string
+  staffName: string
+  role: string
+  regularHours: number
+  overtimeHours: number
+  regularPay: number
+  overtimePay: number
+  totalPay: number
+}
+
+export interface InstructorStats {
+  staffId: string
+  staffName: string
+  classesInstructed: number
+  avgAttendancePct: number
+  revenueGenerated: number
+}
+
+export const InvoiceStatusEnum = {
+  DRAFT: 'DRAFT',
+  SENT: 'SENT',
+  PAID: 'PAID',
+  OVERDUE: 'OVERDUE',
+  VOID: 'VOID',
+} as const
+
+export type InvoiceStatus =
+  (typeof InvoiceStatusEnum)[keyof typeof InvoiceStatusEnum]
+
+export interface InvoiceFilters {
+  status?: InvoiceStatus
+  contactId?: string
+  from?: string
+  to?: string
+}
+
+export interface ReportFilters {
+  dateRange: DateRange
+  preset: DateRangePreset
+  locationIds: string[]
+}
+
+export interface Invoice {
+  contactName?: string | null
+  contactEmail?: string | null
+  paidDate?: string | null
+  sentAt?: string | null
+}
+
+export interface InvoiceLineItem {
+  id?: string
+  total?: number
+}
+
+// ============================================
+// SCHEDULING (UI EXTENSIONS)
+// ============================================
+
+export interface SchedulingSlot {
+  /** Draft/published toggle for session visibility. */
+  isActive?: boolean
+  /** Number of check-ins recorded for this session. */
+  checkInCount?: number
+}
+
+export interface SchedulingCategory {
+  description?: string
+  requiresAttendee?: boolean
+  membersOnly?: boolean
+  freeInfantMonths?: number
+  depositPercent?: number
+  specialInstructionsEnabled?: boolean
+  waitlistEnabled?: boolean
+}
+
+export type EventVisibility = 'PUBLIC' | 'PRIVATE' | 'SINGLE_HOST'
+
+export interface SchedulingService {
+  /** Public listing visibility for event-style services. */
+  eventType?: EventVisibility
+}
+
+export interface SchedulingBooking {
+  /** Consumer-provided special instructions captured during booking. */
+  specialInstructions?: string | null
+}
+
+export interface EventPackageAddOn {
+  addOnId: string
+  included: boolean
+}
+
+export interface EventPackage {
+  id: string
+  serviceId: string
+  tier: 'SILVER' | 'GOLD' | 'PLATINUM'
+  name: string
+  basePrice: number
+  features: string[]
+  addOns: EventPackageAddOn[]
+  isActive: boolean
+  createdAt: string
 }
 

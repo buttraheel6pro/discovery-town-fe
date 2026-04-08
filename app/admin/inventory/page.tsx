@@ -1,314 +1,236 @@
-"use client";
+/** Admin inventory dashboard — stock KPIs, low stock alerts, and recent orders. */
 
-import { useState } from "react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Plus, Edit2, Trash2, Package, AlertCircle } from "lucide-react";
-import { inventory as mockInventory } from "@/lib/mock-data";
+'use client'
+
+import { useMemo, useState } from 'react'
+import Link from 'next/link'
+import { AlertCircle, BarChart2, Package, ShoppingBag } from 'lucide-react'
+
+import { OrderChannelBadge } from '@/components/admin/order-channel-badge'
+import { OrderStatusBadge } from '@/components/admin/order-status-badge'
+import { PaymentStatusBadge } from '@/components/admin/payment-status-badge'
+import { StockAdjustmentModal } from '@/components/admin/stock-adjustment-modal'
+import { StockStatusBadge } from '@/components/admin/stock-status-badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { formatPrice, getLowStockProducts } from '@/lib/utils'
+import { useInventory } from '@/lib/inventory-store'
+import type { Product } from '@/lib/types'
 
 export default function InventoryManagement() {
-  const [inventory, setInventory] = useState(mockInventory);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [formData, setFormData] = useState({
-    name: "",
-    sku: "",
-    quantity: "",
-    price: "",
-    category: "",
-  });
+  const { products, orders } = useInventory()
+  const [adjusting, setAdjusting] = useState<Product | null>(null)
 
-  const handleAdd = () => {
-    setEditingId("new");
-    setFormData({ name: "", sku: "", quantity: "", price: "", category: "" });
-  };
+  const lowStockProducts = useMemo(() => getLowStockProducts(products), [products])
 
-  const handleEdit = (item: any) => {
-    setEditingId(item.id);
-    setFormData({
-      name: item.name,
-      sku: item.sku,
-      quantity: item.quantity.toString(),
-      price: item.price.toString(),
-      category: item.category,
-    });
-  };
+  const totalActiveProducts = useMemo(() => products.filter((p) => p.isActive).length, [products])
 
-  const handleSave = () => {
-    if (editingId === "new") {
-      const newItem = {
-        id: `item-${Date.now()}`,
-        name: formData.name,
-        sku: formData.sku,
-        category: formData.category,
-        quantity: parseInt(formData.quantity),
-        price: parseInt(formData.price),
-      };
-      setInventory([...inventory, newItem]);
-    } else {
-      setInventory(
-        inventory.map((i) =>
-          i.id === editingId
-            ? {
-                ...i,
-                name: formData.name,
-                sku: formData.sku,
-                quantity: parseInt(formData.quantity),
-                price: parseInt(formData.price),
-                category: formData.category,
-              }
-            : i,
-        ),
-      );
-    }
-    setEditingId(null);
-  };
+  const totalStockValue = useMemo(() => {
+    return products.reduce((s, p) => {
+      const cost = p.costPrice ?? p.price
+      return s + cost * p.stockCount
+    }, 0)
+  }, [products])
 
-  const handleDelete = (id: string) => {
-    setInventory(inventory.filter((i) => i.id !== id));
-  };
+  const todayStr = new Date().toISOString().slice(0, 10)
+  const todaysOrders = useMemo(
+    () => orders.filter((o) => o.createdAt.slice(0, 10) === todayStr),
+    [orders, todayStr],
+  )
 
-  const lowStockItems = inventory.filter((item) => item.quantity < 10);
+  const revenueToday = useMemo(
+    () => todaysOrders.reduce((s, o) => s + o.total, 0),
+    [todaysOrders],
+  )
+
+  const recentOrders = useMemo(() => {
+    return orders
+      .slice()
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, 10)
+  }, [orders])
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">
-            Inventory Management
-          </h1>
+          <h1 className="text-3xl font-bold text-foreground">Inventory</h1>
           <p className="text-muted-foreground mt-2">
-            Manage products and equipment inventory
+            Products, stock health, and recent order activity.
           </p>
         </div>
-        <Button onClick={handleAdd} className="gap-2">
-          <Plus className="w-4 h-4" />
-          Add Item
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button asChild variant="outline">
+            <Link href="/admin/inventory/products">View products</Link>
+          </Button>
+          <Button asChild>
+            <Link href="/admin/inventory/pos">New POS order</Link>
+          </Button>
+        </div>
       </div>
 
-      {/* Low Stock Alert */}
-      {lowStockItems.length > 0 && (
-        <Card className="border-destructive/50 bg-destructive/5">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-destructive">
-              <AlertCircle className="w-5 h-5" />
-              Low Stock Alert
-            </CardTitle>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Active products</CardTitle>
+            <Package className="h-4 w-4 text-accent" />
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-foreground mb-3">
-              {lowStockItems.length} item(s) have low stock levels. Please
-              reorder soon.
-            </p>
-            <div className="space-y-2">
-              {lowStockItems.map((item) => (
-                <div key={item.id} className="flex justify-between text-sm">
-                  <span className="text-foreground font-medium">
-                    {item.name}
-                  </span>
-                  <span className="text-destructive font-semibold">
-                    {item.quantity} in stock
-                  </span>
-                </div>
-              ))}
-            </div>
+            <div className="text-2xl font-bold text-foreground">{totalActiveProducts}</div>
+            <p className="text-xs text-muted-foreground mt-1">Currently sellable</p>
           </CardContent>
         </Card>
-      )}
 
-      {/* Add/Edit Form */}
-      {editingId !== null && (
-        <Card className="border-accent/50 bg-accent/5">
-          <CardHeader>
-            <CardTitle>
-              {editingId === "new" ? "Add New Item" : "Edit Item"}
-            </CardTitle>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Stock value</CardTitle>
+            <BarChart2 className="h-4 w-4 text-accent" />
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  Product Name
-                </label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-input rounded-lg bg-background text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent"
-                  placeholder="e.g., Yoga Mat"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  SKU
-                </label>
-                <input
-                  type="text"
-                  value={formData.sku}
-                  onChange={(e) =>
-                    setFormData({ ...formData, sku: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-input rounded-lg bg-background text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent"
-                  placeholder="e.g., YM-001"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  Category
-                </label>
-                <input
-                  type="text"
-                  value={formData.category}
-                  onChange={(e) =>
-                    setFormData({ ...formData, category: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-input rounded-lg bg-background text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent"
-                  placeholder="e.g., Equipment"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  Quantity
-                </label>
-                <input
-                  type="number"
-                  value={formData.quantity}
-                  onChange={(e) =>
-                    setFormData({ ...formData, quantity: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-input rounded-lg bg-background text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent"
-                  placeholder="0"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  Price ($)
-                </label>
-                <input
-                  type="number"
-                  value={formData.price}
-                  onChange={(e) =>
-                    setFormData({ ...formData, price: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-input rounded-lg bg-background text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent"
-                  placeholder="0.00"
-                />
-              </div>
-            </div>
-            <div className="flex gap-3 mt-6">
-              <Button onClick={handleSave} className="gap-2">
-                Save Item
-              </Button>
-              <Button variant="outline" onClick={() => setEditingId(null)}>
-                Cancel
-              </Button>
-            </div>
+            <div className="text-2xl font-bold text-foreground">{formatPrice(totalStockValue)}</div>
+            <p className="text-xs text-muted-foreground mt-1">Estimated (cost or price)</p>
           </CardContent>
         </Card>
-      )}
 
-      {/* Inventory Table */}
+        <Card className={lowStockProducts.length > 0 ? 'border-destructive/40 bg-destructive/5' : undefined}>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Low stock alerts</CardTitle>
+            <AlertCircle className="h-4 w-4 text-destructive" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-foreground">{lowStockProducts.length}</div>
+            <p className="text-xs text-muted-foreground mt-1">Needs attention</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Orders today</CardTitle>
+            <ShoppingBag className="h-4 w-4 text-accent" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-foreground">{todaysOrders.length}</div>
+            <p className="text-xs text-muted-foreground mt-1">{todayStr}</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Revenue today</CardTitle>
+            <ShoppingBag className="h-4 w-4 text-accent" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-foreground">{formatPrice(revenueToday)}</div>
+            <p className="text-xs text-muted-foreground mt-1">Paid orders</p>
+          </CardContent>
+        </Card>
+      </div>
+
       <Card>
         <CardHeader>
-          <CardTitle>Inventory Items</CardTitle>
-          <CardDescription>Track all equipment and products</CardDescription>
+          <CardTitle className="flex items-center justify-between gap-3">
+            <span>Low stock alerts</span>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/admin/inventory/products">View all</Link>
+            </Button>
+          </CardTitle>
+          <CardDescription>Products that are low or out of stock.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="text-left py-3 px-4 font-semibold text-foreground">
-                    Product Name
-                  </th>
-                  <th className="text-left py-3 px-4 font-semibold text-foreground">
-                    SKU
-                  </th>
-                  <th className="text-left py-3 px-4 font-semibold text-foreground">
-                    Category
-                  </th>
-                  <th className="text-left py-3 px-4 font-semibold text-foreground">
-                    Quantity
-                  </th>
-                  <th className="text-left py-3 px-4 font-semibold text-foreground">
-                    Price
-                  </th>
-                  <th className="text-left py-3 px-4 font-semibold text-foreground">
-                    Total Value
-                  </th>
-                  <th className="text-left py-3 px-4 font-semibold text-foreground">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {inventory.map((item) => (
-                  <tr
-                    key={item.id}
-                    className="border-b border-border hover:bg-secondary/50 transition-colors"
-                  >
-                    <td className="py-3 px-4 text-foreground font-medium">
-                      {item.name}
-                    </td>
-                    <td className="py-3 px-4 text-muted-foreground text-sm font-mono">
-                      {item.sku}
-                    </td>
-                    <td className="py-3 px-4 text-foreground text-sm">
-                      {item.category}
-                    </td>
-                    <td className="py-3 px-4">
-                      <span
-                        className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
-                          item.quantity < 10
-                            ? "bg-destructive/20 text-destructive"
-                            : "bg-secondary text-foreground"
-                        }`}
-                      >
-                        {item.quantity} units
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 font-semibold text-accent">
-                      ${item.price}
-                    </td>
-                    <td className="py-3 px-4 font-semibold text-foreground">
-                      ${(item.quantity * item.price).toLocaleString()}
-                    </td>
-                    <td className="py-3 px-4 flex gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleEdit(item)}
-                        className="gap-1 text-xs"
-                      >
-                        <Edit2 className="w-3 h-3" />
-                        Edit
+          {lowStockProducts.length === 0 ? (
+            <div className="rounded-xl border border-border bg-green-500/5 p-6 text-sm text-green-700">
+              ✓ All stock levels are healthy.
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Product</TableHead>
+                  <TableHead>SKU</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Stock</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {lowStockProducts.slice(0, 8).map((p) => (
+                  <TableRow key={p.id}>
+                    <TableCell className="whitespace-normal">
+                      <p className="font-semibold text-foreground">{p.name}</p>
+                      <p className="text-xs text-muted-foreground">{p.category?.name ?? '—'}</p>
+                    </TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{p.sku ?? '—'}</TableCell>
+                    <TableCell>
+                      <StockStatusBadge product={p} />
+                    </TableCell>
+                    <TableCell className="text-right font-semibold">{p.stockCount}</TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="outline" size="sm" onClick={() => setAdjusting(p)}>
+                        Adjust stock
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDelete(item.id)}
-                        className="gap-1 text-xs text-destructive hover:text-destructive"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                        Delete
-                      </Button>
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between gap-3">
+            <span>Recent orders</span>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/admin/inventory/orders">View all</Link>
+            </Button>
+          </CardTitle>
+          <CardDescription>Latest orders across channels.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Order</TableHead>
+                <TableHead>Channel</TableHead>
+                <TableHead>Customer</TableHead>
+                <TableHead className="text-right">Total</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Created</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {recentOrders.map((o) => (
+                <TableRow key={o.id}>
+                  <TableCell className="font-mono text-xs font-semibold text-foreground">
+                    {o.orderNumber}
+                  </TableCell>
+                  <TableCell>
+                    <OrderChannelBadge channel={o.channel} />
+                  </TableCell>
+                  <TableCell className="whitespace-normal">
+                    <p className="text-sm text-foreground font-semibold">{o.contactName ?? 'Guest'}</p>
+                    <p className="text-xs text-muted-foreground">{o.contactEmail ?? '—'}</p>
+                  </TableCell>
+                  <TableCell className="text-right font-semibold">{formatPrice(o.total)}</TableCell>
+                  <TableCell className="flex flex-wrap items-center gap-2">
+                    <PaymentStatusBadge status={o.paymentStatus} />
+                    <OrderStatusBadge status={o.status} />
+                  </TableCell>
+                  <TableCell className="text-right text-xs text-muted-foreground">
+                    {new Date(o.createdAt).toLocaleString()}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {adjusting ? (
+        <StockAdjustmentModal product={adjusting} open={true} onClose={() => setAdjusting(null)} />
+      ) : null}
     </div>
-  );
+  )
 }

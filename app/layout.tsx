@@ -1,6 +1,12 @@
 import type { Metadata } from 'next'
 import { Inter, Barlow } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
+import { CalendarProvider } from '@/lib/calendar-store'
+import { ClientProvider } from '@/lib/client-store'
+import { InventoryProvider } from '@/lib/inventory-store'
+import { LocationProvider } from '@/lib/location-store'
+import { ReportsProvider } from '@/lib/reports-store'
+import { SchedulingProvider } from '@/lib/scheduling-store'
 import './globals.css'
 
 const inter = Inter({
@@ -45,7 +51,17 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} ${barlow.variable}`}>
       <body className="font-sans antialiased">
-        {children}
+        <SchedulingProvider>
+          <InventoryProvider>
+            <ReportsProvider>
+              <LocationProvider>
+                <CalendarProvider>
+                  <ClientProvider>{children}</ClientProvider>
+                </CalendarProvider>
+              </LocationProvider>
+            </ReportsProvider>
+          </InventoryProvider>
+        </SchedulingProvider>
         <Analytics />
       </body>
     </html>

@@ -1,0 +1,87 @@
+---
+description: Discovery Town project context — tech stack, folder structure, path aliases, and architectural boundaries. Enforced on every prompt to prevent structural drift.
+alwaysApply: true
+---
+
+# Discovery Town — Project Context & Structure
+
+## Identity
+
+This is **Discovery Town**, a sports-complex / activity-centre ERP frontend.
+Stack: **Next.js 16 (App Router only)** · **React 19** · **TypeScript 5.7 (strict)** · **Tailwind CSS v4** · **shadcn/ui (new-york)** · **Radix UI** · **Zod** · **react-hook-form** · **recharts** · **lucide-react** icons.
+
+## Root Layout
+
+No `src/` directory — all source lives at the repo root beside `package.json`.
+
+```
+discovery-town-fe-main/
+├── app/                  # Next.js App Router (pages + layouts)
+│   ├── layout.tsx        # Root layout (Inter + Barlow fonts, Vercel Analytics)
+│   ├── page.tsx          # Home — Server Component
+│   ├── globals.css       # Tailwind v4 config via CSS + design tokens
+│   ├── account/          # /account
+│   ├── admin/            # /admin/* — nested layout (sidebar + header)
+│   │   ├── layout.tsx
+│   │   ├── page.tsx      # Dashboard
+│   │   ├── bookings/
+│   │   ├── classes/
+│   │   ├── events/
+│   │   ├── facilities/
+│   │   ├── inventory/
+│   │   ├── orders/
+│   │   └── users/
+│   ├── cart/
+│   ├── classes/          # /classes & /classes/[id]
+│   ├── events/           # /events & /events/[id]
+│   ├── facilities/       # /facilities & /facilities/[id]
+│   └── shop/
+├── components/
+│   ├── ui/               # shadcn/ui primitives — DO NOT modify manually
+│   ├── customer/         # Customer-facing domain components
+│   └── admin/            # Admin domain components (sidebar, header)
+├── hooks/                # Shared custom hooks (use-mobile, use-toast)
+├── lib/
+│   ├── utils.ts          # cn() helper (clsx + tailwind-merge)
+│   ├── types.ts          # Domain type definitions (SRS-aligned)
+│   └── mock-data.ts      # Static fixtures (will be replaced by real APIs)
+├── public/               # Static assets
+├── components.json       # shadcn/ui config
+├── tsconfig.json         # strict: true, path alias @/* → ./*
+├── next.config.mjs
+└── postcss.config.mjs
+```
+
+## Critical Structural Rules
+
+1. **Never create a `src/` directory.** All code lives at the repo root.
+2. **Never create a `pages/` directory.** Only the App Router (`app/`) is used.
+3. **Never modify `components/ui/`** files directly — they are shadcn-managed.
+4. **Path alias:** Always import with `@/` prefix (maps to repo root).
+   - `@/components/ui/button` — UI primitives
+   - `@/components/customer/*` — customer domain components
+   - `@/components/admin/*` — admin domain components
+   - `@/hooks/*` — shared hooks
+   - `@/lib/utils` — `cn()` helper
+   - `@/lib/types` — domain types
+5. **Route files:** Every route is `app/<segment>/page.tsx`. Dynamic routes use `[param]`.
+6. **Layouts:** Root `app/layout.tsx` wraps everything. Admin has `app/admin/layout.tsx`.
+7. **Client vs Server:** Pages default to Server Components. Add `"use client"` only when hooks, state, or browser APIs are needed.
+8. **Fonts:** Inter (body, `--font-inter`) and Barlow (display, `--font-barlow`). Applied via CSS variables in root layout.
+9. **Design tokens:** Defined as CSS custom properties in `globals.css` `:root` / `.dark` using oklch. Mapped to Tailwind via `@theme inline`.
+
+## Where New Code Goes
+
+| What you're adding | Where it goes |
+|---|---|
+| New public page | `app/<route>/page.tsx` |
+| New admin page | `app/admin/<route>/page.tsx` |
+| Customer-facing component | `components/customer/<name>.tsx` |
+| Admin component | `components/admin/<name>.tsx` |
+| Shared UI primitive | Use existing `components/ui/` or add via shadcn CLI |
+| Custom hook | `hooks/use-<name>.ts` |
+| Domain types / interfaces | `lib/types.ts` |
+| Utility function | `lib/utils.ts` or `lib/<name>.ts` |
+| API service (when added) | `lib/services/<resource>.ts` |
+| Zod schemas (when added) | `lib/schemas/<resource>.ts` |
+| Static assets | `public/` |

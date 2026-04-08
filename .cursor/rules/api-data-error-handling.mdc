@@ -1,0 +1,98 @@
+---
+description: API integration, data handling, validation, and error handling rules — services layer, Zod validation, null safety, and user feedback.
+alwaysApply: true
+---
+
+# API, Data & Error Handling
+
+## Service Layer Architecture
+
+- **All API calls must live in `lib/services/`.** Never call `fetch` or any HTTP client inside a component or hook.
+- One service file per resource: `lib/services/facilities.ts`, `lib/services/bookings.ts`, etc.
+- Services export typed async functions:
+
+```typescript
+import type { Facility } from '@/lib/types'
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? ''
+
+export async function getFacilities(): Promise<Facility[]> {
+  const res = await fetch(`${API_BASE}/facilities`)
+  if (!res.ok) {
+    throw new Error(`Failed to fetch facilities: ${res.status}`)
+  }
+  const data: unknown = await res.json()
+  return facilitiesSchema.parse(data)
+}
+```
+
+- Hooks consume services — components consume hooks:
+  `Service → Hook → Component`
+
+## Data Validation
+
+- Validate all API responses with **Zod** schemas before trusting them.
+- Place Zod schemas in `lib/schemas/<resource>.ts`.
+- Schema must mirror the corresponding TypeScript type in `lib/types.ts`.
+- Never trust backend values blindly — validate shape, nullability, and ranges.
+
+## Null Safety
+
+- **Null-check everything.** Assume any field from an API can be `null` or `undefined`.
+- Use optional chaining (`?.`) and nullish coalescing (`??`) liberally.
+- Provide sensible fallback values in the UI layer:
+
+```tsx
+<span>{facility?.name ?? 'Unnamed Facility'}</span>
+<span>{formatDate(event?.startDate) ?? '—'}</span>
+```
+
+- Never access nested properties without guarding: `user?.address?.city`.
+
+## Error Handling
+
+- **No silent failures.** Every `try/catch` must handle the error meaningfully.
+- Provide user-friendly feedback via toast, inline message, or error boundary.
+- Log errors to a structured logger (when available) — never `console.log` or `console.error` in production.
+
+```typescript
+// GOOD
+try {
+  const data = await getBookings()
+  return data
+} catch (error) {
+  toast({ title: 'Failed to load bookings', variant: 'destructive' })
+  throw error
+}
+
+// BAD
+try {
+  const data = await getBookings()
+  return data
+} catch (e) {
+  // empty — silent failure
+}
+```
+
+- Use **Error Boundaries** (`error.tsx` in App Router) for unrecoverable render errors.
+- Use **Loading states** (`loading.tsx` or Suspense) to prevent blank screens.
+
+## Mock Data (Current State)
+
+- The project currently uses `lib/mock-data.ts` for static fixtures.
+- When wiring to real APIs, replace mock imports with service calls — **do not delete mock-data.ts** until full migration is confirmed.
+- Keep the mock data shape aligned with `lib/types.ts` so the transition is seamless.
+
+## Environment Variables
+
+- Client-accessible env vars must be prefixed: `NEXT_PUBLIC_*`.
+- Server-only secrets must **never** appear in client bundles.
+- Never commit `.env` files — they are in `.gitignore`.
+- Reference env vars through a centralized config if more than 3 exist.
+
+## Data Fetching Patterns
+
+- **Server Components:** Fetch data directly in the component (co-locate with the page). Use `async/await`.
+- **Client Components:** Fetch in a custom hook or use a library (SWR / TanStack Query when added).
+- Cache and deduplicate requests — Next.js fetch caching is the default in App Router.
+- Always show loading and error states — never a blank screen.

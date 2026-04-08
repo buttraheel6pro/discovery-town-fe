@@ -1,5 +1,8 @@
+"use client";
+
 import Link from "next/link";
 import Image from "next/image";
+import { useMemo } from "react";
 import {
   ArrowRight,
   ChevronRight,
@@ -17,7 +20,27 @@ import { CustomerFooter } from "@/components/customer/footer";
 import { FacilityCard } from "@/components/customer/facility-card";
 import { EventCard } from "@/components/customer/event-card";
 import { ClassCard } from "@/components/customer/class-card";
-import { facilities, events, classes } from "@/lib/mock-data";
+import { useScheduling } from "@/lib/scheduling-store";
+import type { SchedulingServiceType } from "@/lib/types";
+
+const facilityServiceTypes: SchedulingServiceType[] = [
+  "COURT_BOOKING",
+  "OPEN_PLAY",
+  "PRIVATE_HIRE",
+];
+
+const classServiceTypes: SchedulingServiceType[] = [
+  "GYM_CLASS",
+  "SWIM_CLASS",
+  "COACHING_SESSION",
+  "FITNESS_ASSESSMENT",
+];
+
+const eventServiceTypes: SchedulingServiceType[] = [
+  "PARTY_PACKAGE",
+  "WORKSHOP",
+  "CAMP",
+];
 
 const stats = [
   { label: "Facilities", value: "12+" },
@@ -81,11 +104,63 @@ const testimonials = [
 ];
 
 export default function HomePage() {
-  const featuredFacilities = facilities.slice(0, 3);
-  const upcomingEvents = events
-    .filter((e) => e.status === "PUBLISHED")
-    .slice(0, 3);
-  const featuredClasses = classes.slice(0, 3);
+  const { services, slots } = useScheduling();
+
+  const featuredFacilities = useMemo(() => {
+    return services
+      .filter(
+        (s) => s.isActive && facilityServiceTypes.includes(s.serviceType),
+      )
+      .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
+      .slice(0, 3);
+  }, [services]);
+
+  const nextSlotByServiceId = useMemo(() => {
+    const map = new Map<string, (typeof slots)[0]>();
+    const now = new Date().getTime();
+    const sorted = [...slots].sort(
+      (a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime(),
+    );
+    for (const slot of sorted) {
+      if (slot.status === "CANCELLED" || slot.status === "COMPLETED") continue;
+      if (new Date(slot.startAt).getTime() < now) continue;
+      if (!map.has(slot.serviceId)) map.set(slot.serviceId, slot);
+    }
+    return map;
+  }, [slots]);
+
+  const featuredClasses = useMemo(() => {
+    return services
+      .filter(
+        (s) =>
+          s.isActive &&
+          s.bookingMode === "SCHEDULED" &&
+          classServiceTypes.includes(s.serviceType),
+      )
+      .slice(0, 3);
+  }, [services]);
+
+  const slotByEventServiceId = useMemo(() => {
+    const map = new Map<string, (typeof slots)[0]>();
+    for (const sl of slots) {
+      if (!map.has(sl.serviceId)) map.set(sl.serviceId, sl);
+    }
+    return map;
+  }, [slots]);
+
+  const upcomingEvents = useMemo(() => {
+    const catalog = services.filter(
+      (s) =>
+        s.isActive &&
+        s.bookingMode === "SCHEDULED" &&
+        eventServiceTypes.includes(s.serviceType),
+    );
+    const published = catalog.filter(
+      (s) => s.eventStatus === "PUBLISHED" || s.eventStatus === "Upcoming",
+    );
+    const list = published.length > 0 ? published : catalog;
+    return list.slice(0, 3);
+  }, [services]);
 
   return (
     <>
@@ -221,8 +296,8 @@ export default function HomePage() {
               </Link>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {featuredFacilities.map((facility) => (
-                <FacilityCard key={facility.id} facility={facility} />
+              {featuredFacilities.map((service) => (
+                <FacilityCard key={service.id} service={service} />
               ))}
             </div>
             <div className="text-center mt-8 sm:hidden">
@@ -262,8 +337,12 @@ export default function HomePage() {
               </Link>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {upcomingEvents.map((event) => (
-                <EventCard key={event.id} event={event} />
+              {upcomingEvents.map((service) => (
+                <EventCard
+                  key={service.id}
+                  service={service}
+                  slot={slotByEventServiceId.get(service.id)}
+                />
               ))}
             </div>
           </div>
@@ -296,8 +375,12 @@ export default function HomePage() {
               </Link>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {featuredClasses.map((cls) => (
-                <ClassCard key={cls.id} cls={cls} />
+              {featuredClasses.map((service) => (
+                <ClassCard
+                  key={service.id}
+                  service={service}
+                  nextSlot={nextSlotByServiceId.get(service.id)}
+                />
               ))}
             </div>
           </div>

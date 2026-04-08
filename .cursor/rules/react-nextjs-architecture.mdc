@@ -1,0 +1,101 @@
+---
+description: React and Next.js architecture patterns — component design, state management, hooks, performance, and App Router conventions.
+alwaysApply: true
+---
+
+# React & Next.js Architecture
+
+## Component Design Principles
+
+- **Small, pure, single-responsibility.** One component = one job.
+- **Split at 200 lines.** If a component exceeds 200 lines, extract sub-components, hooks, or helpers.
+- **No god components.** A component must not handle UI rendering, data fetching, business logic, and state management simultaneously.
+- Separate concerns into layers:
+  - **UI layer** — JSX rendering and styling (component file)
+  - **State layer** — `useState`, `useReducer` (component or custom hook)
+  - **Business logic** — transformations, validation (hooks or helpers)
+  - **Data layer** — API calls, caching (services)
+
+## Component Rules
+
+```tsx
+// GOOD: Small, typed, single-purpose
+interface FacilityCardProps {
+  readonly facility: Facility;
+  readonly onBook: (id: string) => void;
+}
+
+export function FacilityCard({ facility, onBook }: FacilityCardProps) {
+  return ( /* JSX only */ );
+}
+```
+
+- Always type props with an explicit `interface` or `type`.
+- Use `readonly` modifier on prop interfaces.
+- Prefer named exports: `export function ComponentName`.
+- Exception: `page.tsx` and `layout.tsx` use `export default` (Next.js requirement).
+- Never use `React.FC` — use plain function declarations with typed props.
+
+## Next.js App Router Conventions
+
+- **Server Components by default.** Only add `"use client"` when the component uses hooks, event handlers, browser APIs, or third-party client libraries.
+- Place `"use client"` at the very first line of the file (before imports).
+- **Metadata:** Export `metadata` or `generateMetadata` from `page.tsx` / `layout.tsx` for SEO. Only works in Server Components.
+- **Dynamic routes:** Use `[param]` folders. Access params via the page component's props.
+- **Layouts:** Shared UI wrapping child routes. Admin layout is at `app/admin/layout.tsx`.
+- **Loading/Error:** Use `loading.tsx` and `error.tsx` co-located with `page.tsx` when needed.
+- Never import Server Components into Client Components.
+
+## State Management Hierarchy
+
+1. **Local state** (`useState`) — default choice for component-scoped state.
+2. **Lifted state** — when siblings need shared state, lift to nearest common parent.
+3. **React Context** — for cross-cutting concerns (auth, theme, toast). Create with typed provider.
+4. **URL state** (`useSearchParams`, `usePathname`) — for filterable/shareable UI state.
+5. **Global store** — only if Context becomes unwieldy (not currently needed).
+
+### State Rules
+
+- **Never store derived data in state.** Compute it with `useMemo`.
+- Keep state shapes flat and predictable.
+- Initialize state with sensible defaults — never `undefined` when avoidable.
+- Co-locate state with the component that owns it.
+
+## Hooks
+
+- Custom hooks must start with `use` and live in `hooks/` (shared) or beside their component (local).
+- Every hook must have typed parameters and return value.
+- Never call hooks conditionally or inside loops.
+- Extract repeated stateful logic into custom hooks.
+
+## Performance
+
+- **Memoize expensive computations** with `useMemo`.
+- **Stabilize callbacks** passed as props with `useCallback`.
+- **Avoid re-renders:** Do not create objects/arrays/functions inline in JSX props.
+- **Lazy load** heavy components with `React.lazy` + `Suspense` or Next.js `dynamic`.
+- **Paginate / virtualize** lists with > 50 items.
+- Never run expensive operations during render — move to `useEffect` or `useMemo`.
+- Use React DevTools Profiler to verify — no component should re-render without prop/state change.
+
+## Import Order
+
+Maintain this order, separated by blank lines:
+
+```typescript
+// 1. React / Next.js
+import { useState } from 'react'
+import Link from 'next/link'
+
+// 2. Third-party libraries
+import { format } from 'date-fns'
+
+// 3. Internal aliases — components, hooks, lib
+import { Button } from '@/components/ui/button'
+import { useMobile } from '@/hooks/use-mobile'
+import { cn } from '@/lib/utils'
+import type { Facility } from '@/lib/types'
+
+// 4. Relative imports (sibling/child only)
+import { FacilityHours } from './facility-hours'
+```

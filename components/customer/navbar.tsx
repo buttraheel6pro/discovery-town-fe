@@ -10,8 +10,11 @@ import { cn } from "@/lib/utils";
 
 const navLinks = [
   { label: "Facilities", href: "/facilities" },
+  { label: "Private Hire", href: "/private-hire" },
   { label: "Classes", href: "/classes" },
   { label: "Events", href: "/events" },
+  { label: "Membership", href: "/membership" },
+  { label: "Class Packs", href: "/class-packs" },
   { label: "Shop", href: "/shop" },
 ];
 
@@ -83,6 +86,11 @@ export function CustomerNavbar() {
                 <User className="w-4 h-4" />
               </Button>
             </Link>
+            <Link href="/login">
+              <Button variant="outline" size="sm">
+                Login
+              </Button>
+            </Link>
             <Link href="/facilities">
               <Button
                 size="sm"
@@ -133,6 +141,11 @@ export function CustomerNavbar() {
                 <Button variant="outline" className="w-full" size="sm">
                   <User className="w-4 h-4 mr-2" />
                   Account
+                </Button>
+              </Link>
+              <Link href="/login" className="flex-1">
+                <Button variant="outline" className="w-full" size="sm">
+                  Login
                 </Button>
               </Link>
               <Link href="/facilities" className="flex-1">

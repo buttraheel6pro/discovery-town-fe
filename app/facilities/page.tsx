@@ -1,18 +1,31 @@
 'use client'
 
-import { useState, useMemo } from 'react'
-import { Search, SlidersHorizontal, X } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Search, X } from 'lucide-react'
+
 import { CustomerNavbar } from '@/components/customer/navbar'
 import { CustomerFooter } from '@/components/customer/footer'
 import { FacilityCard } from '@/components/customer/facility-card'
+import { FilterSidebar } from '@/components/customer/filter-sidebar'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { facilities } from '@/lib/mock-data'
-import type { SportType } from '@/lib/types'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Separator } from '@/components/ui/separator'
+import { useScheduling } from '@/lib/scheduling-store'
+import type { SchedulingServiceType } from '@/lib/types'
 
-const sportTypes: SportType[] = ['Football', 'Basketball', 'Tennis', 'Swimming', 'Gym', 'Yoga', 'Badminton', 'Boxing']
+const facilityServiceTypes: SchedulingServiceType[] = [
+  'COURT_BOOKING',
+  'OPEN_PLAY',
+  'PRIVATE_HIRE',
+]
 
 const sortOptions = [
   { value: 'rating', label: 'Highest Rated' },
@@ -22,162 +35,242 @@ const sortOptions = [
 ]
 
 export default function FacilitiesPage() {
+  const { services } = useScheduling()
   const [search, setSearch] = useState('')
-  const [selectedSport, setSelectedSport] = useState<SportType | 'All'>('All')
+  const [selectedSport, setSelectedSport] = useState<string>('All')
   const [sort, setSort] = useState('rating')
-  const [showUnavailable, setShowUnavailable] = useState(true)
+  const [showInactive, setShowInactive] = useState(false)
+
+  const facilityServices = useMemo(
+    () =>
+      services.filter(
+        (s) => s.bookingMode === 'OPEN' && facilityServiceTypes.includes(s.serviceType),
+      ),
+    [services],
+  )
+
+  const sportChips = useMemo(() => {
+    const set = new Set<string>()
+    for (const s of facilityServices) {
+      if (s.sport) set.add(s.sport)
+    }
+    return Array.from(set).sort()
+  }, [facilityServices])
 
   const filtered = useMemo(() => {
-    let result = [...facilities]
+    let result = [...facilityServices]
 
     if (search) {
+      const q = search.toLowerCase()
       result = result.filter(
-        (f) =>
-          f.name.toLowerCase().includes(search.toLowerCase()) ||
-          f.description.toLowerCase().includes(search.toLowerCase()) ||
-          f.sport.toLowerCase().includes(search.toLowerCase())
+        (s) =>
+          s.name.toLowerCase().includes(q) ||
+          (s.description?.toLowerCase().includes(q) ?? false) ||
+          (s.sport?.toLowerCase().includes(q) ?? false),
       )
     }
 
     if (selectedSport !== 'All') {
-      result = result.filter((f) => f.sport === selectedSport)
+      result = result.filter((s) => s.sport === selectedSport)
     }
 
-    if (!showUnavailable) {
-      result = result.filter((f) => f.isAvailable)
+    if (!showInactive) {
+      result = result.filter((s) => s.isActive)
     }
 
     result.sort((a, b) => {
-      if (sort === 'rating') return b.rating - a.rating
-      if (sort === 'price-asc') return a.pricePerHour - b.pricePerHour
-      if (sort === 'price-desc') return b.pricePerHour - a.pricePerHour
+      const ra = a.rating ?? 0
+      const rb = b.rating ?? 0
+      if (sort === 'rating') return rb - ra
+      if (sort === 'price-asc') return a.basePrice - b.basePrice
+      if (sort === 'price-desc') return b.basePrice - a.basePrice
       if (sort === 'name') return a.name.localeCompare(b.name)
       return 0
     })
 
     return result
-  }, [search, selectedSport, sort, showUnavailable])
+  }, [facilityServices, search, selectedSport, sort, showInactive])
 
   const clearFilters = () => {
     setSearch('')
     setSelectedSport('All')
     setSort('rating')
-    setShowUnavailable(true)
+    setShowInactive(false)
   }
 
-  const hasActiveFilters = search || selectedSport !== 'All' || !showUnavailable
+  const hasActiveFilters = Boolean(search) || selectedSport !== 'All' || showInactive
+  const activeCount =
+    (search ? 1 : 0) +
+    (selectedSport !== 'All' ? 1 : 0) +
+    (showInactive ? 1 : 0) +
+    (sort !== 'rating' ? 1 : 0)
+
+  const filterBody = (
+    <>
+      <div className="space-y-2">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Sort
+        </p>
+        <Select value={sort} onValueChange={setSort}>
+          <SelectTrigger aria-label="Sort by">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {sortOptions.map((o) => (
+              <SelectItem key={o.value} value={o.value}>
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <Separator />
+
+      <div className="space-y-2">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Availability
+        </p>
+        <Button
+          variant={showInactive ? 'secondary' : 'outline'}
+          size="sm"
+          type="button"
+          onClick={() => setShowInactive(!showInactive)}
+          className="w-full"
+        >
+          {showInactive ? 'Showing inactive' : 'Hide inactive'}
+        </Button>
+      </div>
+
+      <Separator />
+
+      <div className="space-y-2">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Sport / category
+        </p>
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by sport">
+          <button
+            type="button"
+            onClick={() => setSelectedSport('All')}
+            className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+              selectedSport === 'All'
+                ? 'border-accent bg-accent text-accent-foreground'
+                : 'border-border bg-background text-muted-foreground hover:bg-secondary'
+            }`}
+          >
+            All
+          </button>
+          {sportChips.map((sport) => (
+            <button
+              key={sport}
+              type="button"
+              onClick={() => setSelectedSport(sport)}
+              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                selectedSport === sport
+                  ? 'border-accent bg-accent text-accent-foreground'
+                  : 'border-border bg-background text-muted-foreground hover:bg-secondary'
+              }`}
+            >
+              {sport}
+            </button>
+          ))}
+        </div>
+      </div>
+    </>
+  )
 
   return (
     <>
       <CustomerNavbar />
       <main>
-        {/* Page header */}
         <section className="bg-primary py-16">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <p className="text-accent text-sm font-bold uppercase tracking-widest mb-3">World-Class Venues</p>
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <p className="mb-3 text-sm font-bold uppercase tracking-widest text-accent">
+              World-Class Venues
+            </p>
             <h1
-              className="text-4xl sm:text-5xl font-black text-white text-balance"
+              className="text-balance text-4xl font-black text-white sm:text-5xl"
               style={{ fontFamily: 'var(--font-barlow)' }}
             >
               OUR FACILITIES
             </h1>
-            <p className="text-white/70 mt-3 max-w-xl leading-relaxed">
-              Browse and book from our full range of sports facilities. Filter by sport, price, or availability and find the perfect venue for your session.
+            <p className="mt-3 max-w-xl leading-relaxed text-white/70">
+              Browse and book from our full range of sports facilities. Filter by sport, price, or
+              availability and find the perfect venue for your session.
             </p>
           </div>
         </section>
 
-        {/* Filters */}
-        <section className="bg-card border-b border-border py-5 sticky top-16 z-40" aria-label="Facility filters">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="relative flex-1 min-w-[200px] max-w-xs">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search facilities..."
-                  className="pl-9"
-                  aria-label="Search facilities"
-                />
-              </div>
-              <Select value={sort} onValueChange={setSort}>
-                <SelectTrigger className="w-44" aria-label="Sort by">
-                  <SlidersHorizontal className="w-4 h-4 mr-2 text-muted-foreground" />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {sortOptions.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+        <section
+          className="sticky top-16 z-40 border-b border-border bg-card py-4"
+          aria-label="Search facilities"
+        >
+          <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 sm:px-6 lg:px-8">
+            <div className="relative min-w-[220px] max-w-md flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search facilities..."
+                className="pl-9"
+                aria-label="Search facilities"
+              />
+            </div>
+            {hasActiveFilters ? (
               <Button
-                variant={showUnavailable ? 'outline' : 'secondary'}
+                variant="ghost"
                 size="sm"
-                onClick={() => setShowUnavailable(!showUnavailable)}
+                type="button"
+                onClick={clearFilters}
+                className="gap-1 text-muted-foreground"
               >
-                {showUnavailable ? 'Hide Unavailable' : 'Show All'}
+                <X className="h-3.5 w-3.5" /> Clear
               </Button>
-              {hasActiveFilters && (
-                <Button variant="ghost" size="sm" onClick={clearFilters} className="gap-1 text-muted-foreground">
-                  <X className="w-3.5 h-3.5" /> Clear filters
-                </Button>
-              )}
-            </div>
-
-            {/* Sport filters */}
-            <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by sport">
-              <button
-                onClick={() => setSelectedSport('All')}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors border ${
-                  selectedSport === 'All'
-                    ? 'bg-accent text-accent-foreground border-accent'
-                    : 'bg-background text-muted-foreground border-border hover:bg-secondary'
-                }`}
-              >
-                All Sports
-              </button>
-              {sportTypes.map((sport) => (
-                <button
-                  key={sport}
-                  onClick={() => setSelectedSport(sport)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors border ${
-                    selectedSport === sport
-                      ? 'bg-accent text-accent-foreground border-accent'
-                      : 'bg-background text-muted-foreground border-border hover:bg-secondary'
-                  }`}
-                >
-                  {sport}
-                </button>
-              ))}
-            </div>
+            ) : null}
           </div>
         </section>
 
-        {/* Results */}
-        <section className="py-12 bg-background" aria-live="polite" aria-label="Facility results">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <p className="text-sm text-muted-foreground mb-6">
-              Showing <span className="font-semibold text-foreground">{filtered.length}</span> facilit{filtered.length !== 1 ? 'ies' : 'y'}
-              {selectedSport !== 'All' && (
-                <> in <Badge variant="secondary" className="ml-1">{selectedSport}</Badge></>
-              )}
-            </p>
+        <section className="bg-background py-12" aria-live="polite" aria-label="Facility results">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="flex flex-col gap-8 lg:flex-row lg:items-start">
+              <FilterSidebar
+                title="Facility filters"
+                activeCount={activeCount}
+                onClear={hasActiveFilters || sort !== 'rating' ? clearFilters : undefined}
+              >
+                {filterBody}
+              </FilterSidebar>
 
-            {filtered.length === 0 ? (
-              <div className="text-center py-20 space-y-4">
-                <p className="text-2xl font-bold text-muted-foreground">No facilities found</p>
-                <p className="text-muted-foreground">Try adjusting your filters or search term.</p>
-                <Button onClick={clearFilters}>Clear Filters</Button>
+              <div className="min-w-0 flex-1">
+                <p className="mb-6 text-sm text-muted-foreground">
+                  Showing{' '}
+                  <span className="font-semibold text-foreground">{filtered.length}</span>{' '}
+                  {filtered.length === 1 ? 'facility' : 'facilities'}
+                  {selectedSport !== 'All' ? (
+                    <>
+                      {' '}
+                      in <Badge variant="secondary" className="ml-1">{selectedSport}</Badge>
+                    </>
+                  ) : null}
+                </p>
+
+                {filtered.length === 0 ? (
+                  <div className="space-y-4 py-20 text-center">
+                    <p className="text-2xl font-bold text-muted-foreground">No facilities found</p>
+                    <p className="text-muted-foreground">Try adjusting your filters or search term.</p>
+                    <Button type="button" onClick={clearFilters}>
+                      Clear filters
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+                    {filtered.map((service) => (
+                      <FacilityCard key={service.id} service={service} />
+                    ))}
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {filtered.map((facility) => (
-                  <FacilityCard key={facility.id} facility={facility} />
-                ))}
-              </div>
-            )}
+            </div>
           </div>
         </section>
       </main>

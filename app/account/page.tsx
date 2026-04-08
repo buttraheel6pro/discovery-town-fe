@@ -1,10 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import {
-  User,
   Calendar,
   ShoppingBag,
   Settings,
@@ -14,6 +13,11 @@ import {
   CheckCircle2,
   XCircle,
   TrendingUp,
+  Users,
+  FileText,
+  CreditCard,
+  Building2,
+  Wallet,
 } from "lucide-react";
 import { CustomerNavbar } from "@/components/customer/navbar";
 import { CustomerFooter } from "@/components/customer/footer";
@@ -23,8 +27,17 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { bookings, orders, eventRegistrations, users } from "@/lib/mock-data";
-import { EventRegistration } from "@/lib/types";
+import { bookings, orders, users } from "@/lib/mock-data";
+import type { SchedulingServiceType } from "@/lib/types";
+import { BookingHistoryCard } from "@/components/customer/booking-history-card";
+import { CrudModal } from "@/components/admin/crud-modal";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { useScheduling } from "@/lib/scheduling-store";
+import { CreditBalanceDisplay } from "@/components/customer/credit-balance-display";
+import { useClients } from "@/lib/client-store";
+import { useInventory } from "@/lib/inventory-store";
+import { formatPrice, isDocumentSignedAndValid } from "@/lib/utils";
 
 const currentUser = users.find((u) => u.role === "CUSTOMER")!;
 
@@ -53,9 +66,79 @@ const orderStatusBadge: Record<string, { label: string; className: string }> = {
 
 export default function AccountPage() {
   const [activeTab, setActiveTab] = useState("overview");
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelBookingId, setCancelBookingId] = useState<string | null>(null);
   const myBookings = bookings.slice(0, 4);
   const myOrders = orders.slice(0, 3);
-  const myEvents: EventRegistration[] = eventRegistrations.slice(0, 2);
+  const { bookings: schedulingBookings, cancelBooking } = useScheduling();
+  const { contacts: cmContacts, documents: clientDocs } = useClients();
+  const { orders: shopOrders } = useInventory();
+
+  const primaryContact =
+    cmContacts.find((c) => c.contactType === "CUSTOMER") ?? cmContacts[0];
+
+  const primaryCreditBalance =
+    primaryContact?.creditLedger?.[0]?.balanceAfter ?? 0;
+
+  const primarySubscription = primaryContact?.subscriptions?.find(
+    (s) => s.status === "ACTIVE" || s.status === "TRIALING",
+  );
+
+  const displayFirstName = primaryContact?.firstName ?? currentUser.firstName;
+  const displayLastName = primaryContact?.lastName ?? currentUser.lastName;
+  const displayEmail = primaryContact?.email ?? currentUser.email;
+  const displayAvatar =
+    primaryContact?.avatarUrl ?? currentUser.avatarUrl ?? undefined;
+
+  const pendingDocumentsCount = primaryContact
+    ? clientDocs.filter(
+        (doc) =>
+          doc.isRequired &&
+          !isDocumentSignedAndValid(primaryContact.documents, doc.id),
+      ).length
+    : 0;
+
+  const familyMembersCount = cmContacts.filter(
+    (c) => c.contactType === "CHILD",
+  ).length;
+
+  const mySchedulingBookings = schedulingBookings.filter(
+    (b) => b.contactId === "contact-1",
+  );
+
+  const spendContactId = primaryContact?.id ?? "contact-1";
+
+  const mySpendTotal = useMemo(() => {
+    const bookingSpend = mySchedulingBookings
+      .filter((b) => b.status !== "CANCELLED")
+      .reduce((sum, b) => sum + b.totalAmount, 0);
+    const shopSpend = shopOrders
+      .filter((o) => o.contactId === spendContactId)
+      .reduce((sum, o) => sum + o.total, 0);
+    return bookingSpend + shopSpend;
+  }, [mySchedulingBookings, shopOrders, spendContactId]);
+
+  const eventBookingTypes: SchedulingServiceType[] = [
+    "PARTY_PACKAGE",
+    "WORKSHOP",
+    "CAMP",
+  ];
+  const myEventBookings = mySchedulingBookings.filter((b) =>
+    eventBookingTypes.includes(b.bookingType),
+  );
+
+  const upcoming = mySchedulingBookings.filter(
+    (b) => b.status !== "CANCELLED" && b.status !== "COMPLETED",
+  );
+  const past = mySchedulingBookings.filter((b) => b.status === "COMPLETED");
+  const cancelled = mySchedulingBookings.filter((b) => b.status === "CANCELLED");
+
+  function openCancelDialog(id: string) {
+    setCancelBookingId(id);
+    setCancelReason("");
+    setCancelOpen(true);
+  }
 
   return (
     <>
@@ -65,13 +148,10 @@ export default function AccountPage() {
         <section className="bg-primary py-12">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center gap-6">
             <Avatar className="h-20 w-20 border-4 border-accent">
-              <AvatarImage
-                src={currentUser.avatarUrl}
-                alt={currentUser.firstName}
-              />
+              <AvatarImage src={displayAvatar} alt={displayFirstName} />
               <AvatarFallback className="text-xl font-bold bg-accent text-accent-foreground">
-                {currentUser.firstName[0]}
-                {currentUser.lastName[0]}
+                {displayFirstName[0]}
+                {displayLastName[0]}
               </AvatarFallback>
             </Avatar>
             <div>
@@ -79,9 +159,9 @@ export default function AccountPage() {
                 className="text-2xl font-black text-white"
                 style={{ fontFamily: "var(--font-barlow)" }}
               >
-                {currentUser.firstName} {currentUser.lastName}
+                {displayFirstName} {displayLastName}
               </h1>
-              <p className="text-white/70 text-sm mt-1">{currentUser.email}</p>
+              <p className="text-white/70 text-sm mt-1">{displayEmail}</p>
               <div className="flex items-center gap-3 mt-2">
                 <span className="text-xs text-white/60">
                   Member since{" "}
@@ -143,48 +223,139 @@ export default function AccountPage() {
 
             {/* Overview */}
             <TabsContent value="overview" className="space-y-8">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                <Card>
+                  <CardContent className="flex items-center gap-4 pt-5">
+                    <div className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center text-primary">
+                      <Wallet className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0 space-y-1">
+                      <p className="text-xs text-muted-foreground">My spend</p>
+                      <p
+                        className="text-2xl font-black text-foreground truncate"
+                        style={{ fontFamily: "var(--font-barlow)" }}
+                      >
+                        {formatPrice(mySpendTotal)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Credits {formatPrice(primaryCreditBalance)} ·{" "}
+                        {primarySubscription ? "Membership active" : "No membership"}
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="flex items-center gap-4 pt-5">
+                    <div className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center text-emerald-600">
+                      <CreditCard className="w-5 h-5" />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">
+                        Credit Balance
+                      </p>
+                      <CreditBalanceDisplay balance={primaryCreditBalance} />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="flex items-center gap-4 pt-5">
+                    <div className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center text-blue-600">
+                      <CheckCircle2 className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-black text-foreground">
+                        {primarySubscription ? "Active" : "None"}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Membership
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="flex items-center gap-4 pt-5">
+                    <div className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center text-amber-600">
+                      <FileText className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-black text-foreground">
+                        {pendingDocumentsCount}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Pending Documents
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="flex items-center gap-4 pt-5">
+                    <div className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center text-violet-600">
+                      <Users className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-black text-foreground">
+                        {familyMembersCount}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Family Members
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 {[
                   {
-                    icon: Calendar,
-                    label: "Upcoming Bookings",
-                    value: 3,
-                    color: "text-blue-600",
+                    href: "/account/profile",
+                    title: "Profile & Preferences",
+                    description: "Update your details and communication settings.",
+                    icon: Settings,
                   },
                   {
-                    icon: CheckCircle2,
-                    label: "Completed Sessions",
-                    value: 9,
-                    color: "text-green-600",
+                    href: "/account/family",
+                    title: "Family",
+                    description: "Manage children and linked family members.",
+                    icon: Users,
                   },
                   {
-                    icon: Star,
-                    label: "Events Registered",
-                    value: 2,
-                    color: "text-yellow-600",
+                    href: "/account/documents",
+                    title: "Documents & Waivers",
+                    description: "Review and sign any required waivers.",
+                    icon: FileText,
                   },
                   {
-                    icon: ShoppingBag,
-                    label: "Orders",
-                    value: 3,
-                    color: "text-accent",
+                    href: "/account/membership",
+                    title: "Membership & Credits",
+                    description: "Manage memberships and class packs.",
+                    icon: CreditCard,
                   },
-                ].map(({ icon: Icon, label, value, color }) => (
-                  <Card key={label}>
-                    <CardContent className="flex items-center gap-4 pt-5">
-                      <div
-                        className={`w-10 h-10 rounded-lg bg-secondary flex items-center justify-center ${color}`}
-                      >
-                        <Icon className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <p className="text-2xl font-black text-foreground">
-                          {value}
-                        </p>
-                        <p className="text-xs text-muted-foreground">{label}</p>
-                      </div>
-                    </CardContent>
-                  </Card>
+                  {
+                    href: "/account/private-hire",
+                    title: "Private Hire",
+                    description: "Track venue hire enquiries and status.",
+                    icon: Building2,
+                  },
+                ].map(({ href, title, description, icon: Icon }) => (
+                  <Link key={href} href={href}>
+                    <Card className="h-full hover:shadow-md transition-shadow">
+                      <CardContent className="flex items-start gap-4 pt-5">
+                        <div className="w-9 h-9 rounded-lg bg-secondary flex items-center justify-center text-accent">
+                          <Icon className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold">{title}</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {description}
+                          </p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </Link>
                 ))}
               </div>
 
@@ -287,65 +458,115 @@ export default function AccountPage() {
 
             {/* Bookings tab */}
             <TabsContent value="bookings">
-              <div className="space-y-3">
-                <div className="flex items-center justify-between mb-4">
+              <div className="space-y-8">
+                <div className="flex items-center justify-between gap-3">
                   <h2 className="text-lg font-bold">My Bookings</h2>
-                  <Link href="/facilities">
+                  <Link href="/classes">
                     <Button
                       size="sm"
                       className="bg-accent text-accent-foreground hover:bg-accent/90"
                     >
-                      Book a Facility
+                      Browse Classes
                     </Button>
                   </Link>
                 </div>
-                {myBookings.map((booking) => {
-                  const status = bookingStatusBadge[booking.status];
-                  return (
-                    <Card key={booking.id}>
-                      <CardContent className="flex items-center gap-4 pt-5 pb-4">
-                        <div className="w-10 h-10 bg-secondary rounded-lg flex items-center justify-center shrink-0">
-                          <Calendar className="w-5 h-5 text-accent" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-bold text-sm">
-                            {booking.facilityName}
-                          </p>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            {new Date(
-                              booking.date + "T00:00:00",
-                            ).toLocaleDateString("en-GB", {
-                              weekday: "short",
-                              day: "numeric",
-                              month: "short",
-                            })}{" "}
-                            · {booking.startTime}–{booking.endTime} (
-                            {booking.durationHours}h)
-                          </p>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <span
-                            className={`text-xs font-semibold px-2.5 py-1 rounded-full ${status.className}`}
-                          >
-                            {status.label}
-                          </span>
-                          <p className="font-bold text-sm mt-1">
-                            £{booking.totalPrice}
-                          </p>
-                        </div>
-                        {booking.status === "CONFIRMED" && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="text-destructive border-destructive hover:bg-destructive/5 shrink-0"
-                          >
-                            Cancel
+
+                <Tabs defaultValue="upcoming">
+                  <TabsList className="flex flex-wrap h-auto gap-1">
+                    <TabsTrigger value="upcoming">Upcoming</TabsTrigger>
+                    <TabsTrigger value="past">Past</TabsTrigger>
+                    <TabsTrigger value="cancelled">Cancelled</TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="upcoming" className="space-y-3 mt-4">
+                    {upcoming.length === 0 ? (
+                      <div className="text-center py-16 border border-border rounded-xl bg-card">
+                        <p className="text-muted-foreground">
+                          No upcoming bookings
+                        </p>
+                        <Link href="/classes">
+                          <Button className="mt-4 bg-accent text-accent-foreground hover:bg-accent/90">
+                            Browse Classes
                           </Button>
-                        )}
-                      </CardContent>
-                    </Card>
-                  );
-                })}
+                        </Link>
+                      </div>
+                    ) : (
+                      upcoming.map((b) => (
+                        <BookingHistoryCard
+                          key={b.id}
+                          booking={b}
+                          onCancel={() => openCancelDialog(b.id)}
+                        />
+                      ))
+                    )}
+                  </TabsContent>
+
+                  <TabsContent value="past" className="space-y-3 mt-4">
+                    {past.length === 0 ? (
+                      <div className="text-center py-16 border border-border rounded-xl bg-card">
+                        <p className="text-muted-foreground">No past bookings</p>
+                      </div>
+                    ) : (
+                      past.map((b) => <BookingHistoryCard key={b.id} booking={b} />)
+                    )}
+                  </TabsContent>
+
+                  <TabsContent value="cancelled" className="space-y-3 mt-4">
+                    {cancelled.length === 0 ? (
+                      <div className="text-center py-16 border border-border rounded-xl bg-card">
+                        <p className="text-muted-foreground">
+                          No cancelled bookings
+                        </p>
+                      </div>
+                    ) : (
+                      cancelled.map((b) => <BookingHistoryCard key={b.id} booking={b} />)
+                    )}
+                  </TabsContent>
+                </Tabs>
+
+                <Separator />
+
+                <div className="space-y-3">
+                  <h3 className="text-base font-bold">Facility bookings</h3>
+                  {myBookings.map((booking) => {
+                    const status = bookingStatusBadge[booking.status];
+                    return (
+                      <Card key={booking.id}>
+                        <CardContent className="flex items-center gap-4 pt-5 pb-4">
+                          <div className="w-10 h-10 bg-secondary rounded-lg flex items-center justify-center shrink-0">
+                            <Calendar className="w-5 h-5 text-accent" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold text-sm">
+                              {booking.facilityName}
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {new Date(
+                                booking.date + "T00:00:00",
+                              ).toLocaleDateString("en-GB", {
+                                weekday: "short",
+                                day: "numeric",
+                                month: "short",
+                              })}{" "}
+                              · {booking.startTime}–{booking.endTime} (
+                              {booking.durationHours}h)
+                            </p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <span
+                              className={`text-xs font-semibold px-2.5 py-1 rounded-full ${status.className}`}
+                            >
+                              {status.label}
+                            </span>
+                            <p className="font-bold text-sm mt-1">
+                              £{booking.totalPrice}
+                            </p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
               </div>
             </TabsContent>
 
@@ -363,39 +584,19 @@ export default function AccountPage() {
                     </Button>
                   </Link>
                 </div>
-                {myEvents.length === 0 ? (
+                {myEventBookings.length === 0 ? (
                   <div className="text-center py-16">
                     <p className="text-muted-foreground">
                       No events registered yet.
                     </p>
                   </div>
                 ) : (
-                  myEvents.map((reg) => (
-                    <Card key={reg.id}>
-                      <CardContent className="flex items-center gap-4 pt-5 pb-4">
-                        <div className="w-10 h-10 bg-secondary rounded-lg flex items-center justify-center shrink-0">
-                          <Star className="w-5 h-5 text-accent" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-bold text-sm">{reg.eventTitle}</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            {reg.ticketCount} ticket
-                            {reg.ticketCount > 1 ? "s" : ""} · Registered{" "}
-                            {new Date(reg.registeredAt).toLocaleDateString(
-                              "en-GB",
-                            )}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <Badge variant="outline" className="text-xs">
-                            Registered
-                          </Badge>
-                          <p className="font-bold text-sm mt-1">
-                            £{reg.totalPaid}
-                          </p>
-                        </div>
-                      </CardContent>
-                    </Card>
+                  myEventBookings.map((b) => (
+                    <BookingHistoryCard
+                      key={b.id}
+                      booking={b}
+                      onCancel={() => openCancelDialog(b.id)}
+                    />
                   ))
                 )}
               </div>
@@ -471,56 +672,80 @@ export default function AccountPage() {
             {/* Profile settings tab */}
             <TabsContent value="profile">
               <div className="max-w-lg space-y-6">
-                <h2 className="text-lg font-bold">Profile Settings</h2>
+                <h2 className="text-lg font-bold">Profile</h2>
+                <p className="text-sm text-muted-foreground">
+                  Your account uses the same contact record as reception and CRM. Full editing
+                  (address, preferences) lives on the profile editor page.
+                </p>
                 <Card>
                   <CardContent className="pt-6 space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                          First Name
-                        </label>
-                        <p className="text-sm font-semibold mt-1">
-                          {currentUser.firstName}
+                    {primaryContact ? (
+                      <>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                              First name
+                            </label>
+                            <p className="text-sm font-semibold mt-1">
+                              {primaryContact.firstName}
+                            </p>
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                              Last name
+                            </label>
+                            <p className="text-sm font-semibold mt-1">
+                              {primaryContact.lastName}
+                            </p>
+                          </div>
+                        </div>
+                        <Separator />
+                        <div>
+                          <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                            Email
+                          </label>
+                          <p className="text-sm font-semibold mt-1">
+                            {primaryContact.email ?? "Not set"}
+                          </p>
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                            Phone
+                          </label>
+                          <p className="text-sm font-semibold mt-1">
+                            {primaryContact.phone ?? "Not set"}
+                          </p>
+                        </div>
+                        <Separator />
+                        <div className="flex gap-3">
+                          <Button
+                            className="bg-accent text-accent-foreground hover:bg-accent/90 flex-1"
+                            asChild
+                          >
+                            <Link href="/account/profile">Edit profile</Link>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            className="text-destructive border-destructive hover:bg-destructive/5 gap-2"
+                          >
+                            <LogOut className="w-4 h-4" /> Sign out
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-sm text-muted-foreground">
+                          No CRM contact is loaded in this demo. Open the editor to review the
+                          form.
                         </p>
-                      </div>
-                      <div>
-                        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                          Last Name
-                        </label>
-                        <p className="text-sm font-semibold mt-1">
-                          {currentUser.lastName}
-                        </p>
-                      </div>
-                    </div>
-                    <Separator />
-                    <div>
-                      <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                        Email
-                      </label>
-                      <p className="text-sm font-semibold mt-1">
-                        {currentUser.email}
-                      </p>
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                        Phone
-                      </label>
-                      <p className="text-sm font-semibold mt-1">
-                        {currentUser.phone ?? "Not set"}
-                      </p>
-                    </div>
-                    <Separator />
-                    <div className="flex gap-3">
-                      <Button className="bg-accent text-accent-foreground hover:bg-accent/90 flex-1">
-                        Edit Profile
-                      </Button>
-                      <Button
-                        variant="outline"
-                        className="text-destructive border-destructive hover:bg-destructive/5 gap-2"
-                      >
-                        <LogOut className="w-4 h-4" /> Sign Out
-                      </Button>
-                    </div>
+                        <Button
+                          className="bg-accent text-accent-foreground hover:bg-accent/90 w-full"
+                          asChild
+                        >
+                          <Link href="/account/profile">Go to profile editor</Link>
+                        </Button>
+                      </>
+                    )}
                   </CardContent>
                 </Card>
               </div>
@@ -529,6 +754,44 @@ export default function AccountPage() {
         </div>
       </main>
       <CustomerFooter />
+
+      <CrudModal
+        open={cancelOpen}
+        onOpenChange={setCancelOpen}
+        title="Cancel booking"
+        description="Tell us why you're cancelling. This helps us improve."
+        size="sm"
+        variant="delete"
+        footer={
+          <>
+            <Button type="button" variant="outline" onClick={() => setCancelOpen(false)}>
+              Close
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                if (!cancelBookingId) return;
+                cancelBooking(cancelBookingId, cancelReason.trim() || "Cancelled by user");
+                setCancelOpen(false);
+              }}
+              disabled={!cancelBookingId}
+            >
+              Confirm cancel
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-2">
+          <Label htmlFor="cancel-reason">Reason (optional)</Label>
+          <Textarea
+            id="cancel-reason"
+            value={cancelReason}
+            onChange={(e) => setCancelReason(e.target.value)}
+            placeholder="Cancellation reason"
+          />
+        </div>
+      </CrudModal>
     </>
   );
 }

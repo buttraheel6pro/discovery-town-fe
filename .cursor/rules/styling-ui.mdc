@@ -1,0 +1,99 @@
+---
+description: Styling, UI component, and design system rules — Tailwind CSS v4, shadcn/ui, design tokens, and presentation conventions.
+alwaysApply: true
+---
+
+# Styling & UI Rules
+
+## Tailwind CSS v4 Configuration
+
+- Tailwind is configured via **CSS** in `app/globals.css` and PostCSS — there is **no `tailwind.config.js`**.
+- Design tokens are CSS custom properties in `:root` / `.dark` using **oklch** color space.
+- Tokens are mapped to Tailwind via `@theme inline` in `globals.css`.
+- To add new design tokens, add them to `globals.css` under `:root` and `.dark`, then map them in `@theme inline`.
+
+## Design Token Usage
+
+Always use semantic token classes — never hard-code colors:
+
+```tsx
+// GOOD — uses design tokens
+<div className="bg-background text-foreground border-border" />
+<button className="bg-primary text-primary-foreground" />
+<span className="text-muted-foreground" />
+<div className="bg-accent text-accent-foreground" />
+
+// BAD — hard-coded colors
+<div className="bg-white text-gray-900" />
+<div className="bg-[#1E3A5F]" />
+```
+
+## Styling Rules
+
+- **No inline styles** unless trivial (e.g., dynamic `style={{ fontFamily: 'var(--font-barlow)' }}`).
+- Use Tailwind utility classes for all styling.
+- Use the `cn()` helper from `@/lib/utils` for conditional classes:
+
+```tsx
+import { cn } from '@/lib/utils'
+
+<div className={cn(
+  'px-4 py-2 rounded-md',
+  isActive && 'bg-accent/10 text-accent',
+  !isActive && 'text-muted-foreground hover:text-foreground',
+)} />
+```
+
+- Never mix logic and presentation — keep className computation clean.
+- Use consistent spacing: follow the project's existing spacing scale (`gap-2`, `p-4`, `p-8`, etc.).
+
+## shadcn/ui Components
+
+- **Never edit files in `components/ui/` manually.** They are managed by the shadcn CLI.
+- To add a new primitive: `npx shadcn@latest add <component>`.
+- Import from `@/components/ui/<component>`:
+
+```tsx
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+```
+
+- Use shadcn variants and sizes — do not override with custom classes unless extending.
+- Style: `new-york`. Icon library: `lucide-react`.
+
+## Component Composition
+
+- Build domain components by **composing** shadcn primitives — not by copying/modifying them.
+- Domain components go in `components/customer/` or `components/admin/`.
+- Every reusable UI element must be a proper component — no duplicated JSX blocks.
+
+## Responsive Design
+
+- Mobile-first: base classes for mobile, then `sm:`, `md:`, `lg:`, `xl:` for breakpoints.
+- Use `hidden md:flex` / `md:hidden` patterns for responsive visibility (see `CustomerNavbar`).
+- Test layouts at all breakpoints.
+
+## Icons
+
+- Use `lucide-react` exclusively. Import individual icons:
+
+```tsx
+import { ShoppingCart, User, Search } from 'lucide-react'
+```
+
+- Standard sizing: `className="w-4 h-4"` (small), `className="w-5 h-5"` (medium).
+
+## Typography
+
+- Body text: Inter (`font-sans`).
+- Display / headings: Barlow (`font-display` or `style={{ fontFamily: 'var(--font-barlow)' }}`).
+- Use Tailwind typography utilities: `text-sm`, `text-lg`, `font-medium`, `font-semibold`, `tracking-tight`.
+
+## Accessibility
+
+- All interactive elements must have `aria-label` when visible text is absent.
+- Use semantic HTML: `<nav>`, `<main>`, `<header>`, `<section>`, `<button>`.
+- Toggle buttons must set `aria-expanded`.
+- Form inputs must have associated `<label>` elements.
+- Color contrast must meet WCAG AA against the oklch token values.

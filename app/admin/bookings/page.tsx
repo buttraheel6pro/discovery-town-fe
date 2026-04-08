@@ -3,8 +3,6 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Calendar, CheckCircle, Clock, User } from 'lucide-react'
-import { mockData } from '@/lib/mock-data'
-
 export default function BookingsManagement() {
   const bookings = [
     {

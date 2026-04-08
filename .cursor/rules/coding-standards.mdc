@@ -1,0 +1,81 @@
+---
+description: JavaScript and TypeScript coding standards — variable declarations, operators, formatting, naming, and language-level best practices enforced on every file.
+alwaysApply: true
+---
+
+# Coding Standards — JavaScript & TypeScript
+
+## Variable Declarations
+
+- `const` by default. `let` only when reassignment is required. **Never `var`.**
+- Declare variables at the **top** of their scope.
+- One declaration per line — no comma-separated declarations.
+
+## Literals & Constructors
+
+- Object/array literals only: `{}`, `[]`. Never `new Object()`, `new Array()`.
+- Use template literals for string interpolation — never concatenation.
+
+## Equality & Type Safety
+
+- Strict equality only: `===`, `!==`. Never `==` or `!=`.
+- Avoid implicit type coercion.
+- Use `Number.isNaN()` and `Number.isFinite()` — never bare `isNaN`/`isFinite`.
+- Always pass a radix to `parseInt`: `parseInt(value, 10)`.
+
+## TypeScript Specifics
+
+- **Never use `any`.** Use `unknown` + type narrowing when the type is uncertain.
+- Always type: props, state, context values, hook arguments, hook return values, function parameters, and return types.
+- Prefer `interface` for object shapes, `type` for unions/intersections/utility types.
+- Use discriminated unions for state machines and polymorphic data.
+- Use built-in utility types: `Partial`, `Required`, `Pick`, `Omit`, `Record`, `Readonly`.
+- Export types from `lib/types.ts` for domain models; co-locate component-specific types in the component file.
+
+## Functions
+
+- Arrow functions preferred — preserves lexical `this`.
+- Always provide default values for optional parameters.
+- Use rest parameters (`...args`) — never `arguments`.
+- Named exports preferred over default exports (except `page.tsx` which Next.js requires as default).
+
+## Control Flow
+
+- Always use braces `{}` for multi-line blocks.
+- `switch` must include a `default` case.
+- No nested ternaries. Extract to variables or use early returns.
+- Keep logical operator chains readable — break across lines if > 80 chars.
+
+## Destructuring & Properties
+
+- Use object and array destructuring wherever it improves clarity.
+- Use computed property names for dynamic keys: `{ [key]: value }`.
+- Never call `Object.prototype` methods directly on values — use `Object.hasOwn()`.
+
+## Formatting
+
+- **2-space soft-tab** indentation. No tabs.
+- Maximum line length: **100 characters**.
+- Trailing commas in multi-line objects, arrays, parameters, and arguments.
+- Single blank line between logical sections. No multiple consecutive blank lines.
+- Consistent brace placement: opening brace on the same line.
+- Spacing: space after `//`, space inside `{ }` for imports, no space inside `()`.
+
+## Naming Conventions
+
+- `camelCase` — variables, functions, hooks, file names (kebab-case for files).
+- `PascalCase` — React components, classes, interfaces, type aliases.
+- `SCREAMING_SNAKE_CASE` — constants and enum-like union literal values.
+- File name must reflect its primary export: `use-mobile.ts` → `useMobile`, `facility-card.tsx` → `FacilityCard`.
+- No dangling underscores (`_foo`, `foo_`).
+
+## Prohibited Patterns
+
+```typescript
+// NEVER do these:
+console.log(anything)        // No console statements in production code
+let unused = 'value'         // No unused variables
+import { Unused } from 'x'  // No unused imports
+function dead() {}           // No dead / unreachable code
+// @ts-ignore                // No suppression comments — fix the type error
+```

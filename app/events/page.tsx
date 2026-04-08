@@ -1,110 +1,180 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Search, X } from 'lucide-react'
+
 import { CustomerNavbar } from '@/components/customer/navbar'
 import { CustomerFooter } from '@/components/customer/footer'
 import { EventCard } from '@/components/customer/event-card'
-import { Input } from '@/components/ui/input'
+import { FilterSidebar } from '@/components/customer/filter-sidebar'
 import { Button } from '@/components/ui/button'
-import { events } from '@/lib/mock-data'
+import { Input } from '@/components/ui/input'
+import { useScheduling } from '@/lib/scheduling-store'
+import type { Event, SchedulingServiceType } from '@/lib/types'
 
-const statuses = ['All', 'PUBLISHED', 'DRAFT'] as const
+const statuses: Array<'All' | Event['status']> = ['All', 'PUBLISHED', 'DRAFT']
+
+const eventServiceTypes: SchedulingServiceType[] = ['PARTY_PACKAGE', 'WORKSHOP', 'CAMP']
 
 export default function EventsPage() {
+  const { services, slots } = useScheduling()
   const [search, setSearch] = useState('')
-  const [status, setStatus] = useState<'All' | 'PUBLISHED' | 'DRAFT'>('All')
+  const [status, setStatus] = useState<'All' | Event['status']>('All')
+
+  function handleClear() {
+    setSearch('')
+    setStatus('All')
+  }
+
+  const eventCatalog = useMemo(
+    () =>
+      services.filter(
+        (s) =>
+          s.isActive &&
+          s.bookingMode === 'SCHEDULED' &&
+          eventServiceTypes.includes(s.serviceType),
+      ),
+    [services],
+  )
+
+  const slotByServiceId = useMemo(() => {
+    const map = new Map<string, (typeof slots)[0]>()
+    for (const sl of slots) {
+      if (!map.has(sl.serviceId)) map.set(sl.serviceId, sl)
+    }
+    return map
+  }, [slots])
 
   const filtered = useMemo(() => {
-    let result = [...events]
+    let result = [...eventCatalog]
 
     if (search) {
+      const q = search.toLowerCase()
       result = result.filter(
-        (e) =>
-          e.title.toLowerCase().includes(search.toLowerCase()) ||
-          e.sport.toLowerCase().includes(search.toLowerCase()) ||
-          e.description.toLowerCase().includes(search.toLowerCase())
+        (s) =>
+          s.name.toLowerCase().includes(q) ||
+          (s.sport?.toLowerCase().includes(q) ?? false) ||
+          (s.description?.toLowerCase().includes(q) ?? false),
       )
     }
 
     if (status !== 'All') {
-      result = result.filter((e) => e.status === status)
+      result = result.filter((s) => s.eventStatus === status)
     }
 
     return result
-  }, [search, status])
+  }, [eventCatalog, search, status])
+
+  const hasActiveFilters = Boolean(search) || status !== 'All'
+  const activeCount = (search ? 1 : 0) + (status !== 'All' ? 1 : 0)
+
+  const filterBody = (
+    <div className="space-y-2">
+      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        Status
+      </p>
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by status">
+        {statuses.map((s) => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => setStatus(s)}
+            className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+              status === s
+                ? 'border-accent bg-accent text-accent-foreground'
+                : 'border-border bg-background text-muted-foreground hover:bg-secondary'
+            }`}
+          >
+            {s === 'All' ? 'All Events' : s === 'PUBLISHED' ? 'Open' : 'Coming Soon'}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
 
   return (
     <>
       <CustomerNavbar />
       <main>
         <section className="bg-primary py-16">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <p className="text-accent text-sm font-bold uppercase tracking-widest mb-3">Compete &amp; Celebrate</p>
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <p className="mb-3 text-sm font-bold uppercase tracking-widest text-accent">
+              Compete &amp; Celebrate
+            </p>
             <h1
-              className="text-4xl sm:text-5xl font-black text-white text-balance"
+              className="text-balance text-4xl font-black text-white sm:text-5xl"
               style={{ fontFamily: 'var(--font-barlow)' }}
             >
               SPORTS EVENTS
             </h1>
-            <p className="text-white/70 mt-3 max-w-xl leading-relaxed">
-              Tournaments, galas, wellness retreats, and more. Register today and be part of the action.
+            <p className="mt-3 max-w-xl leading-relaxed text-white/70">
+              Tournaments, galas, wellness retreats, and more. Register today and be part of the
+              action.
             </p>
           </div>
         </section>
 
-        {/* Filters */}
-        <div className="bg-card border-b border-border py-5 sticky top-16 z-40">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-wrap items-center gap-3">
-            <div className="relative flex-1 min-w-[200px] max-w-xs">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <section
+          className="sticky top-16 z-40 border-b border-border bg-card py-4"
+          aria-label="Search events"
+        >
+          <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 sm:px-6 lg:px-8">
+            <div className="relative min-w-[220px] max-w-md flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search events..."
                 className="pl-9"
+                aria-label="Search events"
               />
             </div>
-            <div className="flex gap-2" role="group" aria-label="Filter by status">
-              {statuses.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setStatus(s)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors border ${
-                    status === s
-                      ? 'bg-accent text-accent-foreground border-accent'
-                      : 'bg-background text-muted-foreground border-border hover:bg-secondary'
-                  }`}
-                >
-                  {s === 'All' ? 'All Events' : s === 'PUBLISHED' ? 'Open' : 'Coming Soon'}
-                </button>
-              ))}
-            </div>
-            {(search || status !== 'All') && (
-              <Button variant="ghost" size="sm" onClick={() => { setSearch(''); setStatus('All') }} className="gap-1 text-muted-foreground">
-                <X className="w-3.5 h-3.5" /> Clear
+            {hasActiveFilters ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                type="button"
+                onClick={handleClear}
+                className="gap-1 text-muted-foreground"
+              >
+                <X className="h-3.5 w-3.5" /> Clear
               </Button>
-            )}
+            ) : null}
           </div>
-        </div>
+        </section>
 
-        <section className="py-12 bg-background">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <p className="text-sm text-muted-foreground mb-6">
-              <span className="font-semibold text-foreground">{filtered.length}</span> event{filtered.length !== 1 ? 's' : ''}
-            </p>
-            {filtered.length === 0 ? (
-              <div className="text-center py-20">
-                <p className="text-2xl font-bold text-muted-foreground mb-4">No events found</p>
-                <Button onClick={() => { setSearch(''); setStatus('All') }}>View All Events</Button>
+        <section className="bg-background py-12" aria-live="polite" aria-label="Event results">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="flex flex-col gap-8 lg:flex-row lg:items-start">
+              <FilterSidebar
+                title="Event filters"
+                activeCount={activeCount}
+                onClear={hasActiveFilters ? handleClear : undefined}
+              >
+                {filterBody}
+              </FilterSidebar>
+
+              <div className="min-w-0 flex-1">
+                <p className="mb-6 text-sm text-muted-foreground">
+                  <span className="font-semibold text-foreground">{filtered.length}</span>{' '}
+                  {filtered.length === 1 ? 'event' : 'events'}
+                </p>
+                {filtered.length === 0 ? (
+                  <div className="space-y-4 py-20 text-center">
+                    <p className="text-2xl font-bold text-muted-foreground">No events found</p>
+                    <Button type="button" onClick={handleClear}>
+                      View all events
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                    {filtered.map((svc) => (
+                      <EventCard key={svc.id} service={svc} slot={slotByServiceId.get(svc.id)} />
+                    ))}
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filtered.map((event) => (
-                  <EventCard key={event.id} event={event} />
-                ))}
-              </div>
-            )}
+            </div>
           </div>
         </section>
       </main>

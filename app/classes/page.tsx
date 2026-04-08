@@ -1,140 +1,284 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Search, X } from 'lucide-react'
+
 import { CustomerNavbar } from '@/components/customer/navbar'
 import { CustomerFooter } from '@/components/customer/footer'
 import { ClassCard } from '@/components/customer/class-card'
-import { Input } from '@/components/ui/input'
+import { FilterSidebar } from '@/components/customer/filter-sidebar'
 import { Button } from '@/components/ui/button'
-import { classes } from '@/lib/mock-data'
-import type { Class } from '@/lib/types'
+import { Input } from '@/components/ui/input'
+import { Separator } from '@/components/ui/separator'
+import { useScheduling } from '@/lib/scheduling-store'
+import type { Class, SchedulingServiceType } from '@/lib/types'
 
-const levels: Array<Class['level'] | 'All'> = ['All', 'Beginner', 'Intermediate', 'Advanced', 'All Levels']
-const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+const levels: Array<Class['level'] | 'All'> = [
+  'All',
+  'Beginner',
+  'Intermediate',
+  'Advanced',
+  'All Levels',
+]
+
+const classServiceTypes: SchedulingServiceType[] = [
+  'GYM_CLASS',
+  'SWIM_CLASS',
+  'COACHING_SESSION',
+  'FITNESS_ASSESSMENT',
+]
+
+const typeLabels: Partial<Record<SchedulingServiceType, string>> = {
+  GYM_CLASS: 'Gym',
+  SWIM_CLASS: 'Swim',
+  COACHING_SESSION: 'Coaching',
+  FITNESS_ASSESSMENT: 'Assessment',
+}
 
 export default function ClassesPage() {
+  const { services, slots } = useScheduling()
   const [search, setSearch] = useState('')
   const [level, setLevel] = useState<Class['level'] | 'All'>('All')
-  const [day, setDay] = useState<string | 'All'>('All')
+  const [typeFilter, setTypeFilter] = useState<SchedulingServiceType | 'All'>('All')
+  const [availableOnly, setAvailableOnly] = useState(false)
+
+  const classCatalog = useMemo(
+    () =>
+      services.filter(
+        (s) =>
+          s.isActive &&
+          s.bookingMode === 'SCHEDULED' &&
+          classServiceTypes.includes(s.serviceType),
+      ),
+    [services],
+  )
+
+  const nextSlotByServiceId = useMemo(() => {
+    const map = new Map<string, (typeof slots)[0]>()
+    const now = new Date().getTime()
+    const sorted = [...slots].sort(
+      (a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime(),
+    )
+    for (const slot of sorted) {
+      if (slot.status === 'CANCELLED' || slot.status === 'COMPLETED') continue
+      if (new Date(slot.startAt).getTime() < now) continue
+      if (!map.has(slot.serviceId)) map.set(slot.serviceId, slot)
+    }
+    return map
+  }, [slots])
 
   const filtered = useMemo(() => {
-    let result = classes.filter((c) => c.isActive)
+    let result = [...classCatalog]
 
     if (search) {
+      const q = search.toLowerCase()
       result = result.filter(
-        (c) =>
-          c.name.toLowerCase().includes(search.toLowerCase()) ||
-          c.sport.toLowerCase().includes(search.toLowerCase()) ||
-          c.instructorName.toLowerCase().includes(search.toLowerCase())
+        (s) =>
+          s.name.toLowerCase().includes(q) ||
+          (s.sport?.toLowerCase().includes(q) ?? false) ||
+          (s.instructorName?.toLowerCase().includes(q) ?? false),
       )
     }
 
     if (level !== 'All') {
-      result = result.filter((c) => c.level === level)
+      result = result.filter((s) => s.level === level)
     }
 
-    if (day !== 'All') {
-      result = result.filter((c) => c.schedule.some((s) => s.dayOfWeek === day))
+    if (typeFilter !== 'All') {
+      result = result.filter((s) => s.serviceType === typeFilter)
+    }
+
+    if (availableOnly) {
+      result = result.filter((s) => {
+        const slot = nextSlotByServiceId.get(s.id)
+        if (!slot) return false
+        return slot.bookedCount < slot.effectiveCapacity
+      })
     }
 
     return result
-  }, [search, level, day])
+  }, [classCatalog, search, level, typeFilter, availableOnly, nextSlotByServiceId])
 
   const clearFilters = () => {
     setSearch('')
     setLevel('All')
-    setDay('All')
+    setTypeFilter('All')
+    setAvailableOnly(false)
   }
+
+  const hasActiveFilters =
+    Boolean(search) || level !== 'All' || typeFilter !== 'All' || availableOnly
+  const activeCount =
+    (search ? 1 : 0) +
+    (level !== 'All' ? 1 : 0) +
+    (typeFilter !== 'All' ? 1 : 0) +
+    (availableOnly ? 1 : 0)
+
+  const filterBody = (
+    <>
+      <div className="space-y-2">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Level
+        </p>
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by level">
+          {levels.map((lv) => (
+            <button
+              key={lv}
+              type="button"
+              onClick={() => setLevel(lv)}
+              className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                level === lv
+                  ? 'border-accent bg-accent text-accent-foreground'
+                  : 'border-border bg-background text-muted-foreground'
+              }`}
+            >
+              {lv}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <Separator />
+
+      <div className="space-y-2">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Type
+        </p>
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by class type">
+          <button
+            type="button"
+            onClick={() => setTypeFilter('All')}
+            className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
+              typeFilter === 'All'
+                ? 'border-accent bg-accent text-accent-foreground'
+                : 'border-border bg-background text-muted-foreground'
+            }`}
+          >
+            All
+          </button>
+          {classServiceTypes.map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setTypeFilter(t)}
+              className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                typeFilter === t
+                  ? 'border-accent bg-accent text-accent-foreground'
+                  : 'border-border bg-background text-muted-foreground'
+              }`}
+            >
+              {typeLabels[t] ?? t}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <Separator />
+
+      <div className="space-y-2">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Availability
+        </p>
+        <Button
+          variant={availableOnly ? 'secondary' : 'outline'}
+          size="sm"
+          type="button"
+          className="w-full"
+          onClick={() => setAvailableOnly(!availableOnly)}
+        >
+          {availableOnly ? 'Showing available only' : 'Available sessions only'}
+        </Button>
+      </div>
+    </>
+  )
 
   return (
     <>
       <CustomerNavbar />
       <main>
         <section className="bg-primary py-16">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <p className="text-accent text-sm font-bold uppercase tracking-widest mb-3">Expert-Led</p>
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <p className="mb-3 text-sm font-bold uppercase tracking-widest text-accent">
+              Structured Training
+            </p>
             <h1
-              className="text-4xl sm:text-5xl font-black text-white text-balance"
+              className="text-balance text-4xl font-black text-white sm:text-5xl"
               style={{ fontFamily: 'var(--font-barlow)' }}
             >
-              CLASSES &amp; TRAINING
+              EXPERT-LED CLASSES &amp; TRAINING
             </h1>
-            <p className="text-white/70 mt-3 max-w-xl leading-relaxed">
-              Join structured classes led by professional instructors. From beginner-friendly sessions to elite training programmes.
+            <p className="mt-3 max-w-2xl leading-relaxed text-white/70">
+              Join structured classes led by professional instructors. From beginner-friendly
+              sessions to elite training programmes.
             </p>
           </div>
         </section>
 
-        {/* Filters */}
-        <div className="bg-card border-b border-border py-5 sticky top-16 z-40">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="relative flex-1 min-w-[200px] max-w-xs">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search classes or instructors..."
-                  className="pl-9"
-                />
-              </div>
-              {(search || level !== 'All' || day !== 'All') && (
-                <Button variant="ghost" size="sm" onClick={clearFilters} className="gap-1 text-muted-foreground">
-                  <X className="w-3.5 h-3.5" /> Clear
-                </Button>
-              )}
+        <section
+          className="sticky top-16 z-40 border-b border-border bg-card py-4"
+          aria-label="Search classes"
+        >
+          <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 sm:px-6 lg:px-8">
+            <div className="relative min-w-[220px] max-w-md flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search classes or instructors..."
+                className="pl-9"
+                aria-label="Search classes"
+              />
             </div>
-
-            <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by level">
-              {levels.map((l) => (
-                <button
-                  key={l}
-                  onClick={() => setLevel(l)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors border ${
-                    level === l
-                      ? 'bg-accent text-accent-foreground border-accent'
-                      : 'bg-background text-muted-foreground border-border hover:bg-secondary'
-                  }`}
-                >
-                  {l}
-                </button>
-              ))}
-              <span className="w-px h-6 bg-border self-center mx-1" aria-hidden />
-              {days.map((d) => (
-                <button
-                  key={d}
-                  onClick={() => setDay(day === d ? 'All' : d)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors border ${
-                    day === d
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'bg-background text-muted-foreground border-border hover:bg-secondary'
-                  }`}
-                >
-                  {d.slice(0, 3)}
-                </button>
-              ))}
-            </div>
+            {hasActiveFilters ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                type="button"
+                onClick={clearFilters}
+                className="gap-1 text-muted-foreground"
+              >
+                <X className="h-3.5 w-3.5" /> Clear
+              </Button>
+            ) : null}
           </div>
-        </div>
+        </section>
 
-        <section className="py-12 bg-background">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <p className="text-sm text-muted-foreground mb-6">
-              <span className="font-semibold text-foreground">{filtered.length}</span> class{filtered.length !== 1 ? 'es' : ''} available
-            </p>
-            {filtered.length === 0 ? (
-              <div className="text-center py-20 space-y-4">
-                <p className="text-2xl font-bold text-muted-foreground">No classes found</p>
-                <Button onClick={clearFilters}>Clear Filters</Button>
+        <section className="bg-background py-12" aria-live="polite" aria-label="Class results">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="flex flex-col gap-8 lg:flex-row lg:items-start">
+              <FilterSidebar
+                title="Class filters"
+                activeCount={activeCount}
+                onClear={hasActiveFilters ? clearFilters : undefined}
+              >
+                {filterBody}
+              </FilterSidebar>
+
+              <div className="min-w-0 flex-1">
+                <p className="mb-6 text-sm text-muted-foreground">
+                  <span className="font-semibold text-foreground">{filtered.length}</span>{' '}
+                  {filtered.length === 1 ? 'class' : 'classes'} available
+                </p>
+                {filtered.length === 0 ? (
+                  <div className="space-y-4 py-20 text-center">
+                    <p className="text-2xl font-bold text-muted-foreground">No classes found</p>
+                    <Button type="button" onClick={clearFilters}>
+                      Clear filters
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    {filtered.map((svc) => (
+                      <ClassCard
+                        key={svc.id}
+                        service={svc}
+                        nextSlot={nextSlotByServiceId.get(svc.id)}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {filtered.map((cls) => (
-                  <ClassCard key={cls.id} cls={cls} />
-                ))}
-              </div>
-            )}
+            </div>
           </div>
         </section>
       </main>

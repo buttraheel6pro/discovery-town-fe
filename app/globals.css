@@ -125,3 +125,14 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Scroll without showing a track (e.g. admin sidebar). */
+@layer utilities {
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+}

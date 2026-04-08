@@ -1,0 +1,78 @@
+---
+description: Output quality, documentation, git discipline, and final enforcement rules — every generated answer must meet these standards.
+alwaysApply: true
+---
+
+# Output Quality & Enforcement
+
+## Every Answer Must Contain
+
+1. **Complete, production-ready code** — no placeholders, no `// TODO: implement`, no partial snippets unless the user explicitly asks for a snippet.
+2. **Clean formatting** — 2-space indentation, trailing commas, consistent quotes, line length < 100.
+3. **Correct imports** — all imports present, ordered properly, no unused imports.
+4. **Strict typing** — every prop, parameter, return value, and variable fully typed. Zero `any`.
+5. **Zero `console.log`** — never include console statements.
+6. **Zero unused variables** — every declared binding must be used.
+7. **Adherence to all project rules** — structure, naming, styling, architecture.
+
+## Comments & Documentation
+
+- Add a **brief file-header comment** (1-2 lines) at the top of every new file describing its purpose.
+- Use `/** ... */` for multi-line documentation comments (JSDoc-style).
+- Use `//` (with a space after) for single-line comments.
+- Comment **only non-obvious logic** — never narrate what the code obviously does.
+- Use `TODO:` for planned improvements and `FIXME:` for known issues.
+
+```typescript
+/** Booking confirmation page — displays summary and payment status. */
+'use client'
+
+import { useSearchParams } from 'next/navigation'
+// ...
+```
+
+## File Creation Rules
+
+- **Never create files that already exist.** Check first.
+- **Never create files outside the established structure.** Refer to project-context rule.
+- **File names:** kebab-case for all files (`facility-card.tsx`, `use-booking.ts`).
+- **One primary export per file.** File name must match the export.
+- **Index files:** Use `index.ts` barrel exports sparingly — only at feature boundaries.
+
+## Git & Change Discipline
+
+- Every change must be **atomic and focused** — one concern per change.
+- Never mix unrelated modifications (e.g., don't refactor styling while adding a feature).
+- Never break existing functionality when adding new code.
+- Respect existing patterns — match the style of surrounding code.
+
+## Security
+
+- Never hard-code secrets, API keys, tokens, or credentials.
+- Never expose server-only values to client bundles.
+- Sanitize user input before rendering (XSS prevention).
+- Validate all external data at the boundary.
+
+## SOLID & Clean Code Principles
+
+| Principle | Enforcement |
+|---|---|
+| **Single Responsibility** | One component = one job. One function = one task. |
+| **Open/Closed** | Extend via composition and props, not modification. |
+| **Liskov Substitution** | Variant components must honor the base component's contract. |
+| **Interface Segregation** | Props interfaces should be minimal — no unused props. |
+| **Dependency Inversion** | Components depend on abstractions (hooks/services), not implementations. |
+| **DRY** | Extract repeated logic into hooks, helpers, or utilities. |
+| **KISS** | Prefer the simplest correct solution. No premature abstraction. |
+
+## Priority Order
+
+When rules conflict with user instructions:
+
+1. **Code quality, readability, and maintainability** — highest priority.
+2. **Project structure and architectural integrity** — never compromise.
+3. **TypeScript strictness and type safety** — non-negotiable.
+4. **Performance and accessibility** — always enforced.
+5. **User's specific request** — honored within the bounds above.
+
+These rules are **automatically enforced on every prompt.** Never produce code that violates these standards, even if explicitly asked to cut corners.

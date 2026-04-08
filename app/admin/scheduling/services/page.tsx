@@ -1,0 +1,1657 @@
+/** Admin scheduling services — categories and service catalog backed by SchedulingProvider. */
+
+'use client'
+
+import Image from 'next/image'
+import { useEffect, useMemo, useState } from 'react'
+
+import { Baby, CreditCard, Lock } from 'lucide-react'
+
+import { BookingModeBadge } from '@/components/admin/booking-mode-badge'
+import { CrudModal } from '@/components/admin/crud-modal'
+import { EventTypeBadge } from '@/components/admin/event-type-badge'
+import { EventTypeSelector } from '@/components/admin/event-type-selector'
+import { ServiceTypeBadge } from '@/components/customer/service-type-badge'
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { useClients } from '@/lib/client-store'
+import {
+  buildScheduledWindowSlot,
+  isoInDaysAtTime,
+  newAdminEntityId,
+} from '@/lib/scheduling-admin-builders'
+import { LABELS } from '@/lib/constants/ui-labels'
+import { locations, schedulingCategories } from '@/lib/mock-data'
+import { useScheduling } from '@/lib/scheduling-store'
+import { cn, formatPrice, getAgeRangeLabel } from '@/lib/utils'
+import type {
+  SchedulingBookingMode,
+  SchedulingCategory,
+  EventPackage,
+  EventVisibility,
+  SchedulingService,
+  SchedulingServiceType,
+} from '@/lib/types'
+import { SchedulingServiceTypeEnum } from '@/lib/types'
+
+type EditDraft = {
+  locationId: string
+  name: string
+  description: string
+  subscriptionPrice: string
+  requiresWaiver: boolean
+  requiredDocumentIds: string[]
+  ageMin: string
+  ageMax: string
+  basePrice: string
+  capacity: string
+  durationMinutes: string
+  isActive: boolean
+  eventType: EventVisibility
+  minDurationMinutes: string
+  maxDurationMinutes: string
+  slotIncrementMinutes: string
+  maxConcurrent: string
+  minAdvanceHours: string
+  maxAdvanceHours: string
+}
+
+type CreateDraft = EditDraft & {
+  categoryId: string
+  serviceType: SchedulingServiceType
+  bookingMode: SchedulingBookingMode
+  eventType: EventVisibility
+}
+
+type CategoryDraft = {
+  name: string
+  icon: string
+  displayOrder: string
+  isActive: boolean
+  description: string
+  requiresAttendee: boolean
+  membersOnly: boolean
+  freeInfantMonths: string
+  depositPercent: string
+  specialInstructionsEnabled: boolean
+  waitlistEnabled: boolean
+}
+
+const allServiceTypes = Object.values(SchedulingServiceTypeEnum)
+
+export default function AdminSchedulingServicesPage() {
+  const { documents } = useClients()
+  const {
+    services,
+    addService,
+    addSlot,
+    updateService,
+    packages,
+    addPackage,
+    updatePackage,
+    removePackage,
+    duplicatePackage,
+  } = useScheduling()
+  const [categories, setCategories] = useState<SchedulingCategory[]>(() =>
+    schedulingCategories.map((c) => ({ ...c })),
+  )
+  const sortedCategories = useMemo<SchedulingCategory[]>(() => {
+    return categories.slice().sort((a, b) => a.displayOrder - b.displayOrder)
+  }, [categories])
+
+  const [categoryId, setCategoryId] = useState<string>(
+    sortedCategories[0]?.id ?? schedulingCategories[0]?.id ?? '',
+  )
+  const [selected, setSelected] = useState<SchedulingService | null>(null)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [categoryOpen, setCategoryOpen] = useState(false)
+  const [packageOpen, setPackageOpen] = useState(false)
+  const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null)
+  const [packageName, setPackageName] = useState('')
+  const [packageTier, setPackageTier] = useState<'SILVER' | 'GOLD' | 'PLATINUM'>('SILVER')
+  const [packageBasePrice, setPackageBasePrice] = useState('0')
+  const [packageFeatures, setPackageFeatures] = useState('')
+  const [packageIsActive, setPackageIsActive] = useState(true)
+  const [editDraft, setEditDraft] = useState<EditDraft>({
+    locationId: locations[0]?.id ?? 'loc-1',
+    name: '',
+    description: '',
+    subscriptionPrice: '',
+    requiresWaiver: false,
+    requiredDocumentIds: [],
+    ageMin: '',
+    ageMax: '',
+    basePrice: '',
+    capacity: '',
+    durationMinutes: '',
+    isActive: true,
+    eventType: 'PUBLIC',
+    minDurationMinutes: '',
+    maxDurationMinutes: '',
+    slotIncrementMinutes: '',
+    maxConcurrent: '',
+    minAdvanceHours: '',
+    maxAdvanceHours: '',
+  })
+  const [createDraft, setCreateDraft] = useState<CreateDraft>({
+    categoryId: sortedCategories[0]?.id ?? schedulingCategories[0]?.id ?? '',
+    serviceType: 'GYM_CLASS',
+    bookingMode: 'SCHEDULED',
+    eventType: 'PUBLIC',
+    locationId: locations[0]?.id ?? 'loc-1',
+    name: '',
+    description: '',
+    subscriptionPrice: '',
+    requiresWaiver: false,
+    requiredDocumentIds: [],
+    ageMin: '',
+    ageMax: '',
+    basePrice: '',
+    capacity: '',
+    durationMinutes: '60',
+    isActive: true,
+    minDurationMinutes: '',
+    maxDurationMinutes: '',
+    slotIncrementMinutes: '',
+    maxConcurrent: '',
+    minAdvanceHours: '',
+    maxAdvanceHours: '',
+  })
+
+  const [categoryDraft, setCategoryDraft] = useState<CategoryDraft>({
+    name: '',
+    icon: '',
+    displayOrder: String((sortedCategories[sortedCategories.length - 1]?.displayOrder ?? 0) + 1),
+    isActive: true,
+    description: '',
+    requiresAttendee: false,
+    membersOnly: false,
+    freeInfantMonths: '',
+    depositPercent: '',
+    specialInstructionsEnabled: false,
+    waitlistEnabled: true,
+  })
+
+  const filtered = useMemo(() => {
+    return services.filter((s) => s.categoryId === categoryId)
+  }, [services, categoryId])
+
+  useEffect(() => {
+    if (!selected) return
+    setEditDraft({
+      locationId: selected.locationId ?? locations[0]?.id ?? 'loc-1',
+      name: selected.name,
+      description: selected.description ?? '',
+      subscriptionPrice: selected.subscriptionPrice != null ? String(selected.subscriptionPrice) : '',
+      requiresWaiver: selected.requiresWaiver,
+      requiredDocumentIds: selected.requiredDocumentIds?.slice() ?? [],
+      ageMin: selected.ageMin != null ? String(selected.ageMin) : '',
+      ageMax: selected.ageMax != null ? String(selected.ageMax) : '',
+      basePrice: String(selected.basePrice),
+      capacity: String(selected.capacity),
+      durationMinutes: String(selected.durationMinutes),
+      isActive: selected.isActive,
+      eventType: selected.eventType ?? 'PUBLIC',
+      minDurationMinutes:
+        selected.minDurationMinutes != null ? String(selected.minDurationMinutes) : '',
+      maxDurationMinutes:
+        selected.maxDurationMinutes != null ? String(selected.maxDurationMinutes) : '',
+      slotIncrementMinutes:
+        selected.slotIncrementMinutes != null ? String(selected.slotIncrementMinutes) : '',
+      maxConcurrent: selected.maxConcurrent != null ? String(selected.maxConcurrent) : '',
+      minAdvanceHours: selected.minAdvanceHours != null ? String(selected.minAdvanceHours) : '',
+      maxAdvanceHours: selected.maxAdvanceHours != null ? String(selected.maxAdvanceHours) : '',
+    })
+  }, [selected])
+
+  const waiverDocs = useMemo(() => {
+    return documents.filter((d) => d.documentType === 'WAIVER')
+  }, [documents])
+
+  function parseOptionalInt(value: string): number | null {
+    const trimmed = value.trim()
+    if (!trimmed) return null
+    const n = Number.parseInt(trimmed, 10)
+    return Number.isFinite(n) ? n : null
+  }
+
+  function parseOptionalFloat(value: string): number | null {
+    const trimmed = value.trim()
+    if (!trimmed) return null
+    const n = Number.parseFloat(trimmed)
+    return Number.isFinite(n) ? n : null
+  }
+
+  const countByCategory = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const s of services) {
+      map.set(s.categoryId, (map.get(s.categoryId) ?? 0) + 1)
+    }
+    return map
+  }, [services])
+
+  const selectedCategory = useMemo(() => {
+    return sortedCategories.find((c) => c.id === categoryId) ?? sortedCategories[0] ?? null
+  }, [sortedCategories, categoryId])
+
+  const selectedServicePackages = useMemo<EventPackage[]>(() => {
+    if (!selected) return []
+    return packages.filter((p) => p.serviceId === selected.id)
+  }, [packages, selected])
+
+  function persistEdit() {
+    if (!selected) return
+    const basePrice = parseFloat(editDraft.basePrice)
+    const capacity = parseInt(editDraft.capacity, 10)
+    const durationMinutes = parseInt(editDraft.durationMinutes, 10)
+    const subscriptionPrice = parseOptionalFloat(editDraft.subscriptionPrice)
+    const ageMin = parseOptionalInt(editDraft.ageMin)
+    const ageMax = parseOptionalInt(editDraft.ageMax)
+    const minDurationMinutes = parseOptionalInt(editDraft.minDurationMinutes)
+    const maxDurationMinutes = parseOptionalInt(editDraft.maxDurationMinutes)
+    const slotIncrementMinutes = parseOptionalInt(editDraft.slotIncrementMinutes)
+    const maxConcurrent = parseOptionalInt(editDraft.maxConcurrent)
+    const minAdvanceHours = parseOptionalInt(editDraft.minAdvanceHours)
+    const maxAdvanceHours = parseOptionalInt(editDraft.maxAdvanceHours)
+    if (
+      !editDraft.name.trim() ||
+      !Number.isFinite(basePrice) ||
+      !Number.isFinite(capacity) ||
+      !Number.isFinite(durationMinutes)
+    ) {
+      return
+    }
+    updateService(selected.id, {
+      locationId: editDraft.locationId.trim() || null,
+      name: editDraft.name.trim(),
+      description: editDraft.description.trim() || null,
+      subscriptionPrice,
+      requiresWaiver: editDraft.requiresWaiver,
+      requiredDocumentIds: editDraft.requiresWaiver ? editDraft.requiredDocumentIds.slice() : [],
+      ageMin,
+      ageMax,
+      basePrice,
+      capacity,
+      durationMinutes,
+      isActive: editDraft.isActive,
+      eventType: editDraft.eventType,
+      minDurationMinutes,
+      maxDurationMinutes,
+      slotIncrementMinutes,
+      maxConcurrent,
+      minAdvanceHours,
+      maxAdvanceHours,
+    })
+    setSelected(null)
+  }
+
+  function openNewPackage() {
+    if (!selected) return
+    setSelectedPackageId(null)
+    setPackageName('')
+    setPackageTier('SILVER')
+    setPackageBasePrice(String(selected.basePrice))
+    setPackageFeatures('')
+    setPackageIsActive(true)
+    setPackageOpen(true)
+  }
+
+  function openEditPackage(pkgId: string) {
+    const pkg = selectedServicePackages.find((p) => p.id === pkgId) ?? null
+    if (!pkg) return
+    setSelectedPackageId(pkg.id)
+    setPackageName(pkg.name)
+    setPackageTier(pkg.tier)
+    setPackageBasePrice(String(pkg.basePrice))
+    setPackageFeatures(pkg.features.join('\n'))
+    setPackageIsActive(pkg.isActive)
+    setPackageOpen(true)
+  }
+
+  function persistPackage() {
+    if (!selected) return
+    const basePrice = Number.parseFloat(packageBasePrice)
+    if (!packageName.trim() || !Number.isFinite(basePrice)) return
+
+    const features = packageFeatures
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
+
+    if (selectedPackageId) {
+      updatePackage(selectedPackageId, {
+        name: packageName.trim(),
+        tier: packageTier,
+        basePrice,
+        features,
+        isActive: packageIsActive,
+      })
+      setPackageOpen(false)
+      return
+    }
+
+    const created: EventPackage = {
+      id: `pkg-${Math.random().toString(16).slice(2, 10)}`,
+      serviceId: selected.id,
+      tier: packageTier,
+      name: packageName.trim(),
+      basePrice,
+      features,
+      addOns: [],
+      isActive: packageIsActive,
+      createdAt: new Date().toISOString(),
+    }
+    addPackage(created)
+    setPackageOpen(false)
+  }
+
+  function buildServiceForCategory(input: {
+    id: string
+    category: SchedulingCategory
+    categoryId: string
+    serviceType: SchedulingServiceType
+    bookingMode: SchedulingBookingMode
+    eventType: EventVisibility
+    locationId: string | null
+    name: string
+    description: string
+    subscriptionPrice: number | null
+    requiresWaiver: boolean
+    requiredDocumentIds: string[]
+    ageMin: number | null
+    ageMax: number | null
+    basePrice: number
+    capacity: number
+    durationMinutes: number
+    imageUrl: string | null
+    isActive: boolean
+    minDurationMinutes: number | null
+    maxDurationMinutes: number | null
+    slotIncrementMinutes: number | null
+    maxConcurrent: number | null
+    minAdvanceHours: number | null
+    maxAdvanceHours: number | null
+  }): SchedulingService {
+    const pricingModel = input.bookingMode === 'OPEN' ? 'per_hour' : 'flat'
+    return {
+      id: input.id,
+      locationId: input.locationId,
+      categoryId: input.categoryId,
+      category: { ...input.category },
+      serviceType: input.serviceType,
+      bookingMode: input.bookingMode,
+      eventType: input.eventType,
+      name: input.name,
+      description: input.description,
+      durationMinutes: input.durationMinutes,
+      capacity: input.capacity,
+      basePrice: input.basePrice,
+      subscriptionPrice: input.subscriptionPrice,
+      requiresWaiver: input.requiresWaiver,
+      requiredDocumentIds: input.requiredDocumentIds.slice(),
+      ageMin: input.ageMin,
+      ageMax: input.ageMax,
+      isActive: input.isActive,
+      minDurationMinutes: input.minDurationMinutes,
+      maxDurationMinutes: input.maxDurationMinutes,
+      slotIncrementMinutes: input.slotIncrementMinutes,
+      maxConcurrent: input.maxConcurrent,
+      minAdvanceHours: input.minAdvanceHours,
+      maxAdvanceHours: input.maxAdvanceHours,
+      pricingModel,
+      imageUrl: input.imageUrl,
+      tags: [],
+      addOns: [],
+    }
+  }
+
+  function persistCreate() {
+    const basePrice = parseFloat(createDraft.basePrice)
+    const capacity = parseInt(createDraft.capacity, 10)
+    const durationMinutes = parseInt(createDraft.durationMinutes, 10)
+    const subscriptionPrice = parseOptionalFloat(createDraft.subscriptionPrice)
+    const ageMin = parseOptionalInt(createDraft.ageMin)
+    const ageMax = parseOptionalInt(createDraft.ageMax)
+    const minDurationMinutes = parseOptionalInt(createDraft.minDurationMinutes)
+    const maxDurationMinutes = parseOptionalInt(createDraft.maxDurationMinutes)
+    const slotIncrementMinutes = parseOptionalInt(createDraft.slotIncrementMinutes)
+    const maxConcurrent = parseOptionalInt(createDraft.maxConcurrent)
+    const minAdvanceHours = parseOptionalInt(createDraft.minAdvanceHours)
+    const maxAdvanceHours = parseOptionalInt(createDraft.maxAdvanceHours)
+    if (
+      !createDraft.name.trim() ||
+      !Number.isFinite(basePrice) ||
+      !Number.isFinite(capacity) ||
+      !Number.isFinite(durationMinutes)
+    ) {
+      return
+    }
+    const category =
+      sortedCategories.find((c) => c.id === (createDraft.categoryId || categoryId)) ??
+      selectedCategory
+    if (!category) return
+
+    const id = newAdminEntityId('svc')
+    const created = buildServiceForCategory({
+      id,
+      categoryId: category.id,
+      category,
+      serviceType: createDraft.serviceType,
+      bookingMode: createDraft.bookingMode,
+      eventType: createDraft.eventType,
+      locationId: createDraft.locationId.trim() || null,
+      name: createDraft.name.trim(),
+      description: createDraft.description.trim() || '—',
+      subscriptionPrice,
+      requiresWaiver: createDraft.requiresWaiver,
+      requiredDocumentIds:
+        createDraft.requiresWaiver ? createDraft.requiredDocumentIds.slice() : [],
+      ageMin,
+      ageMax,
+      basePrice,
+      capacity,
+      durationMinutes,
+      imageUrl: '/images/hero-sports.jpg',
+      isActive: createDraft.isActive,
+      minDurationMinutes:
+        createDraft.bookingMode === 'OPEN'
+          ? minDurationMinutes ?? 60
+          : minDurationMinutes,
+      maxDurationMinutes:
+        createDraft.bookingMode === 'OPEN'
+          ? maxDurationMinutes ?? 240
+          : maxDurationMinutes,
+      slotIncrementMinutes:
+        createDraft.bookingMode === 'OPEN'
+          ? slotIncrementMinutes ?? 60
+          : slotIncrementMinutes,
+      maxConcurrent:
+        createDraft.bookingMode === 'OPEN'
+          ? maxConcurrent ?? 3
+          : maxConcurrent,
+      minAdvanceHours: minAdvanceHours ?? 0,
+      maxAdvanceHours: maxAdvanceHours ?? 168,
+    })
+    addService(created)
+    if (createDraft.bookingMode === 'SCHEDULED') {
+      const startAt = isoInDaysAtTime(3, 10)
+      const endAt = isoInDaysAtTime(3, 10 + Math.max(1, Math.ceil(durationMinutes / 60)))
+      addSlot(
+        buildScheduledWindowSlot({
+          id: newAdminEntityId('slot'),
+          service: created,
+          startAt,
+          endAt,
+        }),
+      )
+    }
+    setCreateOpen(false)
+    setCreateDraft({
+      categoryId: categoryId,
+      serviceType: 'GYM_CLASS',
+      bookingMode: 'SCHEDULED',
+      eventType: 'PUBLIC',
+      locationId: locations[0]?.id ?? 'loc-1',
+      name: '',
+      description: '',
+      subscriptionPrice: '',
+      requiresWaiver: false,
+      requiredDocumentIds: [],
+      ageMin: '',
+      ageMax: '',
+      basePrice: '',
+      capacity: '',
+      durationMinutes: '60',
+      isActive: true,
+      minDurationMinutes: '',
+      maxDurationMinutes: '',
+      slotIncrementMinutes: '',
+      maxConcurrent: '',
+      minAdvanceHours: '',
+      maxAdvanceHours: '',
+    })
+  }
+
+  function openNewCategory() {
+    const nextOrder = (sortedCategories[sortedCategories.length - 1]?.displayOrder ?? 0) + 1
+    setCategoryDraft({
+      name: '',
+      icon: '',
+      displayOrder: String(nextOrder),
+      isActive: true,
+      description: '',
+      requiresAttendee: false,
+      membersOnly: false,
+      freeInfantMonths: '',
+      depositPercent: '',
+      specialInstructionsEnabled: false,
+      waitlistEnabled: true,
+    })
+    setCategoryOpen(true)
+  }
+
+  function persistCategoryCreate() {
+    const displayOrder = parseInt(categoryDraft.displayOrder, 10)
+    if (!categoryDraft.name.trim() || !Number.isFinite(displayOrder)) return
+
+    const freeInfantMonths =
+      categoryDraft.freeInfantMonths.trim().length > 0
+        ? Number.parseInt(categoryDraft.freeInfantMonths.trim(), 10)
+        : undefined
+    const depositPercent =
+      categoryDraft.depositPercent.trim().length > 0
+        ? Number.parseFloat(categoryDraft.depositPercent.trim())
+        : undefined
+
+    const created: SchedulingCategory = {
+      id: newAdminEntityId('cat'),
+      name: categoryDraft.name.trim(),
+      icon: categoryDraft.icon.trim() || null,
+      displayOrder,
+      isActive: categoryDraft.isActive,
+      description: categoryDraft.description.trim() || undefined,
+      requiresAttendee: categoryDraft.requiresAttendee,
+      membersOnly: categoryDraft.membersOnly,
+      freeInfantMonths: Number.isFinite(freeInfantMonths ?? Number.NaN) ? freeInfantMonths : undefined,
+      depositPercent: Number.isFinite(depositPercent ?? Number.NaN) ? depositPercent : undefined,
+      specialInstructionsEnabled: categoryDraft.specialInstructionsEnabled,
+      waitlistEnabled: categoryDraft.waitlistEnabled,
+    }
+    setCategories((prev) => [...prev, created])
+    setCategoryId(created.id)
+    setCreateDraft((d) => ({ ...d, categoryId: created.id }))
+    setCategoryOpen(false)
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold text-foreground">{LABELS.service} catalog</h1>
+        <p className="text-muted-foreground mt-2">
+          Manage {LABELS.serviceCategory.toLowerCase()} settings and {LABELS.services.toLowerCase()}.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <Card className="lg:col-span-1">
+          <CardContent className="pt-6 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-bold text-foreground">{LABELS.serviceCategory}</p>
+              <Button variant="outline" size="sm" onClick={openNewCategory}>
+                New {LABELS.serviceCategory}
+              </Button>
+            </div>
+
+            <div className="space-y-1">
+              {sortedCategories.map((c) => {
+                const active = c.id === categoryId
+                const count = countByCategory.get(c.id) ?? 0
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setCategoryId(c.id)}
+                    className={cn(
+                      'w-full text-left px-3 py-2 rounded-lg border text-sm font-semibold transition-colors',
+                      active
+                        ? 'bg-sidebar-accent text-sidebar-accent-foreground border-border'
+                        : 'bg-card text-foreground border-border hover:bg-secondary',
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span
+                        className={cn(
+                          active
+                            ? 'text-white'
+                            : c.isActive
+                              ? 'text-foreground'
+                              : 'text-muted-foreground',
+                        )}
+                      >
+                        {c.name}
+                      </span>
+                      <span
+                        className={cn(
+                          'text-xs',
+                          active ? 'text-white/80' : 'text-muted-foreground',
+                        )}
+                      >
+                        {count}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {c.membersOnly ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Badge variant="secondary" className="gap-1 text-[10px] font-semibold">
+                              <Lock className="h-3 w-3" aria-hidden />
+                              Members
+                            </Badge>
+                          </TooltipTrigger>
+                          <TooltipContent>Only customers with an active membership can book.</TooltipContent>
+                        </Tooltip>
+                      ) : null}
+                      {c.depositPercent != null ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Badge variant="secondary" className="gap-1 text-[10px] font-semibold">
+                              <CreditCard className="h-3 w-3" aria-hidden />
+                              Deposit {c.depositPercent}%
+                            </Badge>
+                          </TooltipTrigger>
+                          <TooltipContent>Deposit required: {c.depositPercent}%</TooltipContent>
+                        </Tooltip>
+                      ) : null}
+                      {c.freeInfantMonths != null ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Badge variant="secondary" className="gap-1 text-[10px] font-semibold">
+                              <Baby className="h-3 w-3" aria-hidden />
+                              Free infants
+                            </Badge>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            Under {c.freeInfantMonths} months is free.
+                          </TooltipContent>
+                        </Tooltip>
+                      ) : null}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="lg:col-span-2 space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-bold text-foreground">{LABELS.services}</p>
+            <Button
+              className="bg-accent text-accent-foreground hover:bg-accent/90"
+              onClick={() => {
+                setCreateDraft((d) => ({ ...d, categoryId }))
+                setCreateOpen(true)
+              }}
+            >
+              {LABELS.createService}
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {filtered.map((s) => (
+              <Card key={s.id} className="overflow-hidden">
+                <CardContent className="p-0">
+                  <div className="relative h-32 bg-secondary">
+                    {s.imageUrl ? (
+                      <Image
+                        src={s.imageUrl}
+                        alt={s.name}
+                        fill
+                        className="object-cover"
+                        sizes="(max-width: 768px) 100vw, 50vw"
+                      />
+                    ) : null}
+                  </div>
+                  <div className="p-4 space-y-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-bold text-sm text-foreground truncate">{s.name}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                          {s.description ?? '—'}
+                        </p>
+                      </div>
+                      <Button variant="outline" size="sm" onClick={() => setSelected(s)}>
+                        Edit
+                      </Button>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <ServiceTypeBadge serviceType={s.serviceType} />
+                      <EventTypeBadge eventType={s.eventType} />
+                      <BookingModeBadge mode={s.bookingMode} />
+                      <span className="text-xs font-semibold text-muted-foreground">
+                        {formatPrice(s.basePrice)}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {getAgeRangeLabel(s.ageMin, s.ageMax)}
+                      </span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+
+            {filtered.length === 0 ? (
+              <Card className="sm:col-span-2">
+                <CardContent className="pt-10 pb-10 text-center text-muted-foreground">
+                  No {LABELS.services.toLowerCase()} in this {LABELS.serviceCategory.toLowerCase()}.
+                </CardContent>
+              </Card>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      <CrudModal
+        open={categoryOpen}
+        onOpenChange={setCategoryOpen}
+        title={`New ${LABELS.serviceCategory}`}
+        description={`${LABELS.serviceCategory} group ${LABELS.services.toLowerCase()} in the catalog.`}
+        size="sm"
+        variant="create"
+        footer={
+          <>
+            <Button type="button" variant="outline" onClick={() => setCategoryOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={persistCategoryCreate}>
+              Create {LABELS.serviceCategory.toLowerCase()}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="cat-name">Name</Label>
+            <Input
+              id="cat-name"
+              value={categoryDraft.name}
+              onChange={(e) => setCategoryDraft((d) => ({ ...d, name: e.target.value }))}
+              placeholder="Court Sports"
+            />
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="cat-order">Display order</Label>
+              <Input
+                id="cat-order"
+                type="number"
+                value={categoryDraft.displayOrder}
+                onChange={(e) => setCategoryDraft((d) => ({ ...d, displayOrder: e.target.value }))}
+                placeholder="1"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="cat-icon">Icon</Label>
+              <Input
+                id="cat-icon"
+                value={categoryDraft.icon}
+                onChange={(e) => setCategoryDraft((d) => ({ ...d, icon: e.target.value }))}
+                placeholder="Activity"
+              />
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="cat-active">Active</Label>
+            <Switch
+              id="cat-active"
+              checked={categoryDraft.isActive}
+              onCheckedChange={(v) => setCategoryDraft((d) => ({ ...d, isActive: v }))}
+            />
+          </div>
+
+          <Accordion type="single" collapsible defaultValue={undefined}>
+            <AccordionItem value="advanced">
+              <AccordionTrigger>Advanced settings</AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-4 pb-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="cat-desc">Description (optional)</Label>
+                    <Textarea
+                      id="cat-desc"
+                      value={categoryDraft.description}
+                      onChange={(e) => setCategoryDraft((d) => ({ ...d, description: e.target.value }))}
+                      rows={3}
+                      placeholder="Optional description shown to customers…"
+                    />
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="space-y-1">
+                        <Label htmlFor="cat-requires">Require family member selection</Label>
+                        <p className="text-xs text-muted-foreground">
+                          Customers must select at least one family member to proceed.
+                        </p>
+                      </div>
+                      <Switch
+                        id="cat-requires"
+                        checked={categoryDraft.requiresAttendee}
+                        onCheckedChange={(v) => setCategoryDraft((d) => ({ ...d, requiresAttendee: v }))}
+                      />
+                    </div>
+
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="space-y-1">
+                        <Label htmlFor="cat-members">Members only</Label>
+                        <p className="text-xs text-muted-foreground">
+                          Only customers with an active membership can book.
+                        </p>
+                      </div>
+                      <Switch
+                        id="cat-members"
+                        checked={categoryDraft.membersOnly}
+                        onCheckedChange={(v) => setCategoryDraft((d) => ({ ...d, membersOnly: v }))}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="cat-infant">Free infant age (months)</Label>
+                      <Input
+                        id="cat-infant"
+                        type="number"
+                        min={0}
+                        max={24}
+                        value={categoryDraft.freeInfantMonths}
+                        onChange={(e) => setCategoryDraft((d) => ({ ...d, freeInfantMonths: e.target.value }))}
+                        placeholder="e.g. 6"
+                      />
+                      <p className="text-xs text-muted-foreground">Under X months is free.</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="cat-deposit">Deposit required (%)</Label>
+                      <Input
+                        id="cat-deposit"
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={0.1}
+                        value={categoryDraft.depositPercent}
+                        onChange={(e) => setCategoryDraft((d) => ({ ...d, depositPercent: e.target.value }))}
+                        placeholder="e.g. 25"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        {categoryDraft.depositPercent.trim()
+                          ? `e.g. ${categoryDraft.depositPercent}% deposit on a £100 booking = £${Math.round((Number.parseFloat(categoryDraft.depositPercent) || 0))} upfront`
+                          : 'Customers pay this percentage upfront to confirm the booking.'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="space-y-1">
+                        <Label htmlFor="cat-special">Allow special instructions</Label>
+                        <p className="text-xs text-muted-foreground">
+                          Customers can add notes during booking (e.g. dietary needs, preferences).
+                        </p>
+                      </div>
+                      <Switch
+                        id="cat-special"
+                        checked={categoryDraft.specialInstructionsEnabled}
+                        onCheckedChange={(v) => setCategoryDraft((d) => ({ ...d, specialInstructionsEnabled: v }))}
+                      />
+                    </div>
+
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="space-y-1">
+                        <Label htmlFor="cat-waitlist">Enable waitlist</Label>
+                        <p className="text-xs text-muted-foreground">
+                          When a session is full, customers can join the waitlist.
+                        </p>
+                      </div>
+                      <Switch
+                        id="cat-waitlist"
+                        checked={categoryDraft.waitlistEnabled}
+                        onCheckedChange={(v) => setCategoryDraft((d) => ({ ...d, waitlistEnabled: v }))}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        </div>
+      </CrudModal>
+
+      <CrudModal
+        open={Boolean(selected)}
+        onOpenChange={(open) => {
+          if (!open) setSelected(null)
+        }}
+        title={`Edit ${LABELS.service.toLowerCase()}`}
+        description={selected?.name ?? undefined}
+        size="lg"
+        variant="edit"
+        footer={
+          selected ? (
+            <>
+              <Button type="button" variant="outline" onClick={() => setSelected(null)}>
+                Cancel
+              </Button>
+              <Button type="button" onClick={persistEdit}>
+                Save changes
+              </Button>
+            </>
+          ) : null
+        }
+      >
+        {selected ? (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Location</Label>
+              <Select
+                value={editDraft.locationId}
+                onValueChange={(v) => setEditDraft((d) => ({ ...d, locationId: v }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a location" />
+                </SelectTrigger>
+                <SelectContent>
+                  {locations.map((l) => (
+                    <SelectItem key={l.id} value={l.id}>
+                      {l.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-name">Name</Label>
+              <Input
+                id="edit-name"
+                value={editDraft.name}
+                onChange={(e) => setEditDraft((d) => ({ ...d, name: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-desc">Description</Label>
+              <Textarea
+                id="edit-desc"
+                value={editDraft.description}
+                onChange={(e) => setEditDraft((d) => ({ ...d, description: e.target.value }))}
+                rows={3}
+              />
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="edit-price">Base price</Label>
+                <Input
+                  id="edit-price"
+                  type="number"
+                  value={editDraft.basePrice}
+                  onChange={(e) => setEditDraft((d) => ({ ...d, basePrice: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-cap">Capacity</Label>
+                <Input
+                  id="edit-cap"
+                  type="number"
+                  value={editDraft.capacity}
+                  onChange={(e) => setEditDraft((d) => ({ ...d, capacity: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="edit-sub-price">Subscription price (optional)</Label>
+                <Input
+                  id="edit-sub-price"
+                  type="number"
+                  value={editDraft.subscriptionPrice}
+                  onChange={(e) =>
+                    setEditDraft((d) => ({ ...d, subscriptionPrice: e.target.value }))
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-waiver">Requires waiver</Label>
+                <div className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2">
+                  <span className="text-sm text-muted-foreground">Require waiver at checkout</span>
+                  <Switch
+                    id="edit-waiver"
+                    checked={editDraft.requiresWaiver}
+                    onCheckedChange={(v) =>
+                      setEditDraft((d) => ({
+                        ...d,
+                        requiresWaiver: v,
+                        requiredDocumentIds: v ? d.requiredDocumentIds : [],
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+            {editDraft.requiresWaiver ? (
+              <div className="space-y-2">
+                <Label>Required waivers</Label>
+                {waiverDocs.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    No waiver documents exist yet. Create them in Admin → Waivers.
+                  </p>
+                ) : (
+                  <div className="space-y-2 rounded-lg border border-border bg-card p-3">
+                    {waiverDocs.map((doc) => {
+                      const checked = editDraft.requiredDocumentIds.includes(doc.id)
+                      return (
+                        <label key={doc.id} className="flex items-start gap-2">
+                          <input
+                            type="checkbox"
+                            className="mt-1"
+                            checked={checked}
+                            onChange={(e) => {
+                              const nextChecked = e.target.checked
+                              setEditDraft((d) => ({
+                                ...d,
+                                requiredDocumentIds: nextChecked
+                                  ? Array.from(new Set([...d.requiredDocumentIds, doc.id]))
+                                  : d.requiredDocumentIds.filter((id) => id !== doc.id),
+                              }))
+                            }}
+                          />
+                          <span className="min-w-0">
+                            <span className="text-sm font-semibold text-foreground">{doc.title}</span>
+                            <span className="block text-xs text-muted-foreground">
+                              v{doc.version}
+                            </span>
+                          </span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Select one or more waivers the customer must sign before booking.
+                </p>
+              </div>
+            ) : null}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="edit-age-min">Min age (optional)</Label>
+                <Input
+                  id="edit-age-min"
+                  type="number"
+                  min={0}
+                  value={editDraft.ageMin}
+                  onChange={(e) => setEditDraft((d) => ({ ...d, ageMin: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-age-max">Max age (optional)</Label>
+                <Input
+                  id="edit-age-max"
+                  type="number"
+                  min={0}
+                  value={editDraft.ageMax}
+                  onChange={(e) => setEditDraft((d) => ({ ...d, ageMax: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-dur">Duration (minutes)</Label>
+              <Input
+                id="edit-dur"
+                type="number"
+                value={editDraft.durationMinutes}
+                onChange={(e) =>
+                  setEditDraft((d) => ({ ...d, durationMinutes: e.target.value }))
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Event visibility</Label>
+              <EventTypeSelector
+                value={editDraft.eventType}
+                onChange={(v) => setEditDraft((d) => ({ ...d, eventType: v }))}
+              />
+            </div>
+
+            <Accordion type="single" collapsible>
+              <AccordionItem value="booking">
+                <AccordionTrigger>Booking rules</AccordionTrigger>
+                <AccordionContent>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 pb-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-min-dur">Min duration (mins)</Label>
+                      <Input
+                        id="edit-min-dur"
+                        type="number"
+                        value={editDraft.minDurationMinutes}
+                        onChange={(e) =>
+                          setEditDraft((d) => ({ ...d, minDurationMinutes: e.target.value }))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-max-dur">Max duration (mins)</Label>
+                      <Input
+                        id="edit-max-dur"
+                        type="number"
+                        value={editDraft.maxDurationMinutes}
+                        onChange={(e) =>
+                          setEditDraft((d) => ({ ...d, maxDurationMinutes: e.target.value }))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-inc">Slot increment (mins)</Label>
+                      <Input
+                        id="edit-inc"
+                        type="number"
+                        value={editDraft.slotIncrementMinutes}
+                        onChange={(e) =>
+                          setEditDraft((d) => ({ ...d, slotIncrementMinutes: e.target.value }))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-max-conc">Max concurrent</Label>
+                      <Input
+                        id="edit-max-conc"
+                        type="number"
+                        value={editDraft.maxConcurrent}
+                        onChange={(e) =>
+                          setEditDraft((d) => ({ ...d, maxConcurrent: e.target.value }))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-min-adv">Min advance (hours)</Label>
+                      <Input
+                        id="edit-min-adv"
+                        type="number"
+                        value={editDraft.minAdvanceHours}
+                        onChange={(e) =>
+                          setEditDraft((d) => ({ ...d, minAdvanceHours: e.target.value }))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-max-adv">Max advance (hours)</Label>
+                      <Input
+                        id="edit-max-adv"
+                        type="number"
+                        value={editDraft.maxAdvanceHours}
+                        onChange={(e) =>
+                          setEditDraft((d) => ({ ...d, maxAdvanceHours: e.target.value }))
+                        }
+                      />
+                    </div>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <Label>Packages</Label>
+                <Button type="button" size="sm" variant="outline" onClick={openNewPackage}>
+                  New package
+                </Button>
+              </div>
+              {selectedServicePackages.length > 0 ? (
+                <div className="space-y-2">
+                  {selectedServicePackages.map((p) => (
+                    <div
+                      key={p.id}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-foreground">
+                          {p.tier} · {p.name}
+                        </p>
+                        <p className="text-xs text-muted-foreground">£{p.basePrice.toFixed(2)}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary">{p.isActive ? 'Active' : 'Inactive'}</Badge>
+                        <Button type="button" size="sm" variant="outline" onClick={() => openEditPackage(p.id)}>
+                          Edit
+                        </Button>
+                        <Button type="button" size="sm" variant="outline" onClick={() => duplicatePackage(p.id)}>
+                          Duplicate
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="text-destructive border-destructive"
+                          onClick={() => removePackage(p.id)}
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  No packages yet. Create tiered packages to override pricing and features.
+                </p>
+              )}
+            </div>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="edit-active">Active</Label>
+              <Switch
+                id="edit-active"
+                checked={editDraft.isActive}
+                onCheckedChange={(v) => setEditDraft((d) => ({ ...d, isActive: v }))}
+              />
+            </div>
+          </div>
+        ) : null}
+      </CrudModal>
+
+      <CrudModal
+        open={packageOpen}
+        onOpenChange={setPackageOpen}
+        title={selectedPackageId ? 'Edit package' : 'New package'}
+        description={selected?.name ?? undefined}
+        size="md"
+        variant={selectedPackageId ? 'edit' : 'create'}
+        footer={
+          <>
+            <Button type="button" variant="outline" onClick={() => setPackageOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={persistPackage}>
+              {selectedPackageId ? 'Save package' : 'Create package'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="pkg-name">Name</Label>
+            <Input
+              id="pkg-name"
+              value={packageName}
+              onChange={(e) => setPackageName(e.target.value)}
+              placeholder="Gold Party Package"
+            />
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Tier</Label>
+              <Select value={packageTier} onValueChange={(v) => setPackageTier(v as typeof packageTier)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="SILVER">SILVER</SelectItem>
+                  <SelectItem value="GOLD">GOLD</SelectItem>
+                  <SelectItem value="PLATINUM">PLATINUM</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pkg-price">Base price</Label>
+              <Input
+                id="pkg-price"
+                type="number"
+                value={packageBasePrice}
+                onChange={(e) => setPackageBasePrice(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="pkg-features">Features (one per line)</Label>
+            <Textarea
+              id="pkg-features"
+              value={packageFeatures}
+              onChange={(e) => setPackageFeatures(e.target.value)}
+              rows={5}
+              placeholder={'Private space\nDecorations\nDedicated host'}
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="pkg-active">Active</Label>
+            <Switch
+              id="pkg-active"
+              checked={packageIsActive}
+              onCheckedChange={(v) => setPackageIsActive(v)}
+            />
+          </div>
+        </div>
+      </CrudModal>
+
+      <CrudModal
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        title={`New ${LABELS.service.toLowerCase()}`}
+        description={`Add a catalog ${LABELS.service.toLowerCase()} for the selected ${LABELS.serviceCategory.toLowerCase()}.`}
+        size="lg"
+        variant="create"
+        footer={
+          <>
+            <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={persistCreate}>
+              Create {LABELS.service.toLowerCase()}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>{LABELS.serviceCategory}</Label>
+            <Select
+              value={createDraft.categoryId}
+              onValueChange={(v) => setCreateDraft((d) => ({ ...d, categoryId: v }))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder={LABELS.serviceCategory} />
+              </SelectTrigger>
+              <SelectContent>
+                {categories.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Location</Label>
+            <Select
+              value={createDraft.locationId}
+              onValueChange={(v) => setCreateDraft((d) => ({ ...d, locationId: v }))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select a location" />
+              </SelectTrigger>
+              <SelectContent>
+                {locations.map((l) => (
+                  <SelectItem key={l.id} value={l.id}>
+                    {l.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Booking mode</Label>
+            <Select
+              value={createDraft.bookingMode}
+              onValueChange={(v) =>
+                setCreateDraft((d) => ({ ...d, bookingMode: v as SchedulingBookingMode }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="SCHEDULED">Scheduled</SelectItem>
+                <SelectItem value="OPEN">Open</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Event visibility</Label>
+            <EventTypeSelector
+              value={createDraft.eventType}
+              onChange={(v) => setCreateDraft((d) => ({ ...d, eventType: v }))}
+            />
+            <p className="text-xs text-muted-foreground">
+              Private and host-only events are not shown here.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label>{LABELS.serviceType}</Label>
+            <Select
+              value={createDraft.serviceType}
+              onValueChange={(v) =>
+                setCreateDraft((d) => ({ ...d, serviceType: v as SchedulingServiceType }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="max-h-60 overflow-y-auto">
+                {allServiceTypes.map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {t}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="new-name">Name</Label>
+            <Input
+              id="new-name"
+              value={createDraft.name}
+              onChange={(e) => setCreateDraft((d) => ({ ...d, name: e.target.value }))}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="new-desc">Description</Label>
+            <Textarea
+              id="new-desc"
+              value={createDraft.description}
+              onChange={(e) => setCreateDraft((d) => ({ ...d, description: e.target.value }))}
+              rows={3}
+            />
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="new-price">Base price</Label>
+              <Input
+                id="new-price"
+                type="number"
+                value={createDraft.basePrice}
+                onChange={(e) => setCreateDraft((d) => ({ ...d, basePrice: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-cap">Capacity</Label>
+              <Input
+                id="new-cap"
+                type="number"
+                value={createDraft.capacity}
+                onChange={(e) => setCreateDraft((d) => ({ ...d, capacity: e.target.value }))}
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="new-sub-price">Subscription price (optional)</Label>
+              <Input
+                id="new-sub-price"
+                type="number"
+                value={createDraft.subscriptionPrice}
+                onChange={(e) =>
+                  setCreateDraft((d) => ({ ...d, subscriptionPrice: e.target.value }))
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-waiver">Requires waiver</Label>
+              <div className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2">
+                <span className="text-sm text-muted-foreground">Require waiver at checkout</span>
+                <Switch
+                  id="new-waiver"
+                  checked={createDraft.requiresWaiver}
+                  onCheckedChange={(v) =>
+                    setCreateDraft((d) => ({
+                      ...d,
+                      requiresWaiver: v,
+                      requiredDocumentIds: v ? d.requiredDocumentIds : [],
+                    }))
+                  }
+                />
+              </div>
+            </div>
+          </div>
+          {createDraft.requiresWaiver ? (
+            <div className="space-y-2">
+              <Label>Required waivers</Label>
+              {waiverDocs.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  No waiver documents exist yet. Create them in Admin → Waivers.
+                </p>
+              ) : (
+                <div className="space-y-2 rounded-lg border border-border bg-card p-3">
+                  {waiverDocs.map((doc) => {
+                    const checked = createDraft.requiredDocumentIds.includes(doc.id)
+                    return (
+                      <label key={doc.id} className="flex items-start gap-2">
+                        <input
+                          type="checkbox"
+                          className="mt-1"
+                          checked={checked}
+                          onChange={(e) => {
+                            const nextChecked = e.target.checked
+                            setCreateDraft((d) => ({
+                              ...d,
+                              requiredDocumentIds: nextChecked
+                                ? Array.from(new Set([...d.requiredDocumentIds, doc.id]))
+                                : d.requiredDocumentIds.filter((id) => id !== doc.id),
+                            }))
+                          }}
+                        />
+                        <span className="min-w-0">
+                          <span className="text-sm font-semibold text-foreground">{doc.title}</span>
+                          <span className="block text-xs text-muted-foreground">v{doc.version}</span>
+                        </span>
+                      </label>
+                    )
+                  })}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Select one or more waivers the customer must sign before booking.
+              </p>
+            </div>
+          ) : null}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="new-age-min">Min age (optional)</Label>
+              <Input
+                id="new-age-min"
+                type="number"
+                min={0}
+                value={createDraft.ageMin}
+                onChange={(e) => setCreateDraft((d) => ({ ...d, ageMin: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-age-max">Max age (optional)</Label>
+              <Input
+                id="new-age-max"
+                type="number"
+                min={0}
+                value={createDraft.ageMax}
+                onChange={(e) => setCreateDraft((d) => ({ ...d, ageMax: e.target.value }))}
+              />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="new-dur">Duration (minutes)</Label>
+            <Input
+              id="new-dur"
+              type="number"
+              value={createDraft.durationMinutes}
+              onChange={(e) =>
+                setCreateDraft((d) => ({ ...d, durationMinutes: e.target.value }))
+              }
+            />
+          </div>
+          <Accordion type="single" collapsible>
+            <AccordionItem value="booking">
+              <AccordionTrigger>Booking rules</AccordionTrigger>
+              <AccordionContent>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 pb-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="new-min-dur">Min duration (mins)</Label>
+                    <Input
+                      id="new-min-dur"
+                      type="number"
+                      value={createDraft.minDurationMinutes}
+                      onChange={(e) =>
+                        setCreateDraft((d) => ({ ...d, minDurationMinutes: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-max-dur">Max duration (mins)</Label>
+                    <Input
+                      id="new-max-dur"
+                      type="number"
+                      value={createDraft.maxDurationMinutes}
+                      onChange={(e) =>
+                        setCreateDraft((d) => ({ ...d, maxDurationMinutes: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-inc">Slot increment (mins)</Label>
+                    <Input
+                      id="new-inc"
+                      type="number"
+                      value={createDraft.slotIncrementMinutes}
+                      onChange={(e) =>
+                        setCreateDraft((d) => ({ ...d, slotIncrementMinutes: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-max-conc">Max concurrent</Label>
+                    <Input
+                      id="new-max-conc"
+                      type="number"
+                      value={createDraft.maxConcurrent}
+                      onChange={(e) =>
+                        setCreateDraft((d) => ({ ...d, maxConcurrent: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-min-adv">Min advance (hours)</Label>
+                    <Input
+                      id="new-min-adv"
+                      type="number"
+                      value={createDraft.minAdvanceHours}
+                      onChange={(e) =>
+                        setCreateDraft((d) => ({ ...d, minAdvanceHours: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-max-adv">Max advance (hours)</Label>
+                    <Input
+                      id="new-max-adv"
+                      type="number"
+                      value={createDraft.maxAdvanceHours}
+                      onChange={(e) =>
+                        setCreateDraft((d) => ({ ...d, maxAdvanceHours: e.target.value }))
+                      }
+                    />
+                  </div>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="new-active">Active</Label>
+            <Switch
+              id="new-active"
+              checked={createDraft.isActive}
+              onCheckedChange={(v) => setCreateDraft((d) => ({ ...d, isActive: v }))}
+            />
+          </div>
+        </div>
+      </CrudModal>
+    </div>
+  )
+}

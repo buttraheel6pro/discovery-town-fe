@@ -13,11 +13,13 @@ import type {
   CreditPackDefinition,
   Product,
   ProductCategory,
+  StockMovement,
   Order,
   Lead,
   Tag,
   AddOn,
   Coupon,
+  CouponValidation,
   RevenueDataPoint,
   DashboardKPI,
   Facility,
@@ -25,8 +27,38 @@ import type {
   Class,
   Instructors,
   Inventory,
-  Users
+  Users,
+  AvailableWindow,
+  AvailableWindowsResponse,
+  SchedulingBooking,
+  SchedulingCategory,
+  SchedulingService,
+  SchedulingServiceAddOn,
+  SchedulingSlot,
+  SchedulingWaitlistEntry,
+  ContactTag,
+  MembershipPlan,
+  CmCreditPackDefinition,
+  ClientDocument,
+  CmContact,
+  ContactNote,
+  PrivateHireInquiry,
+  AvailabilityCell,
+  AvailabilityGridSlotFilter,
+  EventPackage,
+  DailyRevenue,
+  MonthlyRevenue,
+  KpiDashboard,
+  RevenueSummary,
+  ReportClientInsights,
+  TopContact,
+  CohortMatrix,
+  ReferralOverview,
+  PayrollEntry,
+  InstructorStats,
+  Invoice,
 } from './types'
+import { SchedulingServiceTypeEnum } from './types'
 
 // ============================================
 // LOCATIONS
@@ -41,6 +73,7 @@ export const locations: Location[] = [
     city: 'Manchester',
     postcode: 'M1 2AB',
     timezone: 'Europe/London',
+    isActive: true,
     phone: '0161 123 4567',
     email: 'hello@discoverytown.co.uk',
     settings: {
@@ -971,7 +1004,7 @@ export const products: Product[] = [
     stockCount: 45,
     lowStockThreshold: 10,
     allowBackorders: false,
-    imageUrl: 'https://images.unsplash.com/photo-1565108177498-1fcde9d1d57a?w=400&q=80',
+    imageUrl: 'https://images.unsplash.com/photo-1621939514649-280e2ee25f60?w=400&q=80',
     isActive: true,
     isFeatured: true,
     createdAt: '2024-01-01T00:00:00Z',
@@ -2085,3 +2118,2602 @@ export const users: Users[] = [{
 }]
 
 export const inventory: Inventory[] = [{ price: 10.00, sku: 'SKU-001', category: 'Toys', name: 'Soft Play Balls', quantity: 500, unit: 'pieces', id: 'inv-1', tenantId: 'tenant-1', createdAt: '2024-01-01T00:00:00Z', updatedAt: '2024-01-01T00:00:00Z' }]
+
+// ============================================
+// SCHEDULING (MODULE EXTENSION)
+// Append-only additions for the Scheduling Module.
+// ============================================
+
+export const schedulingCategories: SchedulingCategory[] = [
+  {
+    id: 'cat-1',
+    name: 'Gym & Fitness',
+    icon: 'Activity',
+    displayOrder: 1,
+    isActive: true,
+    requiresAttendee: false,
+    membersOnly: false,
+    specialInstructionsEnabled: false,
+    waitlistEnabled: true,
+  },
+  {
+    id: 'cat-2',
+    name: 'Court Sports',
+    icon: 'Circle',
+    displayOrder: 2,
+    isActive: true,
+    requiresAttendee: false,
+    membersOnly: false,
+    depositPercent: 25,
+    specialInstructionsEnabled: true,
+    waitlistEnabled: true,
+  },
+  {
+    id: 'cat-3',
+    name: 'Swimming',
+    icon: 'Waves',
+    displayOrder: 3,
+    isActive: true,
+    requiresAttendee: true,
+    membersOnly: false,
+    freeInfantMonths: 6,
+    specialInstructionsEnabled: true,
+    waitlistEnabled: true,
+  },
+  {
+    id: 'cat-4',
+    name: 'Kids & Camps',
+    icon: 'Star',
+    displayOrder: 4,
+    isActive: true,
+    requiresAttendee: true,
+    membersOnly: false,
+    specialInstructionsEnabled: true,
+    waitlistEnabled: true,
+  },
+  {
+    id: 'cat-5',
+    name: 'Parties & Events',
+    icon: 'PartyPopper',
+    displayOrder: 5,
+    isActive: true,
+    requiresAttendee: false,
+    membersOnly: true,
+    depositPercent: 30,
+    specialInstructionsEnabled: true,
+    waitlistEnabled: true,
+  },
+  {
+    id: 'cat-6',
+    name: 'Coaching',
+    icon: 'User',
+    displayOrder: 6,
+    isActive: true,
+    requiresAttendee: false,
+    membersOnly: false,
+    specialInstructionsEnabled: false,
+    waitlistEnabled: false,
+  },
+]
+
+export const sampleFacilityAddOns: SchedulingServiceAddOn[] = [
+  {
+    id: 'ao-f-1',
+    name: 'Snack pack',
+    description: 'Juice and crisps',
+    price: 4.5,
+    pricingType: 'FLAT',
+    isActive: true,
+  },
+  {
+    id: 'ao-f-2',
+    name: 'Extra adult entry',
+    price: 3,
+    pricingType: 'PER_PERSON',
+    isActive: true,
+  },
+]
+
+export const sampleClassAddOns: SchedulingServiceAddOn[] = [
+  {
+    id: 'ao-c-1',
+    name: 'Mat rental',
+    price: 2,
+    pricingType: 'FLAT',
+    isActive: true,
+  },
+]
+
+export const sampleEventAddOns: SchedulingServiceAddOn[] = [
+  {
+    id: 'ao-e-1',
+    name: 'Lunch package',
+    price: 8,
+    pricingType: 'PER_PERSON',
+    isActive: true,
+  },
+  {
+    id: 'ao-e-2',
+    name: 'Event photography',
+    price: 15,
+    pricingType: 'FLAT',
+    isActive: true,
+  },
+]
+
+function mapFacilityToSchedulingService(f: Facility): SchedulingService {
+  return {
+    id: f.id,
+    locationId: 'loc-1',
+    categoryId: 'cat-4',
+    category: schedulingCategories[3],
+    serviceType: 'OPEN_PLAY',
+    bookingMode: 'OPEN',
+    name: f.name,
+    description: f.description,
+    durationMinutes: 60,
+    capacity: f.capacity,
+    basePrice: f.pricePerHour,
+    subscriptionPrice: null,
+    requiresWaiver: false,
+    ageMin: null,
+    ageMax: 12,
+    isActive: f.isActive && f.isAvailable,
+    minDurationMinutes: 60,
+    maxDurationMinutes: 240,
+    slotIncrementMinutes: 60,
+    maxConcurrent: 3,
+    minAdvanceHours: 0,
+    maxAdvanceHours: 168,
+    pricingModel: 'per_hour',
+    imageUrl: f.imageUrl,
+    tags: [f.sport, 'facility'],
+    rating: f.rating,
+    reviewCount: f.reviewCount,
+    amenities: f.amenities,
+    floor: f.floor,
+    sport: f.sport,
+    addOns: sampleFacilityAddOns,
+  }
+}
+
+function mapClassToSchedulingService(c: Class): SchedulingService {
+  return {
+    id: c.id,
+    locationId: 'loc-1',
+    categoryId: 'cat-1',
+    category: schedulingCategories[0],
+    serviceType: 'GYM_CLASS',
+    bookingMode: 'SCHEDULED',
+    name: c.name,
+    description: c.description,
+    durationMinutes: c.durationMinutes,
+    capacity: c.maxCapacity,
+    basePrice: c.price,
+    subscriptionPrice: null,
+    requiresWaiver: false,
+    ageMin: null,
+    ageMax: null,
+    isActive: c.isActive,
+    minDurationMinutes: null,
+    maxDurationMinutes: null,
+    slotIncrementMinutes: null,
+    maxConcurrent: null,
+    minAdvanceHours: null,
+    maxAdvanceHours: null,
+    pricingModel: 'flat',
+    imageUrl: c.imageUrl,
+    tags: [c.sport, c.level],
+    level: c.level,
+    instructorId: c.instructorId,
+    instructorName: c.instructorName,
+    schedule: c.schedule,
+    facilityName: c.facilityName,
+    sport: c.sport,
+    addOns: sampleClassAddOns,
+  }
+}
+
+function mapEventToSchedulingService(e: Event): SchedulingService {
+  const start = e.startDate.includes('T') ? e.startDate.split('T')[0] : e.startDate
+  const end = e.endDate.includes('T') ? e.endDate.split('T')[0] : e.endDate
+  return {
+    id: e.id,
+    locationId: 'loc-1',
+    categoryId: 'cat-5',
+    category: schedulingCategories[4],
+    serviceType: 'PARTY_PACKAGE',
+    bookingMode: 'SCHEDULED',
+    name: e.title,
+    description: e.description,
+    durationMinutes: 360,
+    capacity: e.maxAttendees,
+    basePrice: e.ticketPrice,
+    subscriptionPrice: null,
+    requiresWaiver: false,
+    ageMin: null,
+    ageMax: null,
+    isActive: e.isActive,
+    minDurationMinutes: null,
+    maxDurationMinutes: null,
+    slotIncrementMinutes: null,
+    maxConcurrent: null,
+    minAdvanceHours: 0,
+    maxAdvanceHours: 2160,
+    pricingModel: 'per_person',
+    imageUrl: e.imageUrl,
+    tags: e.tags,
+    organizer: e.organizer,
+    agenda: e.agenda.map((item) => ({
+      time: item.time,
+      description: item.description,
+      ...('title' in item && typeof item.title === 'string' ? { title: item.title } : {}),
+    })),
+    startDate: start,
+    endDate: end,
+    startTime: e.startTime,
+    endTime: e.endTime,
+    location: e.location,
+    eventStatus: e.status,
+    maxAttendees: e.maxAttendees,
+    registeredCount: e.registeredCount,
+    sport: e.sport,
+    addOns: sampleEventAddOns,
+  }
+}
+
+const coreSchedulingServices: SchedulingService[] = [
+  {
+    id: 'svc-1',
+    locationId: 'loc-1',
+    categoryId: 'cat-1',
+    category: schedulingCategories[0],
+    serviceType: 'GYM_CLASS',
+    bookingMode: 'SCHEDULED',
+    name: 'Morning Power Yoga',
+    description: 'Energising yoga session for all levels.',
+    durationMinutes: 60,
+    capacity: 20,
+    basePrice: 15,
+    subscriptionPrice: 10,
+    requiresWaiver: false,
+    ageMin: 16,
+    ageMax: null,
+    isActive: true,
+    minDurationMinutes: null,
+    maxDurationMinutes: null,
+    slotIncrementMinutes: null,
+    maxConcurrent: null,
+    minAdvanceHours: null,
+    maxAdvanceHours: null,
+    pricingModel: 'flat',
+    imageUrl: 'https://images.unsplash.com/photo-1552674605-db6ffd4facb5?w=1200&q=80',
+    tags: ['yoga', 'morning', 'fitness'],
+    sport: 'YOGA',
+    level: 'All Levels',
+    instructorId: 'instructor-1',
+    instructorName: 'Sarah Mitchell',
+    facilityName: 'Yoga Studio',
+    addOns: sampleClassAddOns,
+  },
+  {
+    id: 'svc-2',
+    locationId: 'loc-1',
+    categoryId: 'cat-2',
+    category: schedulingCategories[1],
+    serviceType: 'COURT_BOOKING',
+    bookingMode: 'OPEN',
+    name: 'Badminton Court',
+    description: 'Full-size indoor badminton court. Rackets available for hire.',
+    durationMinutes: 60,
+    capacity: 4,
+    basePrice: 12,
+    subscriptionPrice: null,
+    requiresWaiver: false,
+    ageMin: null,
+    ageMax: null,
+    isActive: true,
+    minDurationMinutes: 60,
+    maxDurationMinutes: 120,
+    slotIncrementMinutes: 30,
+    maxConcurrent: 3,
+    minAdvanceHours: 0,
+    maxAdvanceHours: 168,
+    pricingModel: 'per_hour',
+    imageUrl: 'https://images.unsplash.com/photo-1599058917765-3b3f6c9c99c0?w=1200&q=80',
+    tags: ['court', 'badminton', 'sports'],
+    sport: 'BADMINTON',
+    rating: 4.7,
+    reviewCount: 42,
+    amenities: ['Racket hire', 'Changing rooms', 'Parking'],
+    floor: 2,
+    addOns: sampleFacilityAddOns,
+  },
+  {
+    id: 'svc-3',
+    locationId: 'loc-1',
+    categoryId: 'cat-3',
+    category: schedulingCategories[2],
+    serviceType: 'SWIM_CLASS',
+    bookingMode: 'SCHEDULED',
+    name: 'Kids Swim Lessons (Ages 4–8)',
+    description: 'Structured swimming programme for young children.',
+    durationMinutes: 45,
+    capacity: 8,
+    basePrice: 18,
+    subscriptionPrice: 14,
+    requiresWaiver: true,
+    ageMin: 4,
+    ageMax: 8,
+    isActive: true,
+    minDurationMinutes: null,
+    maxDurationMinutes: null,
+    slotIncrementMinutes: null,
+    maxConcurrent: null,
+    minAdvanceHours: null,
+    maxAdvanceHours: null,
+    pricingModel: 'flat',
+    imageUrl: 'https://images.unsplash.com/photo-1517963879433-6ad2b056d712?w=1200&q=80',
+    tags: ['swimming', 'kids', 'lessons'],
+    sport: 'SWIMMING',
+    level: 'Beginner',
+    instructorName: 'James Wilson',
+    instructorId: 'instructor-1',
+    facilityName: 'Main Pool',
+    addOns: sampleClassAddOns,
+  },
+  {
+    id: 'svc-4',
+    locationId: 'loc-1',
+    categoryId: 'cat-1',
+    category: schedulingCategories[0],
+    serviceType: 'OPEN_PLAY',
+    bookingMode: 'OPEN',
+    name: 'Open Soft Play',
+    description: 'Free-roaming soft play area for toddlers and young children.',
+    durationMinutes: 60,
+    capacity: 30,
+    basePrice: 8,
+    subscriptionPrice: 5,
+    requiresWaiver: false,
+    ageMin: 1,
+    ageMax: 10,
+    isActive: true,
+    minDurationMinutes: 60,
+    maxDurationMinutes: 180,
+    slotIncrementMinutes: 30,
+    maxConcurrent: 1,
+    minAdvanceHours: 0,
+    maxAdvanceHours: 48,
+    pricingModel: 'per_person',
+    imageUrl: 'https://images.unsplash.com/photo-1588072432836-06c1d62d6b1f?w=1200&q=80',
+    tags: ['play', 'toddlers', 'open'],
+    sport: 'OPEN_PLAY',
+    rating: 4.7,
+    reviewCount: 88,
+    amenities: ['Parent seating', 'Cafe nearby'],
+    floor: 1,
+    addOns: sampleFacilityAddOns,
+  },
+  {
+    id: 'svc-5',
+    locationId: 'loc-1',
+    categoryId: 'cat-5',
+    category: schedulingCategories[4],
+    serviceType: 'PARTY_PACKAGE',
+    bookingMode: 'SCHEDULED',
+    name: 'Birthday Party Package',
+    description: 'Full party package including 2h exclusive area, catering setup, and decorations.',
+    durationMinutes: 120,
+    capacity: 25,
+    basePrice: 150,
+    subscriptionPrice: null,
+    requiresWaiver: false,
+    ageMin: 3,
+    ageMax: 14,
+    isActive: true,
+    minDurationMinutes: null,
+    maxDurationMinutes: null,
+    slotIncrementMinutes: null,
+    maxConcurrent: null,
+    minAdvanceHours: 48,
+    maxAdvanceHours: 2160,
+    pricingModel: 'flat',
+    imageUrl: 'https://images.unsplash.com/photo-1527529482837-4698179dc6ce?w=1200&q=80',
+    tags: ['party', 'birthday', 'exclusive'],
+    sport: 'FAMILY_EVENT',
+    addOns: sampleEventAddOns,
+  },
+  {
+    id: 'svc-6',
+    locationId: 'loc-1',
+    categoryId: 'cat-6',
+    category: schedulingCategories[5],
+    serviceType: 'COACHING_SESSION',
+    bookingMode: 'SCHEDULED',
+    name: '1-to-1 Tennis Coaching',
+    description: 'Private coaching session with a qualified tennis coach.',
+    durationMinutes: 60,
+    capacity: 1,
+    basePrice: 45,
+    subscriptionPrice: null,
+    requiresWaiver: false,
+    ageMin: null,
+    ageMax: null,
+    isActive: true,
+    minDurationMinutes: null,
+    maxDurationMinutes: null,
+    slotIncrementMinutes: null,
+    maxConcurrent: null,
+    minAdvanceHours: 2,
+    maxAdvanceHours: 336,
+    pricingModel: 'flat',
+    imageUrl: 'https://images.unsplash.com/photo-1554068865-24cecd4e34b8?w=1200&q=80',
+    tags: ['tennis', 'coaching', 'private'],
+    sport: 'TENNIS',
+    level: 'All Levels',
+    instructorName: 'Emma Thompson',
+    facilityName: 'Tennis Courts',
+    addOns: sampleClassAddOns,
+  },
+  {
+    id: 'svc-ph-1',
+    locationId: 'loc-1',
+    categoryId: 'cat-5',
+    category: schedulingCategories[4],
+    serviceType: 'PRIVATE_HIRE',
+    bookingMode: 'OPEN',
+    name: 'Whole Venue Private Hire',
+    description:
+      'Exclusive hire of Discovery Town for parties, corporate events, and private sessions.',
+    durationMinutes: 120,
+    capacity: 50,
+    basePrice: 85,
+    subscriptionPrice: null,
+    requiresWaiver: false,
+    ageMin: null,
+    ageMax: null,
+    isActive: true,
+    minDurationMinutes: 60,
+    maxDurationMinutes: 240,
+    slotIncrementMinutes: 30,
+    maxConcurrent: 2,
+    minAdvanceHours: 48,
+    maxAdvanceHours: 2160,
+    pricingModel: 'per_hour',
+    imageUrl: 'https://images.unsplash.com/photo-1527529482837-4698179dc6ce?w=1200&q=80',
+    tags: ['private-hire', 'venue', 'exclusive', 'corporate'],
+    sport: 'FAMILY_EVENT',
+    rating: 4.9,
+    reviewCount: 34,
+    amenities: ['Full venue access', 'Staff on site', 'Setup time', 'Sound system'],
+    floor: 1,
+    location: 'Manchester',
+    addOns: sampleEventAddOns,
+  },
+]
+
+/** Unified catalog: core templates + legacy facility/class/event rows as scheduling services. */
+export const schedulingServices: SchedulingService[] = [
+  ...coreSchedulingServices,
+  ...facilities.map(mapFacilityToSchedulingService),
+  ...classes.map(mapClassToSchedulingService),
+  ...events.map(mapEventToSchedulingService),
+]
+
+export const eventPackagesMock: EventPackage[] = [
+  {
+    id: 'pkg-ev-1-silver',
+    serviceId: 'event-1',
+    tier: 'SILVER',
+    name: 'Silver Party Package',
+    basePrice: 120,
+    features: ['Private space', 'Basic decorations', '30 min host support'],
+    addOns: [{ addOnId: 'ao-e-1', included: false }],
+    isActive: true,
+    createdAt: '2024-01-01T00:00:00Z',
+  },
+  {
+    id: 'pkg-ev-1-gold',
+    serviceId: 'event-1',
+    tier: 'GOLD',
+    name: 'Gold Party Package',
+    basePrice: 160,
+    features: ['Private space', 'Decorations', 'Lunch package included', '60 min host support'],
+    addOns: [{ addOnId: 'ao-e-1', included: true }],
+    isActive: true,
+    createdAt: '2024-01-01T00:00:00Z',
+  },
+  {
+    id: 'pkg-ev-1-platinum',
+    serviceId: 'event-1',
+    tier: 'PLATINUM',
+    name: 'Platinum Party Package',
+    basePrice: 220,
+    features: ['Premium décor', 'Lunch package included', 'Dedicated host', 'Priority setup'],
+    addOns: [{ addOnId: 'ao-e-1', included: true }],
+    isActive: true,
+    createdAt: '2024-01-01T00:00:00Z',
+  },
+]
+
+function schedulingServiceById(id: string): SchedulingService {
+  const found = schedulingServices.find((s) => s.id === id)
+  if (!found) {
+    throw new Error(`Scheduling service not found: ${id}`)
+  }
+  return found
+}
+
+function slotTime(daysFromNow: number, hour: number, minute = 0): string {
+  const d = new Date()
+  d.setDate(d.getDate() + daysFromNow)
+  d.setHours(hour, minute, 0, 0)
+  return d.toISOString()
+}
+
+export const schedulingSlots: SchedulingSlot[] = [
+  {
+    id: 'slot-1',
+    serviceId: 'svc-1',
+    service: schedulingServiceById('svc-1'),
+    locationId: 'loc-1',
+    staffId: 'staff-1',
+    staffName: 'Sarah Mitchell',
+    startAt: slotTime(0, 7),
+    endAt: slotTime(0, 8),
+    capacityOverride: null,
+    priceOverride: null,
+    bookedCount: 14,
+    checkInCount: 9,
+    effectiveCapacity: 20,
+    effectivePrice: 15,
+    status: 'SCHEDULED',
+    isActive: true,
+    isRecurring: true,
+    notes: null,
+  },
+  {
+    id: 'slot-2',
+    serviceId: 'svc-1',
+    service: schedulingServiceById('svc-1'),
+    locationId: 'loc-1',
+    staffId: 'staff-1',
+    staffName: 'Sarah Mitchell',
+    startAt: slotTime(1, 7),
+    endAt: slotTime(1, 8),
+    capacityOverride: null,
+    priceOverride: null,
+    bookedCount: 20,
+    checkInCount: 14,
+    effectiveCapacity: 20,
+    effectivePrice: 15,
+    status: 'FULL',
+    isActive: true,
+    isRecurring: true,
+    notes: null,
+  },
+  {
+    id: 'slot-3',
+    serviceId: 'svc-3',
+    service: schedulingServiceById('svc-3'),
+    locationId: 'loc-1',
+    staffId: 'staff-2',
+    staffName: 'James Wilson',
+    startAt: slotTime(0, 10),
+    endAt: slotTime(0, 10, 45),
+    capacityOverride: null,
+    priceOverride: null,
+    bookedCount: 5,
+    checkInCount: 0,
+    effectiveCapacity: 8,
+    effectivePrice: 18,
+    status: 'SCHEDULED',
+    isActive: false,
+    isRecurring: true,
+    notes: null,
+  },
+  {
+    id: 'slot-4',
+    serviceId: 'svc-3',
+    service: schedulingServiceById('svc-3'),
+    locationId: 'loc-1',
+    staffId: 'staff-2',
+    staffName: 'James Wilson',
+    startAt: slotTime(2, 10),
+    endAt: slotTime(2, 10, 45),
+    capacityOverride: null,
+    priceOverride: null,
+    bookedCount: 8,
+    checkInCount: 6,
+    effectiveCapacity: 8,
+    effectivePrice: 18,
+    status: 'FULL',
+    isActive: true,
+    isRecurring: true,
+    notes: null,
+  },
+  {
+    id: 'slot-5',
+    serviceId: 'svc-5',
+    service: schedulingServiceById('svc-5'),
+    locationId: 'loc-1',
+    staffId: null,
+    staffName: null,
+    startAt: slotTime(7, 14),
+    endAt: slotTime(7, 16),
+    capacityOverride: null,
+    priceOverride: null,
+    bookedCount: 1,
+    checkInCount: 0,
+    effectiveCapacity: 25,
+    effectivePrice: 150,
+    status: 'SCHEDULED',
+    isActive: true,
+    isRecurring: false,
+    notes: 'Themed: Dinosaur party',
+  },
+  {
+    id: 'slot-6',
+    serviceId: 'svc-6',
+    service: schedulingServiceById('svc-6'),
+    locationId: 'loc-1',
+    staffId: 'staff-3',
+    staffName: 'Emma Thompson',
+    startAt: slotTime(3, 16),
+    endAt: slotTime(3, 17),
+    capacityOverride: null,
+    priceOverride: null,
+    bookedCount: 0,
+    checkInCount: 0,
+    effectiveCapacity: 1,
+    effectivePrice: 45,
+    status: 'SCHEDULED',
+    isActive: true,
+    isRecurring: false,
+    notes: null,
+  },
+  {
+    id: 'slot-7',
+    serviceId: 'svc-1',
+    service: schedulingServiceById('svc-1'),
+    locationId: 'loc-1',
+    staffId: 'staff-1',
+    staffName: 'Sarah Mitchell',
+    startAt: slotTime(-1, 7),
+    endAt: slotTime(-1, 8),
+    capacityOverride: null,
+    priceOverride: null,
+    bookedCount: 18,
+    checkInCount: 18,
+    effectiveCapacity: 20,
+    effectivePrice: 15,
+    status: 'COMPLETED',
+    isActive: true,
+    isRecurring: true,
+    notes: null,
+  },
+  {
+    id: 'slot-8',
+    serviceId: 'svc-3',
+    service: schedulingServiceById('svc-3'),
+    locationId: 'loc-1',
+    staffId: 'staff-2',
+    staffName: 'James Wilson',
+    startAt: slotTime(4, 10),
+    endAt: slotTime(4, 10, 45),
+    capacityOverride: null,
+    priceOverride: null,
+    bookedCount: 3,
+    checkInCount: 0,
+    effectiveCapacity: 8,
+    effectivePrice: 18,
+    status: 'SCHEDULED',
+    isActive: true,
+    isRecurring: true,
+    notes: null,
+  },
+  {
+    id: 'slot-9',
+    serviceId: 'svc-6',
+    service: schedulingServiceById('svc-6'),
+    locationId: 'loc-1',
+    staffId: 'staff-3',
+    staffName: 'Emma Thompson',
+    startAt: slotTime(5, 11),
+    endAt: slotTime(5, 12),
+    capacityOverride: null,
+    priceOverride: null,
+    bookedCount: 1,
+    checkInCount: 1,
+    effectiveCapacity: 1,
+    effectivePrice: 45,
+    status: 'FULL',
+    isActive: true,
+    isRecurring: false,
+    notes: null,
+  },
+  {
+    id: 'slot-10',
+    serviceId: 'svc-1',
+    service: schedulingServiceById('svc-1'),
+    locationId: 'loc-1',
+    staffId: 'staff-1',
+    staffName: 'Sarah Mitchell',
+    startAt: slotTime(6, 7),
+    endAt: slotTime(6, 8),
+    capacityOverride: null,
+    priceOverride: null,
+    bookedCount: 0,
+    checkInCount: 0,
+    effectiveCapacity: 20,
+    effectivePrice: 15,
+    status: 'CANCELLED',
+    isActive: true,
+    isRecurring: false,
+    notes: 'Cancelled due to instructor illness',
+  },
+  {
+    id: 'slot-11',
+    serviceId: 'svc-5',
+    service: schedulingServiceById('svc-5'),
+    locationId: 'loc-1',
+    staffId: null,
+    staffName: null,
+    startAt: slotTime(14, 11),
+    endAt: slotTime(14, 13),
+    capacityOverride: null,
+    priceOverride: null,
+    bookedCount: 0,
+    checkInCount: 0,
+    effectiveCapacity: 25,
+    effectivePrice: 150,
+    status: 'SCHEDULED',
+    isActive: true,
+    isRecurring: false,
+    notes: null,
+  },
+  {
+    id: 'slot-ev-1',
+    serviceId: 'event-1',
+    service: schedulingServiceById('event-1'),
+    locationId: 'loc-1',
+    staffId: null,
+    staffName: null,
+    startAt: slotTime(14, 10),
+    endAt: slotTime(14, 16),
+    capacityOverride: null,
+    priceOverride: null,
+    bookedCount: 15,
+    checkInCount: 4,
+    effectiveCapacity: 20,
+    effectivePrice: 5,
+    status: 'SCHEDULED',
+    isActive: true,
+    isRecurring: false,
+    notes: null,
+  },
+]
+
+export const schedulingBookings: SchedulingBooking[] = [
+  {
+    id: 'bk-1',
+    bookingType: 'GYM_CLASS',
+    serviceSlotId: 'slot-1',
+    serviceSlot: schedulingSlots[0],
+    serviceId: 'svc-1',
+    service: schedulingServiceById('svc-1'),
+    contactId: 'contact-1',
+    contactName: 'Rachel Green',
+    participantName: null,
+    locationId: 'loc-1',
+    locationName: 'Discovery Town Main Centre',
+    status: 'CONFIRMED',
+    startAt: null,
+    endAt: null,
+    guestCount: 1,
+    totalAmount: 15,
+    balanceDue: 0,
+    checkedInAt: null,
+    cancelledAt: null,
+    cancellationReason: null,
+    notes: null,
+    source: 'ONLINE',
+    addOns: [],
+    createdAt: new Date(Date.now() - 86_400_000 * 2).toISOString(),
+  },
+  {
+    id: 'bk-2',
+    bookingType: 'SWIM_CLASS',
+    serviceSlotId: 'slot-3',
+    serviceSlot: schedulingSlots[2],
+    serviceId: 'svc-3',
+    service: schedulingServiceById('svc-3'),
+    contactId: 'contact-1',
+    contactName: 'Rachel Green',
+    participantName: 'Sophie Green (age 5)',
+    locationId: 'loc-1',
+    locationName: 'Discovery Town Main Centre',
+    status: 'CONFIRMED',
+    startAt: null,
+    endAt: null,
+    guestCount: 1,
+    totalAmount: 18,
+    balanceDue: 0,
+    checkedInAt: null,
+    cancelledAt: null,
+    cancellationReason: null,
+    notes: null,
+    source: 'ONLINE',
+    addOns: [],
+    createdAt: new Date(Date.now() - 86_400_000 * 3).toISOString(),
+  },
+  {
+    id: 'bk-3',
+    bookingType: 'OPEN_PLAY',
+    serviceSlotId: null,
+    serviceSlot: null,
+    serviceId: 'svc-4',
+    service: schedulingServiceById('svc-4'),
+    contactId: 'contact-1',
+    contactName: 'Rachel Green',
+    participantName: 'Sophie Green',
+    locationId: 'loc-1',
+    locationName: 'Discovery Town Main Centre',
+    status: 'CONFIRMED',
+    startAt: new Date(Date.now() + 86_400_000 * 1).toISOString(),
+    endAt: new Date(Date.now() + 86_400_000 * 1 + 3_600_000 * 2).toISOString(),
+    guestCount: 2,
+    totalAmount: 16,
+    balanceDue: 0,
+    checkedInAt: null,
+    cancelledAt: null,
+    cancellationReason: null,
+    notes: null,
+    source: 'ONLINE',
+    addOns: [],
+    createdAt: new Date(Date.now() - 86_400_000).toISOString(),
+  },
+  {
+    id: 'bk-4',
+    bookingType: 'GYM_CLASS',
+    serviceSlotId: 'slot-7',
+    serviceSlot: schedulingSlots[6],
+    serviceId: 'svc-1',
+    service: schedulingServiceById('svc-1'),
+    contactId: 'contact-1',
+    contactName: 'Rachel Green',
+    participantName: null,
+    locationId: 'loc-1',
+    locationName: 'Discovery Town Main Centre',
+    status: 'COMPLETED',
+    startAt: null,
+    endAt: null,
+    guestCount: 1,
+    totalAmount: 15,
+    balanceDue: 0,
+    checkedInAt: new Date(Date.now() - 86_400_000).toISOString(),
+    cancelledAt: null,
+    cancellationReason: null,
+    notes: null,
+    source: 'ONLINE',
+    addOns: [],
+    createdAt: new Date(Date.now() - 86_400_000 * 5).toISOString(),
+  },
+]
+
+export const schedulingWaitlistEntries: SchedulingWaitlistEntry[] = [
+  {
+    id: 'wl-1',
+    serviceSlotId: 'slot-2',
+    contactId: 'contact-3',
+    contactName: 'David Miller',
+    position: 1,
+    status: 'WAITING',
+    notifiedAt: null,
+    createdAt: new Date(Date.now() - 3_600_000).toISOString(),
+  },
+  {
+    id: 'wl-2',
+    serviceSlotId: 'slot-2',
+    contactId: 'contact-5',
+    contactName: 'Emily Watson',
+    position: 2,
+    status: 'WAITING',
+    notifiedAt: null,
+    createdAt: new Date(Date.now() - 1_800_000).toISOString(),
+  },
+  {
+    id: 'wl-3',
+    serviceSlotId: 'slot-4',
+    contactId: 'contact-1',
+    contactName: 'Rachel Green',
+    position: 1,
+    status: 'NOTIFIED',
+    notifiedAt: new Date(Date.now() - 900_000).toISOString(),
+    createdAt: new Date(Date.now() - 7_200_000).toISOString(),
+  },
+]
+
+// ============================================
+// CLIENT MANAGEMENT MOCK DATA
+// ============================================
+
+export const contactTags: ContactTag[] = [
+  {
+    id: 'tag-vip',
+    tenantId: 'tenant-1',
+    name: 'VIP',
+    color: '#FBBF24',
+    isSystem: true,
+    description: 'High-value repeat customer',
+  },
+  {
+    id: 'tag-membership',
+    tenantId: 'tenant-1',
+    name: 'Member',
+    color: '#22C55E',
+    isSystem: true,
+    description: 'Active membership holder',
+  },
+  {
+    id: 'tag-swim',
+    tenantId: 'tenant-1',
+    name: 'Swim Academy',
+    color: '#0EA5E9',
+    isSystem: false,
+    description: 'Enrolled in swimming programmes',
+  },
+  {
+    id: 'tag-camp',
+    tenantId: 'tenant-1',
+    name: 'Holiday Camp',
+    color: '#A855F7',
+    isSystem: false,
+    description: 'Attended holiday camps',
+  },
+  {
+    id: 'tag-corporate',
+    tenantId: 'tenant-1',
+    name: 'Corporate',
+    color: '#6366F1',
+    isSystem: true,
+    description: 'Corporate account contact',
+  },
+  {
+    id: 'tag-inactive',
+    tenantId: 'tenant-1',
+    name: 'At Risk',
+    color: '#EF4444',
+    isSystem: false,
+    description: 'Has not visited in 6+ months',
+  },
+]
+
+export const membershipPlans: MembershipPlan[] = [
+  {
+    id: 'mplan-family',
+    tenantId: 'tenant-1',
+    name: 'Family Unlimited Play',
+    description:
+      'Unlimited weekday soft play sessions for up to 2 adults and 3 children from the same household.',
+    billingCycle: 'MONTHLY',
+    price: 59,
+    benefits: [
+      'Unlimited weekday soft play access',
+      '10% off weekend sessions',
+      'Priority booking for events',
+    ],
+    isActive: true,
+    isFeatured: true,
+    minTermMonths: 3,
+    cancellationNoticeDays: 30,
+    createdAt: '2024-01-01T00:00:00Z',
+    updatedAt: '2024-01-01T00:00:00Z',
+  },
+  {
+    id: 'mplan-swim',
+    tenantId: 'tenant-1',
+    name: 'Swim Academy Plus',
+    description:
+      'Weekly swimming lesson for one child plus one open family swim session per week.',
+    billingCycle: 'MONTHLY',
+    price: 48,
+    benefits: [
+      '1x weekly swimming lesson',
+      '1x weekly family swim session',
+      'Make-up lesson credits for missed sessions',
+    ],
+    isActive: true,
+    isFeatured: false,
+    minTermMonths: 3,
+    cancellationNoticeDays: 30,
+    createdAt: '2024-01-01T00:00:00Z',
+    updatedAt: '2024-01-01T00:00:00Z',
+  },
+  {
+    id: 'mplan-annual',
+    tenantId: 'tenant-1',
+    name: 'Annual Adventure Pass',
+    description:
+      'Best value annual membership with unlimited soft play and discounts across Discovery Town.',
+    billingCycle: 'ANNUAL',
+    price: 599,
+    benefits: [
+      'Unlimited soft play all year',
+      '15% off classes and camps',
+      'Exclusive member events',
+      'Free birthday child place on party bookings',
+    ],
+    isActive: true,
+    isFeatured: true,
+    minTermMonths: 12,
+    cancellationNoticeDays: 60,
+    createdAt: '2024-01-01T00:00:00Z',
+    updatedAt: '2024-01-01T00:00:00Z',
+  },
+]
+
+export const cmCreditPackDefinitions: CmCreditPackDefinition[] = [
+  {
+    id: 'cpack-swim-5',
+    tenantId: 'tenant-1',
+    name: 'Swim Taster Pack (5)',
+    description: 'Try out our Swim Academy with 5 lesson credits.',
+    creditCount: 5,
+    price: 65,
+    validityDays: 90,
+    applicableServiceTypes: ['SWIMMING'],
+    isActive: true,
+    isFeatured: true,
+    displayOrder: 1,
+  },
+  {
+    id: 'cpack-class-10',
+    tenantId: 'tenant-1',
+    name: 'Class Pack (10)',
+    description: 'Flexible 10-class pack for gymnastics, dance, or fitness sessions.',
+    creditCount: 10,
+    price: 120,
+    validityDays: 180,
+    applicableServiceTypes: ['CLASS'],
+    isActive: true,
+    isFeatured: true,
+    displayOrder: 2,
+  },
+  {
+    id: 'cpack-mixed-20',
+    tenantId: 'tenant-1',
+    name: 'Ultimate Activity Pack (20)',
+    description: 'Best value pack for frequent visitors across classes, camps, and parties.',
+    creditCount: 20,
+    price: 220,
+    validityDays: 365,
+    applicableServiceTypes: ['CLASS', 'CAMP', 'PARTY'],
+    isActive: true,
+    isFeatured: false,
+    displayOrder: 3,
+  },
+]
+
+export const clientDocuments: ClientDocument[] = [
+  {
+    id: 'doc-waiver',
+    tenantId: 'tenant-1',
+    title: 'General Activity Waiver',
+    description:
+      'Covers general soft play, classes, and supervised activities at Discovery Town.',
+    documentType: 'WAIVER',
+    documentSubType: 'GUEST',
+    isRequired: true,
+    serviceTypeScope: ['PLAY_AREA', 'CLASS', 'CAMP'],
+    validFrom: '2024-01-01T00:00:00Z',
+    validTo: undefined,
+    version: 1,
+    createdAt: '2024-01-01T00:00:00Z',
+    updatedAt: '2024-01-01T00:00:00Z',
+  },
+  {
+    id: 'doc-swim-consent',
+    tenantId: 'tenant-1',
+    title: 'Swimming & Water Safety Consent',
+    description: 'Specific consent form for all swimming-related activities.',
+    documentType: 'PARENTAL_CONSENT',
+    documentSubType: 'GUEST',
+    isRequired: true,
+    serviceTypeScope: ['SWIMMING'],
+    validFrom: '2024-01-01T00:00:00Z',
+    validTo: undefined,
+    version: 1,
+    createdAt: '2024-01-01T00:00:00Z',
+    updatedAt: '2024-01-01T00:00:00Z',
+  },
+  {
+    id: 'doc-membership-terms',
+    tenantId: 'tenant-1',
+    title: 'Membership Terms & Conditions',
+    description: 'Full terms and conditions for Discovery Town memberships.',
+    documentType: 'MEMBERSHIP_TERMS',
+    documentSubType: 'HOST',
+    isRequired: true,
+    serviceTypeScope: undefined,
+    validFrom: '2024-01-01T00:00:00Z',
+    validTo: undefined,
+    version: 2,
+    createdAt: '2024-01-01T00:00:00Z',
+    updatedAt: '2024-02-01T00:00:00Z',
+  },
+]
+
+const yearsAgo = (years: number): string => {
+  const now = new Date()
+  now.setFullYear(now.getFullYear() - years)
+  return now.toISOString().slice(0, 10)
+}
+
+export const cmContacts: CmContact[] = [
+  {
+    id: 'cm-emma',
+    tenantId: 'tenant-1',
+    contactType: 'CUSTOMER',
+    firstName: 'Emma',
+    lastName: 'Thompson',
+    email: 'emma.thompson@example.com',
+    phone: '07700 900111',
+    dateOfBirth: yearsAgo(34),
+    gender: 'FEMALE',
+    addressLine1: '10 Park View',
+    city: 'Manchester',
+    postcode: 'M2 3AB',
+    country: 'UK',
+    metadata: {
+      marketingOptIn: true,
+      preferredChannel: 'EMAIL',
+      notes: 'Prefers weekday mornings and quiet sessions.',
+    },
+    tags: [
+      {
+        id: 'cta-1',
+        tenantId: 'tenant-1',
+        contactId: 'cm-emma',
+        tagId: 'tag-membership',
+        tag: contactTags[1],
+        createdAt: '2024-01-01T00:00:00Z',
+        createdByStaffId: 'staff-1',
+      },
+    ],
+    subscriptions: [
+      {
+        id: 'sub-emma-family',
+        tenantId: 'tenant-1',
+        contactId: 'cm-emma',
+        planId: 'mplan-family',
+        status: 'ACTIVE',
+        startedAt: '2024-01-10T00:00:00Z',
+        currentPeriodStart: '2024-03-10T00:00:00Z',
+        currentPeriodEnd: '2024-04-10T00:00:00Z',
+      },
+    ],
+    creditPacks: [],
+    creditLedger: [],
+    documents: [],
+    createdAt: '2024-01-01T00:00:00Z',
+    updatedAt: '2024-03-01T00:00:00Z',
+  },
+  {
+    id: 'cm-lily',
+    tenantId: 'tenant-1',
+    contactType: 'CHILD',
+    firstName: 'Lily',
+    lastName: 'Thompson',
+    dateOfBirth: yearsAgo(6),
+    gender: 'FEMALE',
+    metadata: {
+      marketingOptIn: false,
+      allergies: 'Peanuts',
+      medicalNotes: 'Carries EpiPen – parent to bring to all sessions.',
+      schoolName: 'Discovery Primary',
+      yearGroup: 'Year 1',
+    },
+    tags: [
+      {
+        id: 'cta-2',
+        tenantId: 'tenant-1',
+        contactId: 'cm-lily',
+        tagId: 'tag-swim',
+        tag: contactTags[2],
+        createdAt: '2024-01-05T00:00:00Z',
+        createdByStaffId: 'staff-2',
+      },
+    ],
+    subscriptions: [
+      {
+        id: 'sub-lily-swim',
+        tenantId: 'tenant-1',
+        contactId: 'cm-lily',
+        planId: 'mplan-swim',
+        status: 'ACTIVE',
+        startedAt: '2024-02-01T00:00:00Z',
+        currentPeriodStart: '2024-03-01T00:00:00Z',
+        currentPeriodEnd: '2024-04-01T00:00:00Z',
+      },
+    ],
+    creditPacks: [],
+    creditLedger: [],
+    documents: [],
+    createdAt: '2024-01-05T00:00:00Z',
+    updatedAt: '2024-03-01T00:00:00Z',
+  },
+  {
+    id: 'cm-david',
+    tenantId: 'tenant-1',
+    contactType: 'CUSTOMER',
+    firstName: 'David',
+    lastName: 'Chen',
+    email: 'david.chen@example.com',
+    phone: '07700 900222',
+    dateOfBirth: yearsAgo(37),
+    gender: 'MALE',
+    metadata: {
+      marketingOptIn: true,
+      preferredChannel: 'SMS',
+      notes: 'Often books last-minute weekend sessions.',
+    },
+    tags: [
+      {
+        id: 'cta-3',
+        tenantId: 'tenant-1',
+        contactId: 'cm-david',
+        tagId: 'tag-vip',
+        tag: contactTags[0],
+        createdAt: '2024-02-01T00:00:00Z',
+        createdByStaffId: 'staff-1',
+      },
+    ],
+    subscriptions: [],
+    creditPacks: [],
+    creditLedger: [],
+    documents: [],
+    createdAt: '2024-02-01T00:00:00Z',
+    updatedAt: '2024-03-10T00:00:00Z',
+  },
+  {
+    id: 'cm-aisha',
+    tenantId: 'tenant-1',
+    contactType: 'CORPORATE',
+    firstName: 'Aisha',
+    lastName: 'Patel',
+    email: 'aisha.patel@brightbeginnings.co.uk',
+    phone: '0161 555 0101',
+    metadata: {
+      marketingOptIn: true,
+      preferredChannel: 'EMAIL',
+      notes: 'Nursery manager booking regular mid-week soft play visits.',
+    },
+    tags: [
+      {
+        id: 'cta-4',
+        tenantId: 'tenant-1',
+        contactId: 'cm-aisha',
+        tagId: 'tag-corporate',
+        tag: contactTags[4],
+        createdAt: '2024-01-15T00:00:00Z',
+        createdByStaffId: 'staff-3',
+      },
+    ],
+    subscriptions: [],
+    creditPacks: [],
+    creditLedger: [],
+    documents: [],
+    createdAt: '2024-01-10T00:00:00Z',
+    updatedAt: '2024-02-20T00:00:00Z',
+  },
+  {
+    id: 'cm-tom',
+    tenantId: 'tenant-1',
+    contactType: 'LEAD',
+    firstName: 'Tom',
+    lastName: 'Sullivan',
+    email: 'tom.sullivan@example.com',
+    phone: '07700 900333',
+    metadata: {
+      marketingOptIn: true,
+      preferredChannel: 'EMAIL',
+      notes: 'Downloaded summer camp brochure – yet to book.',
+    },
+    tags: [
+      {
+        id: 'cta-5',
+        tenantId: 'tenant-1',
+        contactId: 'cm-tom',
+        tagId: 'tag-camp',
+        tag: contactTags[3],
+        createdAt: '2024-03-01T00:00:00Z',
+        createdByStaffId: 'staff-1',
+      },
+    ],
+    subscriptions: [],
+    creditPacks: [],
+    creditLedger: [],
+    documents: [],
+    createdAt: '2024-03-01T00:00:00Z',
+    updatedAt: '2024-03-05T00:00:00Z',
+  },
+]
+
+export const contactNotes: ContactNote[] = [
+  {
+    id: 'note-1',
+    tenantId: 'tenant-1',
+    contactId: 'cm-emma',
+    authorStaffId: 'staff-1',
+    authorName: 'Sarah Mitchell',
+    content: 'Very loyal family. Often brings friends – potential referral opportunity.',
+    isPinned: true,
+    createdAt: '2024-02-10T10:00:00Z',
+  },
+  {
+    id: 'note-2',
+    tenantId: 'tenant-1',
+    contactId: 'cm-lily',
+    authorStaffId: 'staff-2',
+    authorName: 'James Wilson',
+    content: 'Confident swimmer – ready to move up a level next term.',
+    isPinned: false,
+    createdAt: '2024-03-01T09:30:00Z',
+  },
+  {
+    id: 'note-3',
+    tenantId: 'tenant-1',
+    contactId: 'cm-tom',
+    authorStaffId: 'staff-4',
+    authorName: 'Michael Brown',
+    content: 'Called to ask about summer camps – send follow-up email with discount code.',
+    isPinned: false,
+    createdAt: '2024-03-05T15:45:00Z',
+  },
+]
+
+export function generateOpenAvailability(
+  service: SchedulingService,
+  dateStr: string,
+): AvailableWindowsResponse {
+  const operatingHours = { open: '08:00', close: '21:00' }
+  const [year, month, day] = dateStr.split('-').map(Number)
+  const base = new Date(year, month - 1, day)
+  const now = new Date()
+
+  const openMin = 8 * 60
+  const closeMin = 21 * 60
+  const increment = service.slotIncrementMinutes ?? 30
+  const minDuration = service.minDurationMinutes ?? 60
+  const maxConcurrent = service.maxConcurrent ?? 1
+
+  const windows: AvailableWindow[] = []
+
+  for (let m = openMin; m + minDuration <= closeMin; m += increment) {
+    const startDate = new Date(base)
+    startDate.setHours(Math.floor(m / 60), m % 60, 0, 0)
+    const endDate = new Date(startDate.getTime() + minDuration * 60_000)
+
+    if (startDate <= now) continue
+
+    const isUnavailable = m === 10 * 60 || m === 14 * 60
+    const isLimited = m === 9 * 60 || m === 16 * 60
+
+    windows.push({
+      startAt: startDate.toISOString(),
+      endAt: endDate.toISOString(),
+      spotsRemaining: isUnavailable ? 0 : isLimited ? 1 : maxConcurrent,
+    })
+  }
+
+  return { date: dateStr, serviceId: service.id, windows, operatingHours }
+}
+
+/**
+ * Open-booking style windows where each slot spans a chosen duration (e.g. 4h as 8:00–12:00).
+ * Unavailable if any slot increment inside the range hits the same blocked times as
+ * {@link generateOpenAvailability}.
+ */
+export function generateOpenAvailabilityForDuration(
+  service: SchedulingService,
+  dateStr: string,
+  durationMinutes: number,
+): AvailableWindowsResponse {
+  const operatingHours = { open: '08:00', close: '21:00' }
+  const [year, month, day] = dateStr.split('-').map(Number)
+  const base = new Date(year, month - 1, day)
+  const now = new Date()
+
+  const openMin = 8 * 60
+  const closeMin = 21 * 60
+  const increment = service.slotIncrementMinutes ?? 30
+  const maxConcurrent = service.maxConcurrent ?? 1
+
+  const windows: AvailableWindow[] = []
+
+  for (let m = openMin; m + durationMinutes <= closeMin; m += increment) {
+    const startDate = new Date(base)
+    startDate.setHours(Math.floor(m / 60), m % 60, 0, 0)
+    const endDate = new Date(startDate.getTime() + durationMinutes * 60_000)
+
+    if (startDate <= now) continue
+
+    let isUnavailable = false
+    for (let step = m; step < m + durationMinutes; step += increment) {
+      if (step === 10 * 60 || step === 14 * 60) {
+        isUnavailable = true
+        break
+      }
+    }
+
+    const isLimited = !isUnavailable && (m === 9 * 60 || m === 16 * 60)
+
+    windows.push({
+      startAt: startDate.toISOString(),
+      endAt: endDate.toISOString(),
+      spotsRemaining: isUnavailable ? 0 : isLimited ? 1 : maxConcurrent,
+    })
+  }
+
+  return { date: dateStr, serviceId: service.id, windows, operatingHours }
+}
+
+// ============================================
+// CALENDAR & PRIVATE HIRE MOCK DATA
+// ============================================
+
+export const privateHireInquiries: PrivateHireInquiry[] = [
+  {
+    id: 'hire-1',
+    contactName: 'Rachel Green',
+    contactEmail: 'rachel@example.com',
+    contactPhone: '+44 7700 901234',
+    eventType: 'BIRTHDAY_PARTY',
+    serviceId: 'svc-ph-1',
+    service: schedulingServiceById('svc-ph-1'),
+    locationId: 'loc-1',
+    locationName: 'Discovery Town Main Centre',
+    preferredDate: slotTime(14, 14),
+    alternateDate: slotTime(21, 11),
+    guestCount: 20,
+    notes: 'Dinosaur theme please. Need 30 minutes setup time before guests arrive.',
+    status: 'PENDING',
+    depositAmount: null,
+    internalNotes: null,
+    submittedAt: new Date(Date.now() - 86400000 * 1).toISOString(),
+    reviewedAt: null,
+    reviewedBy: null,
+  },
+  {
+    id: 'hire-2',
+    contactName: 'Marcus Webb',
+    contactEmail: 'marcus@techfirm.com',
+    contactPhone: '+44 7700 902345',
+    eventType: 'CORPORATE',
+    serviceId: 'svc-ph-1',
+    service: schedulingServiceById('svc-ph-1'),
+    locationId: 'loc-1',
+    locationName: 'Discovery Town Main Centre',
+    preferredDate: slotTime(30, 9),
+    alternateDate: null,
+    guestCount: 50,
+    notes: 'Team building day for 50 staff. Need catering setup and projector.',
+    status: 'APPROVED',
+    depositAmount: 75,
+    internalNotes: 'Deposit collected via bank transfer. Confirm catering with kitchen.',
+    submittedAt: new Date(Date.now() - 86400000 * 10).toISOString(),
+    reviewedAt: new Date(Date.now() - 86400000 * 8).toISOString(),
+    reviewedBy: 'Sarah (Admin)',
+  },
+  {
+    id: 'hire-3',
+    contactName: 'Yuki Tanaka',
+    contactEmail: 'yuki@email.com',
+    contactPhone: '+44 7700 903456',
+    eventType: 'BIRTHDAY_PARTY',
+    serviceId: 'svc-ph-1',
+    service: schedulingServiceById('svc-ph-1'),
+    locationId: 'loc-1',
+    locationName: 'Discovery Town Main Centre',
+    preferredDate: slotTime(-7, 15),
+    alternateDate: null,
+    guestCount: 15,
+    notes: null,
+    status: 'REJECTED',
+    depositAmount: null,
+    internalNotes: 'Date unavailable — venue already booked for another event.',
+    submittedAt: new Date(Date.now() - 86400000 * 20).toISOString(),
+    reviewedAt: new Date(Date.now() - 86400000 * 18).toISOString(),
+    reviewedBy: 'Sarah (Admin)',
+  },
+  {
+    id: 'hire-4',
+    contactName: 'Emma Thompson',
+    contactEmail: 'emma@example.com',
+    contactPhone: '+44 7700 900123',
+    eventType: 'BIRTHDAY_PARTY',
+    serviceId: 'svc-ph-1',
+    service: schedulingServiceById('svc-ph-1'),
+    locationId: 'loc-1',
+    locationName: 'Discovery Town Main Centre',
+    preferredDate: slotTime(45, 14),
+    alternateDate: slotTime(52, 11),
+    guestCount: 18,
+    notes: "Lily's 7th birthday. Superhero theme.",
+    status: 'PENDING',
+    depositAmount: null,
+    internalNotes: null,
+    submittedAt: new Date(Date.now() - 3600000 * 2).toISOString(),
+    reviewedAt: null,
+    reviewedBy: null,
+  },
+]
+
+function slotMatchesAvailabilityGridFilter(
+  slot: SchedulingSlot,
+  filter: AvailabilityGridSlotFilter | undefined,
+): boolean {
+  if (!filter) return true
+  if (filter.serviceTypes.length > 0) {
+    if (!filter.serviceTypes.includes(slot.service.serviceType)) return false
+  }
+  if (filter.staffId) {
+    if (filter.staffId === '__none__') {
+      if (slot.staffName) return false
+    } else if (slot.staffName !== filter.staffId) {
+      return false
+    }
+  }
+  return true
+}
+
+/**
+ * Builds an hour × day heatmap from scheduling slots (mock data).
+ * Each cell aggregates slots overlapping that hour.
+ * `locationId` null = all locations; `slotFilter` aligns with admin calendar filters.
+ */
+export function generateAvailabilityGrid(
+  locationId: string | null,
+  fromDate: Date,
+  toDate: Date,
+  slotFilter?: AvailabilityGridSlotFilter,
+): AvailabilityCell[] {
+  const cells: AvailabilityCell[] = []
+  const operatingHoursStart = 6
+  const operatingHoursEnd = 22
+
+  const cursor = new Date(fromDate)
+  cursor.setHours(0, 0, 0, 0)
+
+  const end = new Date(toDate)
+  end.setHours(23, 59, 59, 999)
+
+  const maxSpan = 60 * 86400000
+  if (end.getTime() - cursor.getTime() > maxSpan) {
+    return []
+  }
+
+  while (cursor <= end) {
+    for (let hour = operatingHoursStart; hour < operatingHoursEnd; hour++) {
+      const cellStart = new Date(cursor)
+      cellStart.setHours(hour, 0, 0, 0)
+      const cellEnd = new Date(cursor)
+      cellEnd.setHours(hour + 1, 0, 0, 0)
+
+      const overlapping = schedulingSlots.filter((slot) => {
+        if (locationId !== null && slot.locationId !== locationId) return false
+        if (!slotMatchesAvailabilityGridFilter(slot, slotFilter)) return false
+        const slotStart = new Date(slot.startAt)
+        const slotEnd = new Date(slot.endAt)
+        return slotStart < cellEnd && slotEnd > cellStart
+      })
+
+      const totalSessions = overlapping.length
+      const bookedCount = overlapping.reduce((s, sl) => s + sl.bookedCount, 0)
+      const capacityTotal = overlapping.reduce((s, sl) => s + sl.effectiveCapacity, 0)
+      const utilizationPct =
+        capacityTotal > 0 ? Math.round((bookedCount / capacityTotal) * 100) : 0
+
+      cells.push({
+        date: cursor.toISOString().split('T')[0],
+        hour,
+        totalSessions,
+        bookedCount,
+        capacityTotal,
+        utilizationPct,
+        slots: overlapping.map((sl) => ({
+          id: sl.id,
+          service: sl.service,
+          staffName: sl.staffName,
+          bookedCount: sl.bookedCount,
+          effectiveCapacity: sl.effectiveCapacity,
+          status: sl.status,
+          startAt: sl.startAt,
+          endAt: sl.endAt,
+        })),
+      })
+    }
+    cursor.setDate(cursor.getDate() + 1)
+  }
+
+  return cells
+}
+
+// ============================================
+// INVENTORY & SHOP (MODULE EXTENSION)
+// Append-only additions for inventory/shop features.
+// ============================================
+
+export const shopProductCategories: ProductCategory[] = [
+  {
+    id: 'pcat-apparel',
+    tenantId: 'tenant-1',
+    name: 'Clothing & Apparel',
+    slug: 'clothing-apparel',
+    description: 'Training kit and everyday essentials',
+    displayOrder: 10,
+  },
+  {
+    id: 'pcat-equipment',
+    tenantId: 'tenant-1',
+    name: 'Equipment & Gear',
+    slug: 'equipment-gear',
+    description: 'Sports gear and training equipment',
+    displayOrder: 11,
+  },
+  {
+    id: 'pcat-nutrition',
+    tenantId: 'tenant-1',
+    name: 'Nutrition & Wellness',
+    slug: 'nutrition-wellness',
+    description: 'Supplements, bottles, and wellness items',
+    displayOrder: 12,
+  },
+  {
+    id: 'pcat-accessories',
+    tenantId: 'tenant-1',
+    name: 'Accessories',
+    slug: 'accessories',
+    description: 'Small items that make a big difference',
+    displayOrder: 13,
+  },
+]
+
+export const shopProducts: Product[] = [
+  {
+    id: 'prod-shop-1',
+    tenantId: 'tenant-1',
+    categoryId: 'pcat-apparel',
+    name: 'Discovery Town Training Tee',
+    slug: 'discovery-town-training-tee',
+    description:
+      '<p>Lightweight, breathable training t-shirt with Discovery Town logo. Perfect for the gym or sports sessions.</p>',
+    sku: 'DT-TEE-001',
+    price: 24.99,
+    memberPrice: 19.99,
+    compareAtPrice: 29.99,
+    costPrice: 8.5,
+    taxable: true,
+    taxRate: 20,
+    trackInventory: true,
+    stockCount: 45,
+    lowStockThreshold: 10,
+    allowBackorders: false,
+    availableOnline: true,
+    availablePOS: true,
+    isActive: true,
+    isFeatured: true,
+    imageUrl: 'https://images.unsplash.com/photo-1621939514649-280e2ee25f60?w=400&q=80',
+    galleryUrls: [],
+    createdAt: new Date(Date.now() - 86400000 * 60).toISOString(),
+    updatedAt: new Date(Date.now() - 86400000 * 10).toISOString(),
+  },
+  {
+    id: 'prod-shop-2',
+    tenantId: 'tenant-1',
+    categoryId: 'pcat-apparel',
+    name: 'Performance Shorts',
+    slug: 'performance-shorts',
+    description:
+      '<p>Quick-dry performance shorts with deep pockets. Available in multiple colours.</p>',
+    sku: 'DT-SHT-001',
+    price: 19.99,
+    memberPrice: 15.99,
+    compareAtPrice: null,
+    costPrice: 7.0,
+    taxable: true,
+    taxRate: 20,
+    trackInventory: true,
+    stockCount: 8,
+    lowStockThreshold: 10,
+    allowBackorders: false,
+    availableOnline: true,
+    availablePOS: true,
+    isActive: true,
+    isFeatured: true,
+    imageUrl: 'https://images.unsplash.com/photo-1621939514649-280e2ee25f60?w=400&q=80',
+    galleryUrls: [],
+    createdAt: new Date(Date.now() - 86400000 * 55).toISOString(),
+    updatedAt: new Date(Date.now() - 86400000 * 9).toISOString(),
+  },
+  {
+    id: 'prod-shop-3',
+    tenantId: 'tenant-1',
+    categoryId: 'pcat-equipment',
+    name: 'Badminton Racket — Starter',
+    slug: 'badminton-racket-starter',
+    description:
+      '<p>Great entry-level racket for casual and club play. Aluminium frame, nylon strings.</p>',
+    sku: 'DT-RAC-001',
+    price: 34.99,
+    compareAtPrice: 44.99,
+    costPrice: 12.0,
+    taxable: true,
+    taxRate: 20,
+    trackInventory: true,
+    stockCount: 3,
+    lowStockThreshold: 5,
+    allowBackorders: true,
+    availableOnline: true,
+    availablePOS: true,
+    isActive: true,
+    isFeatured: true,
+    imageUrl: 'https://images.unsplash.com/photo-1621939514649-280e2ee25f60?w=400&q=80',
+    galleryUrls: [],
+    createdAt: new Date(Date.now() - 86400000 * 45).toISOString(),
+    updatedAt: new Date(Date.now() - 86400000 * 8).toISOString(),
+  },
+  {
+    id: 'prod-shop-4',
+    tenantId: 'tenant-1',
+    categoryId: 'pcat-equipment',
+    name: 'Sports Holdall — Large',
+    slug: 'sports-holdall-large',
+    description:
+      '<p>Spacious 60L holdall with wet/dry compartment separation and adjustable shoulder strap.</p>',
+    sku: 'DT-BAG-001',
+    price: 49.99,
+    memberPrice: 39.99,
+    costPrice: 18.0,
+    taxable: true,
+    taxRate: 20,
+    trackInventory: true,
+    stockCount: 12,
+    lowStockThreshold: 5,
+    allowBackorders: false,
+    availableOnline: true,
+    availablePOS: true,
+    isActive: true,
+    isFeatured: false,
+    imageUrl: 'https://images.unsplash.com/photo-1621939514649-280e2ee25f60?w=400&q=80',
+    galleryUrls: [],
+    createdAt: new Date(Date.now() - 86400000 * 40).toISOString(),
+    updatedAt: new Date(Date.now() - 86400000 * 7).toISOString(),
+  },
+  {
+    id: 'prod-shop-5',
+    tenantId: 'tenant-1',
+    categoryId: 'pcat-nutrition',
+    name: 'Whey Protein — Chocolate (1kg)',
+    slug: 'whey-protein-chocolate-1kg',
+    description: '<p>25g protein per serving. No artificial flavours. Mixes easily.</p>',
+    sku: 'DT-PRO-001',
+    price: 39.99,
+    memberPrice: 32.99,
+    costPrice: 14.0,
+    taxable: false,
+    taxRate: 0,
+    trackInventory: true,
+    stockCount: 20,
+    lowStockThreshold: 8,
+    allowBackorders: false,
+    availableOnline: true,
+    availablePOS: true,
+    isActive: true,
+    isFeatured: false,
+    imageUrl: 'https://images.unsplash.com/photo-1621939514649-280e2ee25f60?w=400&q=80',
+    galleryUrls: [],
+    createdAt: new Date(Date.now() - 86400000 * 30).toISOString(),
+    updatedAt: new Date(Date.now() - 86400000 * 6).toISOString(),
+  },
+  {
+    id: 'prod-shop-6',
+    tenantId: 'tenant-1',
+    categoryId: 'pcat-nutrition',
+    name: 'Insulated Water Bottle 750ml',
+    slug: 'insulated-water-bottle-750ml',
+    description:
+      '<p>Double-wall vacuum insulated. Keeps drinks cold 24h, hot 12h. BPA-free.</p>',
+    sku: 'DT-BTL-001',
+    price: 22.99,
+    memberPrice: 18.99,
+    costPrice: 7.5,
+    taxable: true,
+    taxRate: 20,
+    trackInventory: true,
+    stockCount: 0,
+    lowStockThreshold: 5,
+    allowBackorders: false,
+    availableOnline: true,
+    availablePOS: true,
+    isActive: true,
+    isFeatured: false,
+    imageUrl: 'https://images.unsplash.com/photo-1621939514649-280e2ee25f60?w=400&q=80',
+    galleryUrls: [],
+    createdAt: new Date(Date.now() - 86400000 * 25).toISOString(),
+    updatedAt: new Date(Date.now() - 86400000 * 5).toISOString(),
+  },
+  {
+    id: 'prod-shop-7',
+    tenantId: 'tenant-1',
+    categoryId: 'pcat-accessories',
+    name: 'Resistance Band Set (5 levels)',
+    slug: 'resistance-band-set-5-levels',
+    description:
+      '<p>Set of 5 resistance bands from light to extra-heavy. Ideal for home and gym workouts.</p>',
+    sku: 'DT-ACC-001',
+    price: 16.99,
+    costPrice: 4.5,
+    taxable: true,
+    taxRate: 20,
+    trackInventory: true,
+    stockCount: 35,
+    lowStockThreshold: 10,
+    allowBackorders: false,
+    availableOnline: true,
+    availablePOS: true,
+    isActive: true,
+    isFeatured: true,
+    imageUrl: 'https://images.unsplash.com/photo-1621939514649-280e2ee25f60?w=400&q=80',
+    galleryUrls: [],
+    createdAt: new Date(Date.now() - 86400000 * 20).toISOString(),
+    updatedAt: new Date(Date.now() - 86400000 * 4).toISOString(),
+  },
+  {
+    id: 'prod-shop-8',
+    tenantId: 'tenant-1',
+    categoryId: 'pcat-accessories',
+    name: 'Foam Roller — High Density',
+    slug: 'foam-roller-high-density',
+    description:
+      '<p>High-density EVA foam roller for deep-tissue massage and recovery.</p>',
+    sku: 'DT-ACC-002',
+    price: 27.99,
+    memberPrice: 22.99,
+    compareAtPrice: 32.99,
+    costPrice: 9.0,
+    taxable: true,
+    taxRate: 20,
+    trackInventory: true,
+    stockCount: 14,
+    lowStockThreshold: 5,
+    allowBackorders: false,
+    availableOnline: false,
+    availablePOS: true,
+    isActive: true,
+    isFeatured: false,
+    imageUrl: 'https://images.unsplash.com/photo-1621939514649-280e2ee25f60?w=400&q=80',
+    galleryUrls: [],
+    createdAt: new Date(Date.now() - 86400000 * 15).toISOString(),
+    updatedAt: new Date(Date.now() - 86400000 * 3).toISOString(),
+  },
+]
+
+export const shopStockMovements: StockMovement[] = [
+  {
+    id: 'sm-shop-1',
+    tenantId: 'tenant-1',
+    productId: 'prod-shop-1',
+    movementType: 'PURCHASE',
+    quantity: 50,
+    previousStock: 0,
+    newStock: 50,
+    balanceAfter: 50,
+    notes: 'Initial stock delivery',
+    referenceId: null,
+    createdAt: new Date(Date.now() - 86400000 * 60).toISOString(),
+    createdBy: 'Sarah (Admin)',
+  },
+  {
+    id: 'sm-shop-2',
+    tenantId: 'tenant-1',
+    productId: 'prod-shop-1',
+    movementType: 'SALE',
+    quantity: -5,
+    previousStock: 50,
+    newStock: 45,
+    balanceAfter: 45,
+    referenceId: 'order-shop-1',
+    createdAt: new Date(Date.now() - 86400000 * 3).toISOString(),
+    createdBy: 'System',
+  },
+  {
+    id: 'sm-shop-3',
+    tenantId: 'tenant-1',
+    productId: 'prod-shop-3',
+    movementType: 'PURCHASE',
+    quantity: 10,
+    previousStock: 0,
+    newStock: 10,
+    balanceAfter: 10,
+    notes: 'Restock from supplier',
+    referenceId: null,
+    createdAt: new Date(Date.now() - 86400000 * 45).toISOString(),
+    createdBy: 'Sarah (Admin)',
+  },
+  {
+    id: 'sm-shop-4',
+    tenantId: 'tenant-1',
+    productId: 'prod-shop-3',
+    movementType: 'SALE',
+    quantity: -7,
+    previousStock: 10,
+    newStock: 3,
+    balanceAfter: 3,
+    referenceId: 'order-shop-2',
+    createdAt: new Date(Date.now() - 86400000 * 5).toISOString(),
+    createdBy: 'System',
+  },
+  {
+    id: 'sm-shop-5',
+    tenantId: 'tenant-1',
+    productId: 'prod-shop-6',
+    movementType: 'DAMAGE',
+    quantity: -2,
+    previousStock: 2,
+    newStock: 0,
+    balanceAfter: 0,
+    notes: 'Damaged in delivery',
+    referenceId: null,
+    createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
+    createdBy: 'James (Coach)',
+  },
+]
+
+export const shopCoupons: Coupon[] = [
+  {
+    id: 'coupon-shop-1',
+    tenantId: 'tenant-1',
+    code: 'MEMBER10',
+    name: 'Member Discount',
+    description: '10% off for members',
+    type: 'PERCENTAGE',
+    value: 10,
+    usageLimit: undefined,
+    maxRedemptions: null,
+    perContactLimit: null,
+    usageCount: 34,
+    redemptionCount: 34,
+    restrictToTagId: 'tag-member',
+    requiresSubscription: true,
+    applicableTo: ['SHOP'],
+    isActive: true,
+    validFrom: new Date(Date.now() - 86400000 * 90).toISOString(),
+    validUntil: new Date(Date.now() + 86400000 * 90).toISOString(),
+  },
+  {
+    id: 'coupon-shop-2',
+    tenantId: 'tenant-1',
+    code: 'WELCOME5',
+    name: 'Welcome £5',
+    description: '£5 off your first purchase',
+    type: 'FIXED_AMOUNT',
+    value: 5,
+    usageLimit: 100,
+    maxRedemptions: 100,
+    perContactLimit: 1,
+    usageCount: 23,
+    redemptionCount: 23,
+    requiresSubscription: false,
+    applicableTo: ['SHOP'],
+    isActive: true,
+    validFrom: new Date(Date.now() - 86400000 * 30).toISOString(),
+    validUntil: new Date(Date.now() + 86400000 * 60).toISOString(),
+  },
+  {
+    id: 'coupon-shop-3',
+    tenantId: 'tenant-1',
+    code: 'SUMMER20',
+    name: 'Summer Sale',
+    description: '20% off shop items',
+    type: 'PERCENTAGE',
+    value: 20,
+    usageLimit: undefined,
+    maxRedemptions: null,
+    perContactLimit: null,
+    usageCount: 8,
+    redemptionCount: 8,
+    requiresSubscription: false,
+    applicableTo: ['SHOP'],
+    isActive: true,
+    validFrom: new Date(Date.now() - 86400000 * 5).toISOString(),
+    validUntil: new Date(Date.now() + 86400000 * 25).toISOString(),
+  },
+]
+
+export const shopOrders: Order[] = [
+  {
+    id: 'order-shop-1',
+    tenantId: 'tenant-1',
+    orderNumber: 'ORD-2026-0001',
+    contactId: 'contact-1',
+    contactName: 'Emma Thompson',
+    contactEmail: 'emma@example.com',
+    channel: 'ONLINE',
+    items: [
+      {
+        id: 'order-shop-1-item-1',
+        orderId: 'order-shop-1',
+        productId: 'prod-shop-1',
+        productName: 'Discovery Town Training Tee',
+        sku: 'DT-TEE-001',
+        quantity: 2,
+        unitPrice: 19.99,
+        totalPrice: 39.98,
+        total: 39.98,
+        imageUrl: '/images/products/tee.jpg',
+      },
+    ],
+    couponCode: 'MEMBER10',
+    couponDiscount: 4.0,
+    subtotal: 39.98,
+    discount: 4.0,
+    tax: 7.2,
+    total: 43.18,
+    status: 'DELIVERED',
+    paymentStatus: 'PAID',
+    paymentGateway: 'STRIPE',
+    paymentMethod: 'CARD',
+    paymentReference: 'pi_mock_001',
+    refundAmount: null,
+    refundReason: null,
+    fulfilledAt: new Date(Date.now() - 86400000 * 2).toISOString(),
+    createdAt: new Date(Date.now() - 86400000 * 3).toISOString(),
+    updatedAt: new Date(Date.now() - 86400000 * 2).toISOString(),
+  },
+  {
+    id: 'order-shop-2',
+    tenantId: 'tenant-1',
+    orderNumber: 'ORD-2026-0002',
+    contactId: 'contact-3',
+    contactName: 'Aisha Patel',
+    contactEmail: 'aisha@techcorp.com',
+    channel: 'POS',
+    items: [
+      {
+        id: 'order-shop-2-item-1',
+        orderId: 'order-shop-2',
+        productId: 'prod-shop-5',
+        productName: 'Whey Protein — Chocolate (1kg)',
+        sku: 'DT-PRO-001',
+        quantity: 1,
+        unitPrice: 32.99,
+        totalPrice: 32.99,
+        total: 32.99,
+        imageUrl: '/images/products/protein.jpg',
+      },
+      {
+        id: 'order-shop-2-item-2',
+        orderId: 'order-shop-2',
+        productId: 'prod-shop-7',
+        productName: 'Resistance Band Set (5 levels)',
+        sku: 'DT-ACC-001',
+        quantity: 1,
+        unitPrice: 16.99,
+        totalPrice: 16.99,
+        total: 16.99,
+        imageUrl: '/images/products/bands.jpg',
+      },
+    ],
+    couponCode: null,
+    couponDiscount: 0,
+    subtotal: 49.98,
+    discount: 0,
+    tax: 3.4,
+    total: 53.38,
+    status: 'PROCESSING',
+    paymentStatus: 'PAID',
+    paymentGateway: 'CASH',
+    paymentMethod: 'CASH',
+    paymentReference: null,
+    notes: 'Cash tendered: £60. Change: £6.62.',
+    refundAmount: null,
+    refundReason: null,
+    fulfilledAt: null,
+    createdAt: new Date(Date.now() - 86400000 * 1).toISOString(),
+    updatedAt: new Date(Date.now() - 86400000 * 1).toISOString(),
+  },
+]
+
+export function validateCouponCode(
+  code: string,
+  subtotal: number,
+  contactId?: string,
+): CouponValidation {
+  const normalized = code.trim().toUpperCase()
+  if (normalized.length === 0) {
+    return {
+      valid: false,
+      discountAmount: 0,
+      message: 'Enter a code to apply a discount',
+      coupon: null,
+    }
+  }
+
+  const allCoupons = [...coupons, ...shopCoupons]
+  const coupon = allCoupons.find(
+    (c) => c.code.toUpperCase() === normalized && c.isActive,
+  )
+
+  if (!coupon) {
+    return { valid: false, discountAmount: 0, message: 'Invalid or expired code', coupon: null }
+  }
+
+  const now = new Date()
+  if (new Date(coupon.validFrom) > now) {
+    return { valid: false, discountAmount: 0, message: 'This code is not yet active', coupon }
+  }
+  if (coupon.validUntil && new Date(coupon.validUntil) < now) {
+    return { valid: false, discountAmount: 0, message: 'This code has expired', coupon }
+  }
+
+  const limit = coupon.maxRedemptions ?? coupon.usageLimit
+  const used = coupon.redemptionCount ?? coupon.usageCount
+  if (limit != null && used >= limit) {
+    return { valid: false, discountAmount: 0, message: 'This code has reached its usage limit', coupon }
+  }
+
+  if (coupon.perContactLimit != null && contactId) {
+    const contactUses = 0
+    if (contactUses >= coupon.perContactLimit) {
+      return {
+        valid: false,
+        discountAmount: 0,
+        message: 'This code has reached your personal usage limit',
+        coupon,
+      }
+    }
+  }
+
+  let discountAmount = 0
+  if (coupon.type === 'PERCENTAGE') {
+    discountAmount = Math.round(((subtotal * coupon.value) / 100) * 100) / 100
+  } else {
+    discountAmount = Math.min(coupon.value, subtotal)
+  }
+
+  return {
+    valid: true,
+    discountAmount,
+    message:
+      coupon.type === 'PERCENTAGE'
+        ? `${coupon.value}% off applied (–£${discountAmount.toFixed(2)})`
+        : `–£${discountAmount.toFixed(2)} off applied`,
+    coupon,
+  }
+}
+
+// ============================================
+// REPORTS & ANALYTICS (MOCK)
+// ============================================
+
+/** Generates daily revenue data for the last N days. */
+export function generateDailyRevenue(daysBack: number): DailyRevenue[] {
+  const result: DailyRevenue[] = []
+  for (let i = daysBack; i >= 0; i -= 1) {
+    const date = new Date()
+    date.setDate(date.getDate() - i)
+    const dateStr = date.toISOString().split('T')[0] ?? ''
+
+    const dow = date.getDay()
+    const isWeekend = dow === 0 || dow === 6
+    const base = isWeekend ? 420 : 280
+    const variation = (Math.sin(i * 0.7) + Math.cos(i * 1.3)) * 60
+    const gross = Math.max(0, Math.round((base + variation) * 100) / 100)
+    const refunds = i % 7 === 3 ? Math.round(gross * 0.05 * 100) / 100 : 0
+
+    result.push({
+      date: dateStr,
+      gross,
+      refunds,
+      net: Math.round((gross - refunds) * 100) / 100,
+    })
+  }
+  return result
+}
+
+export function generateMonthlyRevenue(monthsBack: number): MonthlyRevenue[] {
+  const result: MonthlyRevenue[] = []
+  for (let i = monthsBack; i >= 0; i -= 1) {
+    const d = new Date()
+    d.setMonth(d.getMonth() - i)
+    const monthStr = d.toISOString().slice(0, 7)
+    const base = 7500 + Math.sin(i * 0.8) * 1500
+    const gross = Math.round(base * 100) / 100
+    const refunds = Math.round(gross * 0.03 * 100) / 100
+    result.push({ month: monthStr, gross, refunds, net: gross - refunds })
+  }
+  return result
+}
+
+export const kpiDashboardMock: KpiDashboard = {
+  netRevenue: 18420,
+  netRevenuePrev: 16250,
+  newContacts: 47,
+  newContactsPrev: 38,
+  activeMemberships: 88,
+  activeMembershipsPrev: 82,
+  sessionsCompleted: 312,
+  sessionsCompletedPrev: 295,
+  pendingPrivateHires: 2,
+}
+
+export const revenueSummaryMock: RevenueSummary = {
+  gross: 19240,
+  refunds: 820,
+  net: 18420,
+  avgTransactionValue: 28.5,
+  transactionCount: 646,
+  byCategory: [
+    { category: 'Bookings', total: 10800, percentage: 58.6 },
+    { category: 'Memberships', total: 4200, percentage: 22.8 },
+    { category: 'Class Packs', total: 1800, percentage: 9.8 },
+    { category: 'Retail', total: 1100, percentage: 6.0 },
+    { category: 'Add-ons', total: 340, percentage: 1.8 },
+    { category: 'Private Hire', total: 180, percentage: 1.0 },
+  ],
+  byGateway: [
+    { gateway: 'Card', total: 14200, count: 498 },
+    { gateway: 'Cash', total: 2900, count: 102 },
+    { gateway: 'Bank Transfer', total: 1320, count: 46 },
+  ],
+  daily: generateDailyRevenue(29),
+  topServices: [
+    {
+      serviceId: 'svc-1',
+      serviceName: 'Morning Power Yoga',
+      serviceType: SchedulingServiceTypeEnum.GYM_CLASS,
+      bookingCount: 98,
+      totalRevenue: 1470,
+      avgPerBooking: 15,
+    },
+    {
+      serviceId: 'svc-3',
+      serviceName: 'Kids Swim Lessons',
+      serviceType: SchedulingServiceTypeEnum.SWIM_CLASS,
+      bookingCount: 72,
+      totalRevenue: 1296,
+      avgPerBooking: 18,
+    },
+    {
+      serviceId: 'svc-6',
+      serviceName: '1-to-1 Tennis Coaching',
+      serviceType: SchedulingServiceTypeEnum.COACHING_SESSION,
+      bookingCount: 34,
+      totalRevenue: 1530,
+      avgPerBooking: 45,
+    },
+    {
+      serviceId: 'svc-5',
+      serviceName: 'Birthday Party Package',
+      serviceType: SchedulingServiceTypeEnum.PARTY_PACKAGE,
+      bookingCount: 8,
+      totalRevenue: 1200,
+      avgPerBooking: 150,
+    },
+    {
+      serviceId: 'svc-2',
+      serviceName: 'Badminton Court',
+      serviceType: SchedulingServiceTypeEnum.COURT_BOOKING,
+      bookingCount: 56,
+      totalRevenue: 672,
+      avgPerBooking: 12,
+    },
+  ],
+}
+
+export const reportClientInsightsMock: ReportClientInsights = {
+  newContacts: 47,
+  returningContacts: 183,
+  churnRate: 8.2,
+  avgLifetimeValue: 312,
+  ageGroups: [
+    { label: '0–5', count: 28 },
+    { label: '6–10', count: 52 },
+    { label: '11–16', count: 34 },
+    { label: '17+', count: 116 },
+  ],
+  bookingChannels: [
+    { channel: 'Online', count: 428, percentage: 66 },
+    { channel: 'Admin', count: 148, percentage: 23 },
+    { channel: 'Walk-in', count: 70, percentage: 11 },
+  ],
+  newVsReturningDaily: Array.from({ length: 30 }, (_, i) => {
+    const d = new Date()
+    d.setDate(d.getDate() - (29 - i))
+    return {
+      date: d.toISOString().split('T')[0] ?? '',
+      new: Math.round(1 + Math.abs(Math.sin(i * 0.4)) * 3),
+      returning: Math.round(4 + Math.abs(Math.cos(i * 0.6)) * 6),
+    }
+  }),
+}
+
+export const topContactsMock: TopContact[] = [
+  {
+    rank: 1,
+    contactId: 'contact-4',
+    contactName: 'Aisha Patel',
+    totalSpend: 890,
+    bookingCount: 28,
+    lastBookingDate: new Date(Date.now() - 86400000 * 2).toISOString(),
+  },
+  {
+    rank: 2,
+    contactId: 'contact-1',
+    contactName: 'Emma Thompson',
+    totalSpend: 385,
+    bookingCount: 14,
+    lastBookingDate: new Date(Date.now() - 86400000 * 1).toISOString(),
+  },
+  {
+    rank: 3,
+    contactId: 'contact-3',
+    contactName: 'David Chen',
+    totalSpend: 142,
+    bookingCount: 6,
+    lastBookingDate: new Date(Date.now() - 86400000 * 5).toISOString(),
+  },
+]
+
+export const cohortMatrixMock: CohortMatrix = {
+  maxMonths: 6,
+  rows: [
+    { cohortLabel: 'Nov 2025', cohortMonth: '2025-11', startCount: 32, retention: [100, 78, 62, 55, 48, 41] },
+    { cohortLabel: 'Dec 2025', cohortMonth: '2025-12', startCount: 28, retention: [100, 82, 68, 57, 50, null] },
+    { cohortLabel: 'Jan 2026', cohortMonth: '2026-01', startCount: 41, retention: [100, 75, 59, 47, null, null] },
+    { cohortLabel: 'Feb 2026', cohortMonth: '2026-02', startCount: 35, retention: [100, 80, 63, null, null, null] },
+    { cohortLabel: 'Mar 2026', cohortMonth: '2026-03', startCount: 29, retention: [100, 72, null, null, null, null] },
+    { cohortLabel: 'Apr 2026', cohortMonth: '2026-04', startCount: 47, retention: [100, null, null, null, null, null] },
+  ],
+}
+
+export const referralOverviewMock: ReferralOverview = {
+  totalReferrals: 84,
+  converted: 61,
+  conversionRate: 72.6,
+  totalRewardValue: 305,
+  bySources: [
+    { source: 'Friend/Family', referrals: 38, converted: 30, conversionRate: 78.9 },
+    { source: 'Instagram', referrals: 22, converted: 16, conversionRate: 72.7 },
+    { source: 'Google', referrals: 14, converted: 10, conversionRate: 71.4 },
+    { source: 'Walk-in', referrals: 7, converted: 4, conversionRate: 57.1 },
+    { source: 'Other', referrals: 3, converted: 1, conversionRate: 33.3 },
+  ],
+  timeline: Array.from({ length: 30 }, (_, i) => {
+    const d = new Date()
+    d.setDate(d.getDate() - (29 - i))
+    return {
+      date: d.toISOString().split('T')[0] ?? '',
+      referrals: Math.round(1 + Math.abs(Math.sin(i * 0.5)) * 4),
+      conversions: Math.round(0 + Math.abs(Math.cos(i * 0.7)) * 3),
+    }
+  }),
+  topReferrers: [
+    {
+      rank: 1,
+      contactId: 'contact-1',
+      contactName: 'Emma Thompson',
+      referralsSent: 8,
+      converted: 6,
+      revenueAttributed: 480,
+      rewardsIssued: 40,
+    },
+    {
+      rank: 2,
+      contactId: 'contact-4',
+      contactName: 'Aisha Patel',
+      referralsSent: 5,
+      converted: 4,
+      revenueAttributed: 320,
+      rewardsIssued: 25,
+    },
+    {
+      rank: 3,
+      contactId: 'contact-3',
+      contactName: 'David Chen',
+      referralsSent: 3,
+      converted: 2,
+      revenueAttributed: 160,
+      rewardsIssued: 10,
+    },
+  ],
+}
+
+export const payrollMock: PayrollEntry[] = [
+  {
+    staffId: 'staff-1',
+    staffName: 'Sarah Mitchell',
+    role: 'Coach',
+    regularHours: 80,
+    overtimeHours: 4,
+    regularPay: 1200,
+    overtimePay: 90,
+    totalPay: 1290,
+  },
+  {
+    staffId: 'staff-2',
+    staffName: 'James Okafor',
+    role: 'Swim Coach',
+    regularHours: 72,
+    overtimeHours: 0,
+    regularPay: 1080,
+    overtimePay: 0,
+    totalPay: 1080,
+  },
+  {
+    staffId: 'staff-3',
+    staffName: 'Priya Nair',
+    role: 'Tennis Coach',
+    regularHours: 48,
+    overtimeHours: 6,
+    regularPay: 840,
+    overtimePay: 157,
+    totalPay: 997,
+  },
+]
+
+export const instructorStatsMock: InstructorStats[] = [
+  {
+    staffId: 'staff-1',
+    staffName: 'Sarah Mitchell',
+    classesInstructed: 38,
+    avgAttendancePct: 82,
+    revenueGenerated: 5700,
+  },
+  {
+    staffId: 'staff-2',
+    staffName: 'James Okafor',
+    classesInstructed: 28,
+    avgAttendancePct: 91,
+    revenueGenerated: 4200,
+  },
+  {
+    staffId: 'staff-3',
+    staffName: 'Priya Nair',
+    classesInstructed: 17,
+    avgAttendancePct: 76,
+    revenueGenerated: 3825,
+  },
+]
+
+export const reportsInvoices: Invoice[] = [
+  {
+    id: 'inv-1',
+    invoiceNumber: 'INV-0001',
+    tenantId: 'tenant-1',
+    contactId: 'contact-4',
+    contactName: 'Aisha Patel',
+    contactEmail: 'aisha@techcorp.com',
+    lineItems: [
+      {
+        id: 'ili-1',
+        description: 'Monthly membership — Champion Plan',
+        quantity: 1,
+        unitPrice: 59.99,
+        totalPrice: 59.99,
+        total: 59.99,
+      },
+      {
+        id: 'ili-2',
+        description: 'Court booking × 4 sessions',
+        quantity: 4,
+        unitPrice: 12.0,
+        totalPrice: 48.0,
+        total: 48.0,
+      },
+    ],
+    subtotal: 107.99,
+    discount: 10.0,
+    tax: 19.6,
+    total: 117.59,
+    paidAmount: 117.59,
+    status: 'PAID',
+    dueDate: new Date(Date.now() - 86400000 * 5).toISOString(),
+    paidDate: new Date(Date.now() - 86400000 * 3).toISOString(),
+    sentAt: new Date(Date.now() - 86400000 * 14).toISOString(),
+    notes: 'Corporate account — Q1 invoice.',
+    createdAt: new Date(Date.now() - 86400000 * 15).toISOString(),
+    updatedAt: new Date(Date.now() - 86400000 * 3).toISOString(),
+  },
+  {
+    id: 'inv-2',
+    invoiceNumber: 'INV-0002',
+    tenantId: 'tenant-1',
+    contactId: 'contact-1',
+    contactName: 'Emma Thompson',
+    contactEmail: 'emma@example.com',
+    lineItems: [
+      {
+        id: 'ili-3',
+        description: 'Kids Swim Lessons × 8 sessions',
+        quantity: 8,
+        unitPrice: 18.0,
+        totalPrice: 144.0,
+        total: 144.0,
+      },
+    ],
+    subtotal: 144.0,
+    discount: 0,
+    tax: 0,
+    total: 144.0,
+    paidAmount: 0,
+    status: 'SENT',
+    dueDate: new Date(Date.now() + 86400000 * 7).toISOString(),
+    paidDate: null,
+    sentAt: new Date(Date.now() - 86400000 * 2).toISOString(),
+    createdAt: new Date(Date.now() - 86400000 * 3).toISOString(),
+    updatedAt: new Date(Date.now() - 86400000 * 2).toISOString(),
+  },
+  {
+    id: 'inv-3',
+    invoiceNumber: 'INV-0003',
+    tenantId: 'tenant-1',
+    contactId: 'contact-3',
+    contactName: 'David Chen',
+    contactEmail: 'david@example.com',
+    lineItems: [
+      {
+        id: 'ili-4',
+        description: 'Badminton Court hire × 6 sessions',
+        quantity: 6,
+        unitPrice: 12.0,
+        totalPrice: 72.0,
+        total: 72.0,
+      },
+    ],
+    subtotal: 72.0,
+    discount: 0,
+    tax: 14.4,
+    total: 86.4,
+    paidAmount: 0,
+    status: 'OVERDUE',
+    dueDate: new Date(Date.now() - 86400000 * 3).toISOString(),
+    paidDate: null,
+    sentAt: new Date(Date.now() - 86400000 * 19).toISOString(),
+    createdAt: new Date(Date.now() - 86400000 * 20).toISOString(),
+    updatedAt: new Date(Date.now() - 86400000 * 19).toISOString(),
+  },
+  {
+    id: 'inv-4',
+    invoiceNumber: 'INV-0004',
+    tenantId: 'tenant-1',
+    contactId: 'contact-4',
+    contactName: 'Aisha Patel',
+    contactEmail: 'aisha@techcorp.com',
+    lineItems: [
+      {
+        id: 'ili-5',
+        description: 'Private hire — corporate event',
+        quantity: 1,
+        unitPrice: 450.0,
+        totalPrice: 450.0,
+        total: 450.0,
+      },
+    ],
+    subtotal: 450.0,
+    discount: 50.0,
+    tax: 80.0,
+    total: 480.0,
+    paidAmount: 0,
+    status: 'DRAFT',
+    dueDate: new Date(Date.now() + 86400000 * 14).toISOString(),
+    paidDate: null,
+    sentAt: null,
+    notes: 'Awaiting final headcount confirmation.',
+    createdAt: new Date(Date.now() - 86400000 * 1).toISOString(),
+    updatedAt: new Date(Date.now() - 86400000 * 1).toISOString(),
+  },
+]
