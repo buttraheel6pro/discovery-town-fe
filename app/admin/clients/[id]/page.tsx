@@ -6,9 +6,12 @@ import { useParams } from 'next/navigation'
 import { useMemo, useState } from 'react'
 
 import { AddCreditModal } from '@/components/admin/add-credit-modal'
+import { BookingWizardAdminModal } from '@/components/admin/booking-wizard-admin-modal'
 import { ClientNotesList } from '@/components/admin/client-notes-list'
 import { CapacityRing } from '@/components/admin/capacity-ring'
 import { DocumentSubTypeBadge } from '@/components/admin/document-sub-type-badge'
+import { ShopAdminModal } from '@/components/admin/shop-admin-modal'
+import { SubscribeAdminModal } from '@/components/admin/subscribe-admin-modal'
 import { BookingHistoryCard } from '@/components/customer/booking-history-card'
 import { ContactAvatar } from '@/components/customer/contact-avatar'
 import { ContactTypeBadge } from '@/components/customer/contact-type-badge'
@@ -25,14 +28,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Separator } from '@/components/ui/separator'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useClients } from '@/lib/client-store'
 import { useScheduling } from '@/lib/scheduling-store'
@@ -69,6 +64,9 @@ export default function AdminClientDetailPage() {
   const contact = contacts.find((c) => c.id === id)
   const [creditOpen, setCreditOpen] = useState(false)
   const [signDoc, setSignDoc] = useState<ClientDocument | null>(null)
+  const [bookingAdminOpen, setBookingAdminOpen] = useState(false)
+  const [subscribeAdminOpen, setSubscribeAdminOpen] = useState(false)
+  const [shopAdminOpen, setShopAdminOpen] = useState(false)
 
   const clientBookings = useMemo(() => {
     if (!contact) return []
@@ -118,6 +116,15 @@ export default function AdminClientDetailPage() {
             Clients
           </Button>
         </Link>
+        <Button type="button" size="sm" onClick={() => setBookingAdminOpen(true)}>
+          Create Booking
+        </Button>
+        <Button type="button" size="sm" variant="secondary" onClick={() => setSubscribeAdminOpen(true)}>
+          Add Membership
+        </Button>
+        <Button type="button" size="sm" variant="outline" onClick={() => setShopAdminOpen(true)}>
+          Add Order
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(260px,320px)_1fr]">
@@ -357,6 +364,24 @@ export default function AdminClientDetailPage() {
           addCredit(contact.id, entry)
           setCreditOpen(false)
         }}
+      />
+
+      <BookingWizardAdminModal
+        open={bookingAdminOpen}
+        onOpenChange={setBookingAdminOpen}
+        contact={contact}
+      />
+
+      <SubscribeAdminModal
+        open={subscribeAdminOpen}
+        onOpenChange={setSubscribeAdminOpen}
+        contact={contact}
+      />
+
+      <ShopAdminModal
+        open={shopAdminOpen}
+        onOpenChange={setShopAdminOpen}
+        contact={contact}
       />
 
       <Dialog open={signDoc !== null} onOpenChange={() => setSignDoc(null)}>

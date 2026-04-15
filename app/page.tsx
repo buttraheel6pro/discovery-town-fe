@@ -23,31 +23,37 @@ import { ClassCard } from "@/components/customer/class-card";
 import { useScheduling } from "@/lib/scheduling-store";
 import type { SchedulingServiceType } from "@/lib/types";
 
-const facilityServiceTypes: SchedulingServiceType[] = [
-  "COURT_BOOKING",
-  "OPEN_PLAY",
-  "PRIVATE_HIRE",
-];
-
-const classServiceTypes: SchedulingServiceType[] = [
-  "GYM_CLASS",
-  "SWIM_CLASS",
-  "COACHING_SESSION",
-  "FITNESS_ASSESSMENT",
-];
-
 const eventServiceTypes: SchedulingServiceType[] = [
   "PARTY_PACKAGE",
   "WORKSHOP",
   "CAMP",
 ];
 
-const stats = [
-  { label: "Facilities", value: "12+" },
-  { label: "Classes / Week", value: "60+" },
-  { label: "Members", value: "3,500" },
-  { label: "Years Open", value: "10" },
+const LEGACY_SERVICE_ID_PREFIXES = [
+  "svc-play-",
+  "svc-swim-",
+  "svc-class-",
+  "svc-party-",
+  "svc-camp-adventure",
+  "svc-ph-",
 ];
+
+const LEGACY_SERVICE_IDS = new Set([
+  "svc-1",
+  "svc-2",
+  "svc-3",
+  "svc-4",
+  "svc-6",
+  "svc-preschool-1",
+]);
+
+function isCurrentServiceId(serviceId: string): boolean {
+  if (LEGACY_SERVICE_IDS.has(serviceId)) {
+    return false;
+  }
+
+  return !LEGACY_SERVICE_ID_PREFIXES.some((prefix) => serviceId.startsWith(prefix));
+}
 
 const features = [
   {
@@ -106,12 +112,45 @@ const testimonials = [
 export default function HomePage() {
   const { services, slots } = useScheduling();
 
+  const stats = useMemo(() => {
+    const facilitiesCount = services.filter(
+      (service) =>
+        service.isActive &&
+        isCurrentServiceId(service.id) &&
+        (service.categoryId === "cat-open-play" || service.categoryId === "cat-private-play"),
+    ).length;
+    const classesCount = services.filter(
+      (service) =>
+        service.isActive &&
+        isCurrentServiceId(service.id) &&
+        service.categoryId.startsWith("cat-gym-") &&
+        service.categoryId !== "cat-gym-eyeclick",
+    ).length;
+    const activeEventsCount = services.filter(
+      (service) => service.isActive && eventServiceTypes.includes(service.serviceType),
+    ).length;
+    const upcomingSlotsCount = slots.filter((slot) => {
+      const startAt = new Date(slot.startAt).getTime();
+      return slot.status !== "CANCELLED" && slot.status !== "COMPLETED" && startAt > Date.now();
+    }).length;
+
+    return [
+      { label: "Facilities", value: `${facilitiesCount}` },
+      { label: "Classes", value: `${classesCount}` },
+      { label: "Events", value: `${activeEventsCount}` },
+      { label: "Upcoming Slots", value: `${upcomingSlotsCount}` },
+    ];
+  }, [services, slots]);
+
   const featuredFacilities = useMemo(() => {
     return services
       .filter(
-        (s) => s.isActive && facilityServiceTypes.includes(s.serviceType),
+        (s) =>
+          s.isActive &&
+          isCurrentServiceId(s.id) &&
+          (s.categoryId === "cat-open-play" || s.categoryId === "cat-private-play"),
       )
-      .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
+      .sort((a, b) => a.name.localeCompare(b.name))
       .slice(0, 3);
   }, [services]);
 
@@ -134,8 +173,9 @@ export default function HomePage() {
       .filter(
         (s) =>
           s.isActive &&
-          s.bookingMode === "SCHEDULED" &&
-          classServiceTypes.includes(s.serviceType),
+          isCurrentServiceId(s.id) &&
+          s.categoryId.startsWith("cat-gym-") &&
+          s.categoryId !== "cat-gym-eyeclick",
       )
       .slice(0, 3);
   }, [services]);
@@ -152,6 +192,7 @@ export default function HomePage() {
     const catalog = services.filter(
       (s) =>
         s.isActive &&
+        isCurrentServiceId(s.id) &&
         s.bookingMode === "SCHEDULED" &&
         eventServiceTypes.includes(s.serviceType),
     );
@@ -368,7 +409,7 @@ export default function HomePage() {
                 </h2>
               </div>
               <Link
-                href="/classes"
+                href="/play"
                 className="hidden sm:flex items-center gap-1 text-sm font-semibold text-accent hover:underline"
               >
                 View all <ChevronRight className="w-4 h-4" />

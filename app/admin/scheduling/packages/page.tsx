@@ -23,10 +23,44 @@ import type { EventPackage } from '@/lib/types'
 
 type Tier = EventPackage['tier']
 
+const LEGACY_EVENT_SERVICE_ID_PREFIXES = [
+  'svc-play-',
+  'svc-swim-',
+  'svc-class-',
+  'svc-party-',
+  'svc-camp-adventure',
+  'svc-ph-',
+  'event-',
+]
+
+const LEGACY_EVENT_SERVICE_IDS = new Set([
+  'svc-1',
+  'svc-2',
+  'svc-3',
+  'svc-4',
+  'svc-6',
+  'svc-preschool-1',
+])
+
+function isCurrentServiceId(serviceId: string): boolean {
+  if (LEGACY_EVENT_SERVICE_IDS.has(serviceId)) {
+    return false
+  }
+
+  return !LEGACY_EVENT_SERVICE_ID_PREFIXES.some((prefix) => serviceId.startsWith(prefix))
+}
+
 function parseFloatOrNull(value: string): number | null {
   const trimmed = value.trim()
   if (!trimmed) return null
   const n = Number.parseFloat(trimmed)
+  return Number.isFinite(n) ? n : null
+}
+
+function parseIntOrNull(value: string): number | null {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const n = Number.parseInt(trimmed, 10)
   return Number.isFinite(n) ? n : null
 }
 
@@ -37,10 +71,19 @@ export default function AdminSchedulingPackagesPage() {
   const [q, setQ] = useState('')
   const [serviceId, setServiceId] = useState<string>('ALL')
 
+  const assignableServices = useMemo(() => {
+    return services.filter((service) => isCurrentServiceId(service.id))
+  }, [services])
+
   const filtered = useMemo(() => {
     const query = q.trim().toLowerCase()
     return packages.filter((p) => {
-      if (serviceId !== 'ALL' && p.serviceId !== serviceId) return false
+      const isAlignedPackage = p.serviceId === 'unassigned' || isCurrentServiceId(p.serviceId)
+      if (!isAlignedPackage) return false
+      if (serviceId !== 'ALL') {
+        if (serviceId === 'unassigned' && p.serviceId !== 'unassigned') return false
+        if (serviceId !== 'unassigned' && p.serviceId !== serviceId) return false
+      }
       if (!query) return true
       return (
         p.name.toLowerCase().includes(query) ||
@@ -58,9 +101,20 @@ export default function AdminSchedulingPackagesPage() {
   const [draftBasePrice, setDraftBasePrice] = useState('0')
   const [draftFeatures, setDraftFeatures] = useState('')
   const [draftIsActive, setDraftIsActive] = useState(true)
+  const [draftIsWholeVenue, setDraftIsWholeVenue] = useState(false)
+  const [draftDepositAmount, setDraftDepositAmount] = useState('')
+  const [draftDepositNonRefundable, setDraftDepositNonRefundable] = useState(false)
+  const [draftMinChildSeats, setDraftMinChildSeats] = useState('')
+  const [draftMaxChildSeats, setDraftMaxChildSeats] = useState('')
+  const [draftMinAdultSeats, setDraftMinAdultSeats] = useState('')
+  const [draftMaxAdultSeats, setDraftMaxAdultSeats] = useState('')
+  const [draftAdditionalChildPrice, setDraftAdditionalChildPrice] = useState('')
+  const [draftAdditionalAdultPrice, setDraftAdditionalAdultPrice] = useState('')
+  const [draftDuration, setDraftDuration] = useState('')
+  const [draftSetupTime, setDraftSetupTime] = useState('')
 
   function openCreate() {
-    const fallbackService = services[0]?.id ?? ''
+    const fallbackService = assignableServices[0]?.id ?? ''
     setEditingId(null)
     setDraftServiceId(fallbackService)
     setDraftTier('SILVER')
@@ -68,6 +122,17 @@ export default function AdminSchedulingPackagesPage() {
     setDraftBasePrice('0')
     setDraftFeatures('')
     setDraftIsActive(true)
+    setDraftIsWholeVenue(false)
+    setDraftDepositAmount('')
+    setDraftDepositNonRefundable(false)
+    setDraftMinChildSeats('')
+    setDraftMaxChildSeats('')
+    setDraftMinAdultSeats('')
+    setDraftMaxAdultSeats('')
+    setDraftAdditionalChildPrice('')
+    setDraftAdditionalAdultPrice('')
+    setDraftDuration('')
+    setDraftSetupTime('')
     setOpen(true)
   }
 
@@ -79,6 +144,21 @@ export default function AdminSchedulingPackagesPage() {
     setDraftBasePrice(String(pkg.basePrice))
     setDraftFeatures(pkg.features.join('\n'))
     setDraftIsActive(pkg.isActive)
+    setDraftIsWholeVenue(pkg.isWholeVenue ?? false)
+    setDraftDepositAmount(pkg.depositAmount != null ? String(pkg.depositAmount) : '')
+    setDraftDepositNonRefundable(pkg.depositNonRefundable ?? false)
+    setDraftMinChildSeats(pkg.minChildSeats != null ? String(pkg.minChildSeats) : '')
+    setDraftMaxChildSeats(pkg.maxChildSeats != null ? String(pkg.maxChildSeats) : '')
+    setDraftMinAdultSeats(pkg.minAdultSeats != null ? String(pkg.minAdultSeats) : '')
+    setDraftMaxAdultSeats(pkg.maxAdultSeats != null ? String(pkg.maxAdultSeats) : '')
+    setDraftAdditionalChildPrice(
+      pkg.additionalChildPrice != null ? String(pkg.additionalChildPrice) : '',
+    )
+    setDraftAdditionalAdultPrice(
+      pkg.additionalAdultPrice != null ? String(pkg.additionalAdultPrice) : '',
+    )
+    setDraftDuration(pkg.duration != null ? String(pkg.duration) : '')
+    setDraftSetupTime(pkg.setupTime != null ? String(pkg.setupTime) : '')
     setOpen(true)
   }
 
@@ -90,6 +170,15 @@ export default function AdminSchedulingPackagesPage() {
       .split('\n')
       .map((l) => l.trim())
       .filter(Boolean)
+    const depositAmount = parseFloatOrNull(draftDepositAmount)
+    const minChildSeats = parseIntOrNull(draftMinChildSeats)
+    const maxChildSeats = parseIntOrNull(draftMaxChildSeats)
+    const minAdultSeats = parseIntOrNull(draftMinAdultSeats)
+    const maxAdultSeats = parseIntOrNull(draftMaxAdultSeats)
+    const additionalChildPrice = parseFloatOrNull(draftAdditionalChildPrice)
+    const additionalAdultPrice = parseFloatOrNull(draftAdditionalAdultPrice)
+    const duration = parseIntOrNull(draftDuration)
+    const setupTime = parseIntOrNull(draftSetupTime)
 
     if (editingId) {
       updatePackage(editingId, {
@@ -99,6 +188,17 @@ export default function AdminSchedulingPackagesPage() {
         basePrice,
         features,
         isActive: draftIsActive,
+        isWholeVenue: draftIsWholeVenue,
+        depositAmount: draftIsWholeVenue ? (depositAmount ?? undefined) : undefined,
+        depositNonRefundable: draftIsWholeVenue ? draftDepositNonRefundable : undefined,
+        minChildSeats: minChildSeats ?? undefined,
+        maxChildSeats: maxChildSeats ?? undefined,
+        minAdultSeats: minAdultSeats ?? undefined,
+        maxAdultSeats: maxAdultSeats ?? undefined,
+        additionalChildPrice: additionalChildPrice ?? undefined,
+        additionalAdultPrice: additionalAdultPrice ?? undefined,
+        duration: duration ?? undefined,
+        setupTime: setupTime ?? undefined,
       })
       setOpen(false)
       return
@@ -114,6 +214,17 @@ export default function AdminSchedulingPackagesPage() {
       addOns: [],
       isActive: draftIsActive,
       createdAt: new Date().toISOString(),
+      isWholeVenue: draftIsWholeVenue,
+      depositAmount: draftIsWholeVenue ? (depositAmount ?? undefined) : undefined,
+      depositNonRefundable: draftIsWholeVenue ? draftDepositNonRefundable : undefined,
+      minChildSeats: minChildSeats ?? undefined,
+      maxChildSeats: maxChildSeats ?? undefined,
+      minAdultSeats: minAdultSeats ?? undefined,
+      maxAdultSeats: maxAdultSeats ?? undefined,
+      additionalChildPrice: additionalChildPrice ?? undefined,
+      additionalAdultPrice: additionalAdultPrice ?? undefined,
+      duration: duration ?? undefined,
+      setupTime: setupTime ?? undefined,
     }
     addPackage(created)
     setOpen(false)
@@ -150,7 +261,8 @@ export default function AdminSchedulingPackagesPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">All services</SelectItem>
-              {services.map((s) => (
+              <SelectItem value="unassigned">Unassigned</SelectItem>
+              {assignableServices.map((s) => (
                 <SelectItem key={s.id} value={s.id}>
                   {s.name}
                 </SelectItem>
@@ -169,7 +281,12 @@ export default function AdminSchedulingPackagesPage() {
             <p className="text-sm text-muted-foreground">No packages match your filters.</p>
           ) : (
             filtered.map((p) => {
-              const svc = services.find((s) => s.id === p.serviceId) ?? null
+              const svc =
+                p.serviceId === 'unassigned'
+                  ? null
+                  : (assignableServices.find((s) => s.id === p.serviceId) ?? null)
+              const serviceLabel =
+                p.serviceId === 'unassigned' ? 'Unassigned' : (svc?.name ?? p.serviceId)
               return (
                 <div
                   key={p.id}
@@ -180,7 +297,7 @@ export default function AdminSchedulingPackagesPage() {
                       {p.tier} · {p.name}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {svc?.name ?? p.serviceId} · {formatPrice(p.basePrice)} ·{' '}
+                      {serviceLabel} · {formatPrice(p.basePrice)} ·{' '}
                       {p.isActive ? 'Active' : 'Inactive'}
                     </p>
                   </div>
@@ -234,7 +351,8 @@ export default function AdminSchedulingPackagesPage() {
                 <SelectValue placeholder="Select a service" />
               </SelectTrigger>
               <SelectContent>
-                {services.map((s) => (
+                <SelectItem value="unassigned">Unassigned</SelectItem>
+                {assignableServices.map((s) => (
                   <SelectItem key={s.id} value={s.id}>
                     {s.name}
                   </SelectItem>
@@ -287,6 +405,137 @@ export default function AdminSchedulingPackagesPage() {
               placeholder={'Private space\nDecorations\nDedicated host'}
             />
           </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="pkg-duration">Duration (minutes)</Label>
+              <Input
+                id="pkg-duration"
+                type="number"
+                min={0}
+                step={1}
+                value={draftDuration}
+                onChange={(e) => setDraftDuration(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pkg-setup">Setup time (minutes)</Label>
+              <Input
+                id="pkg-setup"
+                type="number"
+                min={0}
+                step={1}
+                value={draftSetupTime}
+                onChange={(e) => setDraftSetupTime(e.target.value)}
+              />
+            </div>
+          </div>
+          <fieldset className="space-y-3 rounded-lg border border-border p-3">
+            <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Guest capacity
+            </legend>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="pkg-min-child">Min child seats</Label>
+                <Input
+                  id="pkg-min-child"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={draftMinChildSeats}
+                  onChange={(e) => setDraftMinChildSeats(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="pkg-max-child">Max child seats</Label>
+                <Input
+                  id="pkg-max-child"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={draftMaxChildSeats}
+                  onChange={(e) => setDraftMaxChildSeats(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="pkg-min-adult">Min adult seats</Label>
+                <Input
+                  id="pkg-min-adult"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={draftMinAdultSeats}
+                  onChange={(e) => setDraftMinAdultSeats(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="pkg-max-adult">Max adult seats</Label>
+                <Input
+                  id="pkg-max-adult"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={draftMaxAdultSeats}
+                  onChange={(e) => setDraftMaxAdultSeats(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="pkg-extra-child">Additional child price</Label>
+                <Input
+                  id="pkg-extra-child"
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={draftAdditionalChildPrice}
+                  onChange={(e) => setDraftAdditionalChildPrice(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="pkg-extra-adult">Additional adult price</Label>
+                <Input
+                  id="pkg-extra-adult"
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={draftAdditionalAdultPrice}
+                  onChange={(e) => setDraftAdditionalAdultPrice(e.target.value)}
+                />
+              </div>
+            </div>
+          </fieldset>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="pkg-whole-venue">Whole venue package</Label>
+            <Switch
+              id="pkg-whole-venue"
+              checked={draftIsWholeVenue}
+              onCheckedChange={setDraftIsWholeVenue}
+            />
+          </div>
+          {draftIsWholeVenue ? (
+            <fieldset className="space-y-3 rounded-lg border border-border p-3">
+              <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Deposit settings
+              </legend>
+              <div className="space-y-2">
+                <Label htmlFor="pkg-deposit">Deposit amount</Label>
+                <Input
+                  id="pkg-deposit"
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={draftDepositAmount}
+                  onChange={(e) => setDraftDepositAmount(e.target.value)}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="pkg-deposit-non-refundable">Non-refundable deposit</Label>
+                <Switch
+                  id="pkg-deposit-non-refundable"
+                  checked={draftDepositNonRefundable}
+                  onCheckedChange={setDraftDepositNonRefundable}
+                />
+              </div>
+            </fieldset>
+          ) : null}
           <div className="flex items-center justify-between">
             <Label htmlFor="pkg-active">Active</Label>
             <Switch id="pkg-active" checked={draftIsActive} onCheckedChange={setDraftIsActive} />

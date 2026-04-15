@@ -18,6 +18,7 @@ import {
   CreditCard,
   Building2,
   Wallet,
+  Tag,
 } from "lucide-react";
 import { CustomerNavbar } from "@/components/customer/navbar";
 import { CustomerFooter } from "@/components/customer/footer";
@@ -308,7 +309,7 @@ export default function AccountPage() {
                 </Card>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
                 {[
                   {
                     href: "/account/profile",
@@ -333,6 +334,12 @@ export default function AccountPage() {
                     title: "Membership & Credits",
                     description: "Manage memberships and class packs.",
                     icon: CreditCard,
+                  },
+                  {
+                    href: "/account/coupons",
+                    title: "Coupons & offers",
+                    description: "See plan-linked codes and where to use promos.",
+                    icon: Tag,
                   },
                   {
                     href: "/account/private-hire",

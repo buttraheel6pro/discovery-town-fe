@@ -1,10 +1,11 @@
 /** Booking widget — scheduled and open scheduling checkout (uses shared booking form hook). */
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 
 import { AvailabilityBadge } from '@/components/customer/availability-badge'
+import { CouponPanel } from '@/components/customer/coupon-panel'
 import { ServiceTypeBadge } from '@/components/customer/service-type-badge'
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
@@ -68,6 +69,16 @@ export function BookingWidget({
           (s.status === 'ACTIVE' || s.status === 'TRIALING'),
       ),
   )
+  const hasSubscriptionForCoupons = Boolean(
+    primaryContact &&
+      subscriptions.some(
+        (s) =>
+          s.contactId === primaryContact.id &&
+          (s.status === 'ACTIVE' ||
+            s.status === 'TRIALING' ||
+            s.status === 'PAUSED'),
+      ),
+  )
   const membersOnlyBlocked = service.category.membersOnly === true && !hasActiveMembership
 
   const [step, setStep] = useState<Step>(isScheduled ? 'details' : 'date')
@@ -94,6 +105,12 @@ export function BookingWidget({
     selectedDurationMinutes:
       durationOptions.length > 0 ? selectedDuration : undefined,
   })
+
+  useEffect(() => {
+    if (step !== 'confirm') {
+      bookingForm.setCoupon(null, 0)
+    }
+  }, [bookingForm.setCoupon, step])
 
   const requiredWaiverDocs = useMemo(() => {
     if (!service.requiresWaiver) return []
@@ -227,6 +244,55 @@ export function BookingWidget({
     )
   }
 
+  function categoryAddonSection() {
+    if (
+      bookingForm.categoryIncludedAddOns.length === 0 &&
+      bookingForm.categoryOptionalAddOns.length === 0
+    ) {
+      return null
+    }
+
+    return (
+      <div className="space-y-3 rounded-lg border border-border p-3">
+        <Label>Add-ons</Label>
+        {bookingForm.categoryIncludedAddOns.length > 0 ? (
+          <div className="space-y-1.5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Included
+            </p>
+            {bookingForm.categoryIncludedAddOns.map((addOn) => (
+              <div key={addOn.id} className="flex items-center justify-between text-sm">
+                <span>{addOn.name}</span>
+                <span className="font-semibold text-emerald-700">Included</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {bookingForm.categoryOptionalAddOns.length > 0 ? (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Optional
+            </p>
+            {bookingForm.categoryOptionalAddOns.map((addOn) => (
+              <label key={addOn.id} className="flex items-center justify-between gap-3 text-sm">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    checked={bookingForm.selectedCategoryAddOnIds.includes(addOn.id)}
+                    onCheckedChange={(checked) =>
+                      bookingForm.setCategoryAddOnSelected(addOn.id, Boolean(checked))
+                    }
+                  />
+                  <span>{addOn.name}</span>
+                </div>
+                <span className="text-muted-foreground">{formatPrice(addOn.price)}</span>
+              </label>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    )
+  }
+
   function guestSection() {
     return (
       <div className="space-y-2">
@@ -313,6 +379,7 @@ export function BookingWidget({
           {step === 'details' && (
             <>
               {guestSection()}
+              {categoryAddonSection()}
               {addonSection()}
               {bookingForm.needsParticipant ? (
                 <div className="space-y-2">
@@ -553,6 +620,7 @@ export function BookingWidget({
               </div>
 
               {guestSection()}
+              {categoryAddonSection()}
               {addonSection()}
 
               {bookingForm.needsParticipant ? (
@@ -625,7 +693,29 @@ export function BookingWidget({
 
               <Separator />
 
+              <CouponPanel
+                context="BOOKING"
+                subtotal={bookingForm.totalBeforeCoupon}
+                onCouponApplied={bookingForm.setCoupon}
+                hasActiveSubscription={hasSubscriptionForCoupons}
+                contactId={primaryContact?.id}
+              />
+
+              <Separator />
+
               <div className="space-y-1.5 text-sm">
+                {bookingForm.checkoutCouponDiscount > 0 ? (
+                  <>
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>Before promo</span>
+                      <span>{formatPrice(bookingForm.totalBeforeCoupon)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs font-semibold text-green-700">
+                      <span>Promo</span>
+                      <span>-{formatPrice(bookingForm.checkoutCouponDiscount)}</span>
+                    </div>
+                  </>
+                ) : null}
                 <div className="flex justify-between text-muted-foreground">
                   <span>Total</span>
                   <span className="font-bold text-foreground">

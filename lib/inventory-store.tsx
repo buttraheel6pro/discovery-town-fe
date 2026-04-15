@@ -4,6 +4,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
 
 import {
+  addOns as seedAddOns,
   coupons as baseCoupons,
   orders as baseOrders,
   productCategories as baseProductCategories,
@@ -15,13 +16,15 @@ import {
   shopStockMovements,
   validateCouponCode,
 } from '@/lib/mock-data'
+import { plainTextFromHtml } from '@/lib/utils'
 import type {
+  AddOn,
   CartItem,
   CartState,
   Coupon,
-  CouponType,
   Order,
   Product,
+  ProductCategory,
   SavedPaymentMethod,
   StockMovement,
 } from '@/lib/types'
@@ -88,9 +91,27 @@ function loadPaymentMethodsFromStorage(): SavedPaymentMethod[] {
 
 type StockMovementType = StockMovement['movementType']
 
+export type DeleteProductCategoryResult =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly message: string }
+
+export type PromoteProductToAddOnResult =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly message: string }
+
+function slugifyCategoryName(input: string): string {
+  return input
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
+}
+
 interface InventoryStore {
   products: Product[]
-  productCategories: typeof baseProductCategories
+  productCategories: ProductCategory[]
+  /** Mutable booking add-on catalog (inventory CRUD + product promotion). */
+  bookingAddOns: AddOn[]
   stockMovements: StockMovement[]
   orders: Order[]
   coupons: Coupon[]
@@ -104,6 +125,18 @@ interface InventoryStore {
   addProduct: (p: Product) => void
   updateProduct: (id: string, updates: Partial<Product>) => void
   deleteProduct: (id: string) => void
+
+  addProductCategory: (input: {
+    name: string
+    productType?: string
+    parentId?: string | null
+    description?: string
+  }) => ProductCategory
+  updateProductCategory: (id: string, patch: Partial<ProductCategory>) => void
+  deleteProductCategory: (id: string) => DeleteProductCategoryResult
+  reorderProductCategory: (id: string, direction: 'up' | 'down') => void
+  /** Link product to booking add-on catalog (idempotent; upserts catalog row). */
+  promoteProductToAddOn: (productId: string, productSnapshot?: Product) => PromoteProductToAddOnResult
 
   adjustStock: (
     productId: string,
@@ -128,9 +161,20 @@ interface InventoryStore {
     product: Product
     quantity?: number
   }) => void
+  addCustomCartItem: (input: {
+    type: CartItem['type']
+    name: string
+    description?: string
+    price: number
+    quantity?: number
+    imageUrl?: string
+    metadata?: Record<string, unknown>
+  }) => void
   removeFromCart: (cartItemId: string) => void
   updateCartQuantity: (cartItemId: string, quantity: number) => void
   applyCoupon: (code: string) => void
+  /** Apply a code + discount already validated (e.g. shared CouponPanel). */
+  setCouponDirect: (code: string, discount: number) => void
   removeCoupon: () => void
   clearCart: () => void
   attachCustomer: (contactId: string, contactName: string) => void
@@ -161,10 +205,13 @@ export function InventoryProvider({
     ...baseProducts.map((p) => withFallbackImageUrl(p)),
     ...shopProducts.map((p) => withFallbackImageUrl(p)),
   ])
-  const [productCategories] = useState(() => [
+  const [productCategories, setProductCategories] = useState<ProductCategory[]>(() => [
     ...baseProductCategories.map((c) => ({ ...c })),
     ...shopProductCategories.map((c) => ({ ...c })),
   ])
+  const [bookingAddOns, setBookingAddOns] = useState<AddOn[]>(() =>
+    seedAddOns.map((a) => ({ ...a, applicableServiceTypes: [...a.applicableServiceTypes] })),
+  )
   const [stockMovements, setStockMovements] = useState<StockMovement[]>(() =>
     shopStockMovements.map((m) => ({ ...m })),
   )
@@ -176,24 +223,32 @@ export function InventoryProvider({
     ...baseCoupons.map((c) => ({ ...c })),
     ...shopCoupons.map((c) => ({ ...c })),
   ])
-  const [cart, setCart] = useState<CartState>(() => loadCartFromStorage(SHOP_CART_STORAGE_KEY))
-  const [posCart, setPosCart] = useState<CartState>(() => loadCartFromStorage(POS_CART_STORAGE_KEY))
-  const [paymentMethods, setPaymentMethods] = useState<SavedPaymentMethod[]>(loadPaymentMethodsFromStorage)
+  const [cart, setCart] = useState<CartState>(emptyCart)
+  const [posCart, setPosCart] = useState<CartState>(emptyCart)
+  const [paymentMethods, setPaymentMethods] = useState<SavedPaymentMethod[]>([])
+  const [storageReady, setStorageReady] = useState(false)
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
+    setCart(loadCartFromStorage(SHOP_CART_STORAGE_KEY))
+    setPosCart(loadCartFromStorage(POS_CART_STORAGE_KEY))
+    setPaymentMethods(loadPaymentMethodsFromStorage())
+    setStorageReady(true)
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !storageReady) return
     window.localStorage.setItem(SHOP_CART_STORAGE_KEY, JSON.stringify(cart))
-  }, [cart])
+  }, [cart, storageReady])
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
+    if (typeof window === 'undefined' || !storageReady) return
     window.localStorage.setItem(POS_CART_STORAGE_KEY, JSON.stringify(posCart))
-  }, [posCart])
+  }, [posCart, storageReady])
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
+    if (typeof window === 'undefined' || !storageReady) return
     window.localStorage.setItem(PAYMENT_METHODS_STORAGE_KEY, JSON.stringify(paymentMethods))
-  }, [paymentMethods])
+  }, [paymentMethods, storageReady])
 
   const value = useMemo<InventoryStore>(() => {
     function addProduct(p: Product) {
@@ -209,6 +264,140 @@ export function InventoryProvider({
 
     function deleteProduct(id: string) {
       setProducts((prev) => prev.filter((p) => p.id !== id))
+    }
+
+    function addProductCategory(input: {
+      name: string
+      productType?: string
+      parentId?: string | null
+      description?: string
+    }): ProductCategory {
+      const id = `pcat-${Date.now()}`
+      const slugBase = slugifyCategoryName(input.name)
+      const slug = slugBase.length > 0 ? slugBase : id
+      let created!: ProductCategory
+      setProductCategories((prev) => {
+        const parentKey = input.parentId ?? null
+        const parentProductType =
+          parentKey != null
+            ? prev.find((c) => c.id === parentKey)?.productType
+            : null
+        const nextProductType =
+          input.productType?.trim().toLowerCase() ||
+          parentProductType ||
+          'shop'
+        const siblings = prev.filter((c) => (c.parentId ?? null) === parentKey)
+        const maxOrder = siblings.reduce((m, c) => Math.max(m, c.displayOrder), 0)
+        created = {
+          id,
+          tenantId: 'tenant-1',
+          name: input.name.trim(),
+          slug,
+          description: input.description?.trim() || undefined,
+          displayOrder: maxOrder + 1,
+          productType: nextProductType,
+          parentId: parentKey,
+        }
+        return [...prev, created]
+      })
+      return created
+    }
+
+    function updateProductCategory(id: string, patch: Partial<ProductCategory>) {
+      setProductCategories((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, ...patch, id: c.id } : c)),
+      )
+    }
+
+    function deleteProductCategory(id: string): DeleteProductCategoryResult {
+      const children = productCategories.filter((c) => (c.parentId ?? null) === id)
+      if (children.length > 0) {
+        return {
+          ok: false,
+          message: `This category has ${children.length} sub-categories. Remove them first.`,
+        }
+      }
+      const productCount = products.filter((p) => p.categoryId === id).length
+      if (productCount > 0) {
+        return {
+          ok: false,
+          message: `This category has ${productCount} products. Move or delete them before removing the category.`,
+        }
+      }
+      setProductCategories((prev) => prev.filter((c) => c.id !== id))
+      return { ok: true }
+    }
+
+    function reorderProductCategory(categoryId: string, direction: 'up' | 'down') {
+      setProductCategories((prev) => {
+        const cat = prev.find((c) => c.id === categoryId)
+        if (!cat) return prev
+        const parentKey = cat.parentId ?? null
+        const siblings = prev
+          .filter((c) => (c.parentId ?? null) === parentKey)
+          .slice()
+          .sort((a, b) => a.displayOrder - b.displayOrder)
+        const idx = siblings.findIndex((c) => c.id === categoryId)
+        const swapIdx = direction === 'up' ? idx - 1 : idx + 1
+        if (swapIdx < 0 || swapIdx >= siblings.length) return prev
+        const a = siblings[idx]
+        const b = siblings[swapIdx]
+        const orderA = b.displayOrder
+        const orderB = a.displayOrder
+        return prev.map((c) => {
+          if (c.id === a.id) return { ...c, displayOrder: orderA }
+          if (c.id === b.id) return { ...c, displayOrder: orderB }
+          return c
+        })
+      })
+    }
+
+    function promoteProductToAddOn(
+      productId: string,
+      productSnapshot?: Product,
+    ): PromoteProductToAddOnResult {
+      const product = productSnapshot ?? products.find((p) => p.id === productId)
+      if (!product) {
+        return { ok: false, message: 'Product not found.' }
+      }
+      const addOnId =
+        product.linkedAddOnId?.trim() && product.linkedAddOnId.trim().length > 0
+          ? product.linkedAddOnId.trim()
+          : `addon-prod-${productId}`
+      const price = product.memberPrice ?? product.price
+      const desc = plainTextFromHtml(product.description)
+      const row: AddOn = {
+        id: addOnId,
+        tenantId: product.tenantId,
+        name: product.name,
+        description: desc,
+        pricingType: 'FLAT',
+        price,
+        applicableServiceTypes: [
+          'CLASS',
+          'PLAY_AREA',
+          'PARTY',
+          'COURT',
+          'SWIMMING',
+          'WORKSHOP',
+          'CAMP',
+          'COACHING',
+        ],
+        isActive: product.isActive,
+      }
+      setBookingAddOns((prev) => {
+        const without = prev.filter((a) => a.id !== addOnId)
+        return [...without, row]
+      })
+      const updatedAt = new Date().toISOString()
+      setProducts((prev) =>
+        prev.map((p) =>
+          p.id === productId
+            ? { ...p, canBeAddOn: true, linkedAddOnId: addOnId, updatedAt }
+            : p,
+        ),
+      )
+      return { ok: true }
     }
 
     function adjustStock(
@@ -385,6 +574,29 @@ export function InventoryProvider({
       })
     }
 
+    function addCustomCartItem(input: {
+      type: CartItem['type']
+      name: string
+      description?: string
+      price: number
+      quantity?: number
+      imageUrl?: string
+      metadata?: Record<string, unknown>
+    }) {
+      const qty = Math.max(1, input.quantity ?? 1)
+      const item: CartItem = {
+        id: `cart-custom-${Date.now()}`,
+        type: input.type,
+        name: input.name,
+        description: input.description,
+        price: input.price,
+        quantity: qty,
+        imageUrl: input.imageUrl,
+        metadata: input.metadata,
+      }
+      setCart((prev) => ({ ...prev, items: [...prev.items, item] }))
+    }
+
     function removeFromCart(cartItemId: string) {
       setCart((prev) => ({ ...prev, items: prev.items.filter((i) => i.id !== cartItemId) }))
     }
@@ -414,6 +626,15 @@ export function InventoryProvider({
       const result = validateCouponCode(code, subtotal, cart.contactId ?? undefined)
       if (!result.valid) return
       setCart((prev) => ({ ...prev, couponCode: code.trim().toUpperCase(), couponDiscount: result.discountAmount }))
+    }
+
+    function setCouponDirect(code: string, discount: number) {
+      const normalized = code.trim().toUpperCase()
+      setCart((prev) => ({
+        ...prev,
+        couponCode: normalized.length > 0 ? normalized : null,
+        couponDiscount: Math.max(0, discount),
+      }))
     }
 
     function applyPosCoupon(code: string) {
@@ -482,6 +703,7 @@ export function InventoryProvider({
     return {
       products,
       productCategories,
+      bookingAddOns,
       stockMovements,
       orders,
       coupons,
@@ -491,6 +713,11 @@ export function InventoryProvider({
       addProduct,
       updateProduct,
       deleteProduct,
+      addProductCategory,
+      updateProductCategory,
+      deleteProductCategory,
+      reorderProductCategory,
+      promoteProductToAddOn,
       adjustStock,
       addOrder,
       fulfillOrder,
@@ -502,9 +729,11 @@ export function InventoryProvider({
       deleteCoupon,
       incrementRedemption,
       addToCart,
+      addCustomCartItem,
       removeFromCart,
       updateCartQuantity,
       applyCoupon,
+      setCouponDirect,
       removeCoupon,
       clearCart,
       attachCustomer,
@@ -520,7 +749,17 @@ export function InventoryProvider({
       savePaymentMethod,
       setDefaultPaymentMethod,
     }
-  }, [cart, coupons, orders, paymentMethods, posCart, productCategories, products, stockMovements])
+  }, [
+    bookingAddOns,
+    cart,
+    coupons,
+    orders,
+    paymentMethods,
+    posCart,
+    productCategories,
+    products,
+    stockMovements,
+  ])
 
   return <InventoryContext.Provider value={value}>{children}</InventoryContext.Provider>
 }

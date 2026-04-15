@@ -5,12 +5,25 @@
 import Image from 'next/image'
 import { useEffect, useMemo, useState } from 'react'
 
-import { Baby, CreditCard, Lock } from 'lucide-react'
+import { Baby, ChevronsUpDown, CreditCard, Lock } from 'lucide-react'
 
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { BookingModeBadge } from '@/components/admin/booking-mode-badge'
+import { CategoryAddOnManager } from '@/components/admin/category-add-on-manager'
 import { CrudModal } from '@/components/admin/crud-modal'
 import { EventTypeBadge } from '@/components/admin/event-type-badge'
 import { EventTypeSelector } from '@/components/admin/event-type-selector'
+import { ServicePackageLinker } from '@/components/admin/service-package-linker'
 import { ServiceTypeBadge } from '@/components/customer/service-type-badge'
 import {
   Accordion,
@@ -23,6 +36,19 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import {
   Select,
   SelectContent,
@@ -40,15 +66,17 @@ import {
   newAdminEntityId,
 } from '@/lib/scheduling-admin-builders'
 import { LABELS } from '@/lib/constants/ui-labels'
-import { locations, schedulingCategories } from '@/lib/mock-data'
+import { locations, samplePreschoolAddOns } from '@/lib/mock-data'
+import { useInventory } from '@/lib/inventory-store'
 import { useScheduling } from '@/lib/scheduling-store'
-import { cn, formatPrice, getAgeRangeLabel } from '@/lib/utils'
+import { bookingAddOnToSchedulingAddOn, cn, formatPrice, getAgeRangeLabel } from '@/lib/utils'
 import type {
   SchedulingBookingMode,
   SchedulingCategory,
   EventPackage,
   EventVisibility,
   SchedulingService,
+  SchedulingServiceAddOn,
   SchedulingServiceType,
 } from '@/lib/types'
 import { SchedulingServiceTypeEnum } from '@/lib/types'
@@ -73,6 +101,17 @@ type EditDraft = {
   maxConcurrent: string
   minAdvanceHours: string
   maxAdvanceHours: string
+  siblingPrice: string
+  freeAdultCount: string
+  additionalAdultPrice: string
+  minSeats: string
+  pricePerHour: string
+  minChildSeats: string
+  maxChildSeats: string
+  minAdultSeats: string
+  maxAdultSeats: string
+  additionalChildPrice: string
+  isPackageService: boolean
 }
 
 type CreateDraft = EditDraft & {
@@ -80,6 +119,7 @@ type CreateDraft = EditDraft & {
   serviceType: SchedulingServiceType
   bookingMode: SchedulingBookingMode
   eventType: EventVisibility
+  pendingServiceAddOnLinks: { addOnId: string; isFree: boolean }[]
 }
 
 type CategoryDraft = {
@@ -94,13 +134,66 @@ type CategoryDraft = {
   depositPercent: string
   specialInstructionsEnabled: boolean
   waitlistEnabled: boolean
+  allowFamilyMember: boolean
+  requireCheckInBeforeRebook: boolean
+  pendingAddOnLinks: { addOnId: string; isFree: boolean }[]
 }
 
 const allServiceTypes = Object.values(SchedulingServiceTypeEnum)
+const CONSUMER_ALIGNED_CATEGORY_IDS = new Set<string>([
+  'cat-open-play',
+  'cat-private-play',
+  'cat-special-play-events',
+  'cat-camps-play',
+  'cat-parents-night',
+  'cat-field-trips',
+  'cat-we-bring-play',
+  'cat-gym-babies',
+  'cat-gym-toddlers',
+  'cat-gym-preschool',
+  'cat-gym-kids',
+  'cat-gym-teens',
+  'cat-gym-adults',
+  'cat-gym-seniors',
+  'cat-gym-family',
+  'cat-gym-prenatal',
+  'cat-gym-special-needs',
+  'cat-5',
+])
+
+const LEGACY_EVENT_SERVICE_ID_PREFIXES = [
+  'svc-play-',
+  'svc-swim-',
+  'svc-class-',
+  'svc-party-',
+  'svc-camp-adventure',
+  'svc-ph-',
+  'event-',
+]
+
+const LEGACY_EVENT_SERVICE_IDS = new Set([
+  'svc-1',
+  'svc-2',
+  'svc-3',
+  'svc-4',
+  'svc-6',
+  'svc-preschool-1',
+])
+
+function isCurrentServiceId(serviceId: string): boolean {
+  if (LEGACY_EVENT_SERVICE_IDS.has(serviceId)) {
+    return false
+  }
+
+  return !LEGACY_EVENT_SERVICE_ID_PREFIXES.some((prefix) => serviceId.startsWith(prefix))
+}
 
 export default function AdminSchedulingServicesPage() {
   const { documents } = useClients()
+  const { bookingAddOns } = useInventory()
   const {
+    categories,
+    addCategory,
     services,
     addService,
     addSlot,
@@ -110,17 +203,25 @@ export default function AdminSchedulingServicesPage() {
     updatePackage,
     removePackage,
     duplicatePackage,
+    linkSchedulingAddOn,
+    unlinkSchedulingAddOn,
+    setSchedulingAddOnFree,
   } = useScheduling()
-  const [categories, setCategories] = useState<SchedulingCategory[]>(() =>
-    schedulingCategories.map((c) => ({ ...c })),
-  )
   const sortedCategories = useMemo<SchedulingCategory[]>(() => {
-    return categories.slice().sort((a, b) => a.displayOrder - b.displayOrder)
+    return categories
+      .filter((category) => CONSUMER_ALIGNED_CATEGORY_IDS.has(category.id))
+      .slice()
+      .sort((a, b) => a.displayOrder - b.displayOrder)
   }, [categories])
 
-  const [categoryId, setCategoryId] = useState<string>(
-    sortedCategories[0]?.id ?? schedulingCategories[0]?.id ?? '',
-  )
+  const alignedServices = useMemo<SchedulingService[]>(() => {
+    return services.filter(
+      (service) =>
+        CONSUMER_ALIGNED_CATEGORY_IDS.has(service.categoryId) && isCurrentServiceId(service.id),
+    )
+  }, [services])
+
+  const [categoryId, setCategoryId] = useState<string>(sortedCategories[0]?.id ?? '')
   const [selected, setSelected] = useState<SchedulingService | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [categoryOpen, setCategoryOpen] = useState(false)
@@ -131,6 +232,22 @@ export default function AdminSchedulingServicesPage() {
   const [packageBasePrice, setPackageBasePrice] = useState('0')
   const [packageFeatures, setPackageFeatures] = useState('')
   const [packageIsActive, setPackageIsActive] = useState(true)
+  const [packageDepositAmount, setPackageDepositAmount] = useState('')
+  const [packageIsWholeVenue, setPackageIsWholeVenue] = useState(false)
+  const [packageRequiresApproval, setPackageRequiresApproval] = useState(false)
+  const [packageMinChild, setPackageMinChild] = useState('')
+  const [packageMaxChild, setPackageMaxChild] = useState('')
+  const [packageMinAdult, setPackageMinAdult] = useState('')
+  const [packageMaxAdult, setPackageMaxAdult] = useState('')
+  const [packageAdditionalChildPrice, setPackageAdditionalChildPrice] = useState('')
+  const [packageDuration, setPackageDuration] = useState('')
+  const [packageSetupTime, setPackageSetupTime] = useState('')
+  const [packageStaffCount, setPackageStaffCount] = useState('')
+  const [packagePartyRooms, setPackagePartyRooms] = useState('')
+  const [packageDisableConfirmOpen, setPackageDisableConfirmOpen] = useState(false)
+  const [categoryAddOnOpen, setCategoryAddOnOpen] = useState(false)
+  const [createAddOnOpen, setCreateAddOnOpen] = useState(false)
+  const [editAddOnOpen, setEditAddOnOpen] = useState(false)
   const [editDraft, setEditDraft] = useState<EditDraft>({
     locationId: locations[0]?.id ?? 'loc-1',
     name: '',
@@ -151,9 +268,20 @@ export default function AdminSchedulingServicesPage() {
     maxConcurrent: '',
     minAdvanceHours: '',
     maxAdvanceHours: '',
+    siblingPrice: '',
+    freeAdultCount: '2',
+    additionalAdultPrice: '',
+    minSeats: '1',
+    pricePerHour: '',
+    minChildSeats: '',
+    maxChildSeats: '',
+    minAdultSeats: '',
+    maxAdultSeats: '',
+    additionalChildPrice: '',
+    isPackageService: false,
   })
   const [createDraft, setCreateDraft] = useState<CreateDraft>({
-    categoryId: sortedCategories[0]?.id ?? schedulingCategories[0]?.id ?? '',
+    categoryId: sortedCategories[0]?.id ?? '',
     serviceType: 'GYM_CLASS',
     bookingMode: 'SCHEDULED',
     eventType: 'PUBLIC',
@@ -175,6 +303,18 @@ export default function AdminSchedulingServicesPage() {
     maxConcurrent: '',
     minAdvanceHours: '',
     maxAdvanceHours: '',
+    siblingPrice: '',
+    freeAdultCount: '2',
+    additionalAdultPrice: '',
+    minSeats: '1',
+    pricePerHour: '',
+    minChildSeats: '',
+    maxChildSeats: '',
+    minAdultSeats: '',
+    maxAdultSeats: '',
+    additionalChildPrice: '',
+    isPackageService: false,
+    pendingServiceAddOnLinks: [],
   })
 
   const [categoryDraft, setCategoryDraft] = useState<CategoryDraft>({
@@ -189,11 +329,23 @@ export default function AdminSchedulingServicesPage() {
     depositPercent: '',
     specialInstructionsEnabled: false,
     waitlistEnabled: true,
+    allowFamilyMember: false,
+    requireCheckInBeforeRebook: false,
+    pendingAddOnLinks: [],
   })
 
+  useEffect(() => {
+    if (!sortedCategories.length) return
+    const hasCurrent = sortedCategories.some((category) => category.id === categoryId)
+    if (!hasCurrent) {
+      setCategoryId(sortedCategories[0].id)
+      setCreateDraft((draft) => ({ ...draft, categoryId: sortedCategories[0].id }))
+    }
+  }, [categoryId, sortedCategories])
+
   const filtered = useMemo(() => {
-    return services.filter((s) => s.categoryId === categoryId)
-  }, [services, categoryId])
+    return alignedServices.filter((service) => service.categoryId === categoryId)
+  }, [alignedServices, categoryId])
 
   useEffect(() => {
     if (!selected) return
@@ -220,8 +372,39 @@ export default function AdminSchedulingServicesPage() {
       maxConcurrent: selected.maxConcurrent != null ? String(selected.maxConcurrent) : '',
       minAdvanceHours: selected.minAdvanceHours != null ? String(selected.minAdvanceHours) : '',
       maxAdvanceHours: selected.maxAdvanceHours != null ? String(selected.maxAdvanceHours) : '',
+      siblingPrice: selected.siblingPrice ?? '',
+      freeAdultCount:
+        selected.freeAdultCount != null ? String(selected.freeAdultCount) : '2',
+      additionalAdultPrice: selected.additionalAdultPrice ?? '',
+      minSeats: selected.minSeats != null ? String(selected.minSeats) : '1',
+      pricePerHour: selected.pricePerHour ?? '',
+      minChildSeats: selected.minChildSeats != null ? String(selected.minChildSeats) : '',
+      maxChildSeats: selected.maxChildSeats != null ? String(selected.maxChildSeats) : '',
+      minAdultSeats: selected.minAdultSeats != null ? String(selected.minAdultSeats) : '',
+      maxAdultSeats: selected.maxAdultSeats != null ? String(selected.maxAdultSeats) : '',
+      additionalChildPrice: selected.additionalChildPrice ?? '',
+      isPackageService: selected.isPackageService ?? false,
     })
   }, [selected])
+
+  const addOnCatalog = useMemo(() => {
+    const map = new Map<string, SchedulingServiceAddOn>()
+    for (const s of alignedServices) {
+      for (const a of s.addOns ?? []) {
+        if (a.isActive) {
+          map.set(a.id, a)
+        }
+      }
+    }
+    for (const a of samplePreschoolAddOns) {
+      map.set(a.id, a)
+    }
+    for (const a of bookingAddOns) {
+      if (!a.isActive) continue
+      map.set(a.id, bookingAddOnToSchedulingAddOn(a))
+    }
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name))
+  }, [bookingAddOns, alignedServices])
 
   const waiverDocs = useMemo(() => {
     return documents.filter((d) => d.documentType === 'WAIVER')
@@ -243,20 +426,20 @@ export default function AdminSchedulingServicesPage() {
 
   const countByCategory = useMemo(() => {
     const map = new Map<string, number>()
-    for (const s of services) {
+    for (const s of alignedServices) {
       map.set(s.categoryId, (map.get(s.categoryId) ?? 0) + 1)
     }
     return map
-  }, [services])
+  }, [alignedServices])
 
   const selectedCategory = useMemo(() => {
     return sortedCategories.find((c) => c.id === categoryId) ?? sortedCategories[0] ?? null
   }, [sortedCategories, categoryId])
 
-  const selectedServicePackages = useMemo<EventPackage[]>(() => {
-    if (!selected) return []
-    return packages.filter((p) => p.serviceId === selected.id)
-  }, [packages, selected])
+  const selectedLive = useMemo(() => {
+    if (!selected) return null
+    return alignedServices.find((s) => s.id === selected.id) ?? selected
+  }, [selected, alignedServices])
 
   function persistEdit() {
     if (!selected) return
@@ -272,6 +455,17 @@ export default function AdminSchedulingServicesPage() {
     const maxConcurrent = parseOptionalInt(editDraft.maxConcurrent)
     const minAdvanceHours = parseOptionalInt(editDraft.minAdvanceHours)
     const maxAdvanceHours = parseOptionalInt(editDraft.maxAdvanceHours)
+    const freeAdultParsed = parseOptionalInt(editDraft.freeAdultCount)
+    const freeAdultCount =
+      freeAdultParsed != null && freeAdultParsed >= 0 && freeAdultParsed <= 20
+        ? freeAdultParsed
+        : 2
+    const minSeatsParsed = parseOptionalInt(editDraft.minSeats)
+    const minSeats = minSeatsParsed != null && minSeatsParsed >= 1 ? minSeatsParsed : 1
+    const minChildSeats = parseOptionalInt(editDraft.minChildSeats)
+    const maxChildSeats = parseOptionalInt(editDraft.maxChildSeats)
+    const minAdultSeats = parseOptionalInt(editDraft.minAdultSeats)
+    const maxAdultSeats = parseOptionalInt(editDraft.maxAdultSeats)
     if (
       !editDraft.name.trim() ||
       !Number.isFinite(basePrice) ||
@@ -300,23 +494,23 @@ export default function AdminSchedulingServicesPage() {
       maxConcurrent,
       minAdvanceHours,
       maxAdvanceHours,
+      siblingPrice: editDraft.siblingPrice.trim() || undefined,
+      freeAdultCount,
+      additionalAdultPrice: editDraft.additionalAdultPrice.trim() || undefined,
+      minSeats,
+      pricePerHour: editDraft.pricePerHour.trim() || undefined,
+      minChildSeats: minChildSeats ?? undefined,
+      maxChildSeats: maxChildSeats ?? undefined,
+      minAdultSeats: minAdultSeats ?? undefined,
+      maxAdultSeats: maxAdultSeats ?? undefined,
+      additionalChildPrice: editDraft.additionalChildPrice.trim() || undefined,
+      isPackageService: editDraft.isPackageService,
     })
     setSelected(null)
   }
 
-  function openNewPackage() {
-    if (!selected) return
-    setSelectedPackageId(null)
-    setPackageName('')
-    setPackageTier('SILVER')
-    setPackageBasePrice(String(selected.basePrice))
-    setPackageFeatures('')
-    setPackageIsActive(true)
-    setPackageOpen(true)
-  }
-
   function openEditPackage(pkgId: string) {
-    const pkg = selectedServicePackages.find((p) => p.id === pkgId) ?? null
+    const pkg = packages.find((p) => p.id === pkgId) ?? null
     if (!pkg) return
     setSelectedPackageId(pkg.id)
     setPackageName(pkg.name)
@@ -324,6 +518,20 @@ export default function AdminSchedulingServicesPage() {
     setPackageBasePrice(String(pkg.basePrice))
     setPackageFeatures(pkg.features.join('\n'))
     setPackageIsActive(pkg.isActive)
+    setPackageDepositAmount(pkg.depositAmount != null ? String(pkg.depositAmount) : '')
+    setPackageIsWholeVenue(Boolean(pkg.isWholeVenue))
+    setPackageRequiresApproval(Boolean(pkg.requiresApproval))
+    setPackageMinChild(pkg.minChildSeats != null ? String(pkg.minChildSeats) : '')
+    setPackageMaxChild(pkg.maxChildSeats != null ? String(pkg.maxChildSeats) : '')
+    setPackageMinAdult(pkg.minAdultSeats != null ? String(pkg.minAdultSeats) : '')
+    setPackageMaxAdult(pkg.maxAdultSeats != null ? String(pkg.maxAdultSeats) : '')
+    setPackageAdditionalChildPrice(
+      pkg.additionalChildPrice != null ? String(pkg.additionalChildPrice) : '',
+    )
+    setPackageDuration(pkg.duration != null ? String(pkg.duration) : '')
+    setPackageSetupTime(pkg.setupTime != null ? String(pkg.setupTime) : '')
+    setPackageStaffCount(pkg.staffCount != null ? String(pkg.staffCount) : '')
+    setPackagePartyRooms(pkg.partyRooms != null ? String(pkg.partyRooms) : '')
     setPackageOpen(true)
   }
 
@@ -337,6 +545,32 @@ export default function AdminSchedulingServicesPage() {
       .map((l) => l.trim())
       .filter(Boolean)
 
+    const depositAmount = parseOptionalFloat(packageDepositAmount)
+    const minChildSeats = parseOptionalInt(packageMinChild)
+    const maxChildSeats = parseOptionalInt(packageMaxChild)
+    const minAdultSeats = parseOptionalInt(packageMinAdult)
+    const maxAdultSeats = parseOptionalInt(packageMaxAdult)
+    const additionalChildPrice = parseOptionalFloat(packageAdditionalChildPrice)
+    const duration = parseOptionalInt(packageDuration)
+    const setupTime = parseOptionalInt(packageSetupTime)
+    const staffCount = parseOptionalInt(packageStaffCount)
+    const partyRooms = parseOptionalInt(packagePartyRooms)
+
+    const extended = {
+      depositAmount: depositAmount ?? undefined,
+      isWholeVenue: packageIsWholeVenue,
+      requiresApproval: packageIsWholeVenue ? packageRequiresApproval : false,
+      minChildSeats: minChildSeats ?? undefined,
+      maxChildSeats: maxChildSeats ?? undefined,
+      minAdultSeats: minAdultSeats ?? undefined,
+      maxAdultSeats: maxAdultSeats ?? undefined,
+      additionalChildPrice: additionalChildPrice ?? undefined,
+      duration: duration ?? undefined,
+      setupTime: setupTime ?? undefined,
+      staffCount: staffCount ?? undefined,
+      partyRooms: partyRooms ?? undefined,
+    }
+
     if (selectedPackageId) {
       updatePackage(selectedPackageId, {
         name: packageName.trim(),
@@ -344,6 +578,7 @@ export default function AdminSchedulingServicesPage() {
         basePrice,
         features,
         isActive: packageIsActive,
+        ...extended,
       })
       setPackageOpen(false)
       return
@@ -359,6 +594,7 @@ export default function AdminSchedulingServicesPage() {
       addOns: [],
       isActive: packageIsActive,
       createdAt: new Date().toISOString(),
+      ...extended,
     }
     addPackage(created)
     setPackageOpen(false)
@@ -390,8 +626,27 @@ export default function AdminSchedulingServicesPage() {
     maxConcurrent: number | null
     minAdvanceHours: number | null
     maxAdvanceHours: number | null
+    siblingPrice?: string
+    freeAdultCount: number
+    additionalAdultPrice?: string
+    minSeats: number
+    pricePerHour?: string
+    minChildSeats?: number
+    maxChildSeats?: number
+    minAdultSeats?: number
+    maxAdultSeats?: number
+    additionalChildPrice?: string
+    isPackageService: boolean
+    pendingServiceAddOnLinks: { addOnId: string; isFree: boolean }[]
   }): SchedulingService {
     const pricingModel = input.bookingMode === 'OPEN' ? 'per_hour' : 'flat'
+    const linkedAddOns = input.pendingServiceAddOnLinks.map((l) => ({
+      id: newAdminEntityId('cao'),
+      categoryId: input.id,
+      addOnId: l.addOnId,
+      isOptional: true,
+      isFree: l.isFree,
+    }))
     return {
       id: input.id,
       locationId: input.locationId,
@@ -421,6 +676,18 @@ export default function AdminSchedulingServicesPage() {
       imageUrl: input.imageUrl,
       tags: [],
       addOns: [],
+      siblingPrice: input.siblingPrice,
+      freeAdultCount: input.freeAdultCount,
+      additionalAdultPrice: input.additionalAdultPrice,
+      minSeats: input.minSeats,
+      pricePerHour: input.pricePerHour,
+      minChildSeats: input.minChildSeats,
+      maxChildSeats: input.maxChildSeats,
+      minAdultSeats: input.minAdultSeats,
+      maxAdultSeats: input.maxAdultSeats,
+      additionalChildPrice: input.additionalChildPrice,
+      isPackageService: input.isPackageService,
+      linkedAddOns,
     }
   }
 
@@ -437,6 +704,17 @@ export default function AdminSchedulingServicesPage() {
     const maxConcurrent = parseOptionalInt(createDraft.maxConcurrent)
     const minAdvanceHours = parseOptionalInt(createDraft.minAdvanceHours)
     const maxAdvanceHours = parseOptionalInt(createDraft.maxAdvanceHours)
+    const freeAdultParsedC = parseOptionalInt(createDraft.freeAdultCount)
+    const freeAdultCountC =
+      freeAdultParsedC != null && freeAdultParsedC >= 0 && freeAdultParsedC <= 20
+        ? freeAdultParsedC
+        : 2
+    const minSeatsParsedC = parseOptionalInt(createDraft.minSeats)
+    const minSeatsC = minSeatsParsedC != null && minSeatsParsedC >= 1 ? minSeatsParsedC : 1
+    const minChildSeatsC = parseOptionalInt(createDraft.minChildSeats)
+    const maxChildSeatsC = parseOptionalInt(createDraft.maxChildSeats)
+    const minAdultSeatsC = parseOptionalInt(createDraft.minAdultSeats)
+    const maxAdultSeatsC = parseOptionalInt(createDraft.maxAdultSeats)
     if (
       !createDraft.name.trim() ||
       !Number.isFinite(basePrice) ||
@@ -490,6 +768,18 @@ export default function AdminSchedulingServicesPage() {
           : maxConcurrent,
       minAdvanceHours: minAdvanceHours ?? 0,
       maxAdvanceHours: maxAdvanceHours ?? 168,
+      siblingPrice: createDraft.siblingPrice.trim() || undefined,
+      freeAdultCount: freeAdultCountC,
+      additionalAdultPrice: createDraft.additionalAdultPrice.trim() || undefined,
+      minSeats: minSeatsC,
+      pricePerHour: createDraft.pricePerHour.trim() || undefined,
+      minChildSeats: minChildSeatsC ?? undefined,
+      maxChildSeats: maxChildSeatsC ?? undefined,
+      minAdultSeats: minAdultSeatsC ?? undefined,
+      maxAdultSeats: maxAdultSeatsC ?? undefined,
+      additionalChildPrice: createDraft.additionalChildPrice.trim() || undefined,
+      isPackageService: createDraft.isPackageService,
+      pendingServiceAddOnLinks: createDraft.pendingServiceAddOnLinks.slice(),
     })
     addService(created)
     if (createDraft.bookingMode === 'SCHEDULED') {
@@ -528,6 +818,18 @@ export default function AdminSchedulingServicesPage() {
       maxConcurrent: '',
       minAdvanceHours: '',
       maxAdvanceHours: '',
+      siblingPrice: '',
+      freeAdultCount: '2',
+      additionalAdultPrice: '',
+      minSeats: '1',
+      pricePerHour: '',
+      minChildSeats: '',
+      maxChildSeats: '',
+      minAdultSeats: '',
+      maxAdultSeats: '',
+      additionalChildPrice: '',
+      isPackageService: false,
+      pendingServiceAddOnLinks: [],
     })
   }
 
@@ -545,6 +847,9 @@ export default function AdminSchedulingServicesPage() {
       depositPercent: '',
       specialInstructionsEnabled: false,
       waitlistEnabled: true,
+      allowFamilyMember: false,
+      requireCheckInBeforeRebook: false,
+      pendingAddOnLinks: [],
     })
     setCategoryOpen(true)
   }
@@ -562,8 +867,16 @@ export default function AdminSchedulingServicesPage() {
         ? Number.parseFloat(categoryDraft.depositPercent.trim())
         : undefined
 
+    const catId = newAdminEntityId('cat')
+    const linkedAddOns = categoryDraft.pendingAddOnLinks.map((l) => ({
+      id: newAdminEntityId('cao'),
+      categoryId: catId,
+      addOnId: l.addOnId,
+      isOptional: true,
+      isFree: l.isFree,
+    }))
     const created: SchedulingCategory = {
-      id: newAdminEntityId('cat'),
+      id: catId,
       name: categoryDraft.name.trim(),
       icon: categoryDraft.icon.trim() || null,
       displayOrder,
@@ -575,8 +888,11 @@ export default function AdminSchedulingServicesPage() {
       depositPercent: Number.isFinite(depositPercent ?? Number.NaN) ? depositPercent : undefined,
       specialInstructionsEnabled: categoryDraft.specialInstructionsEnabled,
       waitlistEnabled: categoryDraft.waitlistEnabled,
+      allowFamilyMember: categoryDraft.allowFamilyMember,
+      requireCheckInBeforeRebook: categoryDraft.requireCheckInBeforeRebook,
+      linkedAddOns,
     }
-    setCategories((prev) => [...prev, created])
+    addCategory(created)
     setCategoryId(created.id)
     setCreateDraft((d) => ({ ...d, categoryId: created.id }))
     setCategoryOpen(false)
@@ -605,6 +921,12 @@ export default function AdminSchedulingServicesPage() {
               {sortedCategories.map((c) => {
                 const active = c.id === categoryId
                 const count = countByCategory.get(c.id) ?? 0
+                const linkedAddOns = c.linkedAddOns ?? []
+                const visibleLinkedAddOns = linkedAddOns.slice(0, 3)
+                const hiddenLinkedAddOnCount = Math.max(
+                  0,
+                  linkedAddOns.length - visibleLinkedAddOns.length,
+                )
                 return (
                   <button
                     key={c.id}
@@ -673,6 +995,44 @@ export default function AdminSchedulingServicesPage() {
                             Under {c.freeInfantMonths} months is free.
                           </TooltipContent>
                         </Tooltip>
+                      ) : null}
+                      {c.allowFamilyMember ? (
+                        <Badge
+                          variant="secondary"
+                          className="border-amber-500/50 bg-amber-500/15 text-[10px] font-semibold text-amber-950 dark:text-amber-100"
+                        >
+                          Same household only
+                        </Badge>
+                      ) : null}
+                      {c.requireCheckInBeforeRebook ? (
+                        <Badge
+                          variant="secondary"
+                          className="border-blue-500/50 bg-blue-500/15 text-[10px] font-semibold text-blue-950 dark:text-blue-100"
+                        >
+                          Check-in gate
+                        </Badge>
+                      ) : null}
+                      {visibleLinkedAddOns.map((link) => {
+                        const linkedAddOn = addOnCatalog.find((entry) => entry.id === link.addOnId)
+                        return (
+                          <Badge
+                            key={link.id}
+                            variant="secondary"
+                            className={
+                              link.isFree
+                                ? 'border-emerald-500/50 bg-emerald-500/15 text-[10px] font-semibold text-emerald-900 dark:text-emerald-100'
+                                : 'text-[10px] font-semibold'
+                            }
+                          >
+                            {linkedAddOn?.name ?? link.addOnId}
+                            {!link.isFree ? ` · ${formatPrice(linkedAddOn?.price ?? 0)}` : ''}
+                          </Badge>
+                        )
+                      })}
+                      {hiddenLinkedAddOnCount > 0 ? (
+                        <Badge variant="outline" className="text-[10px] font-semibold">
+                          +{hiddenLinkedAddOnCount} more
+                        </Badge>
                       ) : null}
                     </div>
                   </button>
@@ -747,6 +1107,8 @@ export default function AdminSchedulingServicesPage() {
               </Card>
             ) : null}
           </div>
+
+          <CategoryAddOnManager categoryId={categoryId} />
         </div>
       </div>
 
@@ -827,9 +1189,10 @@ export default function AdminSchedulingServicesPage() {
                   <div className="space-y-3">
                     <div className="flex items-start justify-between gap-4">
                       <div className="space-y-1">
-                        <Label htmlFor="cat-requires">Require family member selection</Label>
+                        <Label htmlFor="cat-requires">Child must attend with an adult</Label>
                         <p className="text-xs text-muted-foreground">
-                          Customers must select at least one family member to proceed.
+                          The child being booked must be accompanied by a responsible adult (you or
+                          another adult on the booking).
                         </p>
                       </div>
                       <Switch
@@ -916,7 +1279,140 @@ export default function AdminSchedulingServicesPage() {
                         onCheckedChange={(v) => setCategoryDraft((d) => ({ ...d, waitlistEnabled: v }))}
                       />
                     </div>
+
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="space-y-1">
+                        <Label htmlFor="cat-family">Participating children: same household only</Label>
+                        <p className="text-xs text-muted-foreground">
+                          Every child on the play session must be from the same household or your
+                          linked family list — outside children cannot be added.
+                        </p>
+                      </div>
+                      <Switch
+                        id="cat-family"
+                        checked={categoryDraft.allowFamilyMember}
+                        onCheckedChange={(v) => setCategoryDraft((d) => ({ ...d, allowFamilyMember: v }))}
+                      />
+                    </div>
+
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="space-y-1">
+                        <Label htmlFor="cat-checkin-gate">Require check-in before next booking</Label>
+                        <p className="text-xs text-muted-foreground">
+                          Contact must have checked in before making another booking in this category.
+                        </p>
+                      </div>
+                      <Switch
+                        id="cat-checkin-gate"
+                        checked={categoryDraft.requireCheckInBeforeRebook}
+                        onCheckedChange={(v) =>
+                          setCategoryDraft((d) => ({ ...d, requireCheckInBeforeRebook: v }))
+                        }
+                      />
+                    </div>
                   </div>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+            <AccordionItem value="addons">
+              <AccordionTrigger>Linked add-ons (optional)</AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-3 pb-2">
+                  <p className="text-xs text-muted-foreground">
+                    Add-ons customers can select when booking this category.
+                  </p>
+                  {categoryDraft.pendingAddOnLinks.map((row) => {
+                    const addon = addOnCatalog.find((a) => a.id === row.addOnId)
+                    return (
+                      <div
+                        key={row.addOnId}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2"
+                      >
+                        <span className="text-sm font-semibold text-foreground">
+                          {addon?.name ?? row.addOnId}
+                        </span>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex items-center gap-2">
+                            <Label className="text-xs">Free</Label>
+                            <Switch
+                              checked={row.isFree}
+                              onCheckedChange={(v) =>
+                                setCategoryDraft((d) => ({
+                                  ...d,
+                                  pendingAddOnLinks: d.pendingAddOnLinks.map((x) =>
+                                    x.addOnId === row.addOnId ? { ...x, isFree: v } : x,
+                                  ),
+                                }))
+                              }
+                            />
+                          </div>
+                          {!row.isFree && addon ? (
+                            <Badge variant="secondary">{formatPrice(addon.price)}</Badge>
+                          ) : null}
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="text-destructive"
+                            onClick={() =>
+                              setCategoryDraft((d) => ({
+                                ...d,
+                                pendingAddOnLinks: d.pendingAddOnLinks.filter(
+                                  (x) => x.addOnId !== row.addOnId,
+                                ),
+                              }))
+                            }
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                  <Popover open={categoryAddOnOpen} onOpenChange={setCategoryAddOnOpen}>
+                    <PopoverTrigger asChild>
+                      <Button type="button" variant="outline" className="w-full justify-between">
+                        Link add-on
+                        <ChevronsUpDown className="h-4 w-4 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-80 p-0" align="start">
+                      <Command>
+                        <CommandInput placeholder="Search add-ons…" />
+                        <CommandList>
+                          <CommandEmpty>No add-ons found.</CommandEmpty>
+                          <CommandGroup>
+                            {addOnCatalog
+                              .filter(
+                                (a) =>
+                                  !categoryDraft.pendingAddOnLinks.some((p) => p.addOnId === a.id),
+                              )
+                              .map((a) => (
+                                <CommandItem
+                                  key={a.id}
+                                  value={a.name}
+                                  onSelect={() => {
+                                    setCategoryDraft((d) => ({
+                                      ...d,
+                                      pendingAddOnLinks: [
+                                        ...d.pendingAddOnLinks,
+                                        { addOnId: a.id, isFree: false },
+                                      ],
+                                    }))
+                                    setCategoryAddOnOpen(false)
+                                  }}
+                                >
+                                  {a.name}
+                                  <span className="ml-auto text-xs text-muted-foreground">
+                                    {formatPrice(a.price)}
+                                  </span>
+                                </CommandItem>
+                              ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                 </div>
               </AccordionContent>
             </AccordionItem>
@@ -1003,6 +1499,180 @@ export default function AdminSchedulingServicesPage() {
                 />
               </div>
             </div>
+
+            <Accordion type="single" collapsible className="border border-border rounded-lg px-3">
+              <AccordionItem value="pricing-seats">
+                <AccordionTrigger className="text-sm font-semibold">
+                  Pricing &amp; seat rules
+                </AccordionTrigger>
+                <AccordionContent>
+                  <div className="grid grid-cols-1 gap-3 pb-2 sm:grid-cols-2">
+                    <div className="space-y-2 sm:col-span-2">
+                      <Label htmlFor="edit-sibling">Sibling price (per additional family child)</Label>
+                      <Input
+                        id="edit-sibling"
+                        type="number"
+                        step="0.01"
+                        value={editDraft.siblingPrice}
+                        onChange={(e) => setEditDraft((d) => ({ ...d, siblingPrice: e.target.value }))}
+                        placeholder="e.g. 10.00 — leave blank to charge base price for all children"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        2nd and further children from the same family pay this rate.
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-free-adults">Free adults per family</Label>
+                      <Input
+                        id="edit-free-adults"
+                        type="number"
+                        min={0}
+                        max={20}
+                        value={editDraft.freeAdultCount}
+                        onChange={(e) => setEditDraft((d) => ({ ...d, freeAdultCount: e.target.value }))}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Adults included at no extra charge per booking.
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-extra-adult">Price per extra adult (beyond free count)</Label>
+                      <Input
+                        id="edit-extra-adult"
+                        type="number"
+                        step="0.01"
+                        value={editDraft.additionalAdultPrice}
+                        onChange={(e) =>
+                          setEditDraft((d) => ({ ...d, additionalAdultPrice: e.target.value }))
+                        }
+                        placeholder="e.g. 10.00"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-min-seats">Minimum participants</Label>
+                      <Input
+                        id="edit-min-seats"
+                        type="number"
+                        min={1}
+                        value={editDraft.minSeats}
+                        onChange={(e) => setEditDraft((d) => ({ ...d, minSeats: e.target.value }))}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Booking stays pending until this many participants join.
+                      </p>
+                    </div>
+                    <div className="space-y-2 sm:col-span-2">
+                      <Label htmlFor="edit-price-hour">Hourly rate (duration-based billing)</Label>
+                      <Input
+                        id="edit-price-hour"
+                        type="number"
+                        step="0.01"
+                        value={editDraft.pricePerHour}
+                        onChange={(e) => setEditDraft((d) => ({ ...d, pricePerHour: e.target.value }))}
+                        placeholder="e.g. 75.00 — overrides per-participant pricing"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Use for room rentals. Total = rate × hours.
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-min-child">Min children</Label>
+                      <Input
+                        id="edit-min-child"
+                        type="number"
+                        min={0}
+                        value={editDraft.minChildSeats}
+                        onChange={(e) => setEditDraft((d) => ({ ...d, minChildSeats: e.target.value }))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-max-child">Max children</Label>
+                      <Input
+                        id="edit-max-child"
+                        type="number"
+                        min={0}
+                        value={editDraft.maxChildSeats}
+                        onChange={(e) => setEditDraft((d) => ({ ...d, maxChildSeats: e.target.value }))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-min-adult-seat">Min adults</Label>
+                      <Input
+                        id="edit-min-adult-seat"
+                        type="number"
+                        min={0}
+                        value={editDraft.minAdultSeats}
+                        onChange={(e) => setEditDraft((d) => ({ ...d, minAdultSeats: e.target.value }))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-max-adult-seat">Max adults</Label>
+                      <Input
+                        id="edit-max-adult-seat"
+                        type="number"
+                        min={0}
+                        value={editDraft.maxAdultSeats}
+                        onChange={(e) => setEditDraft((d) => ({ ...d, maxAdultSeats: e.target.value }))}
+                      />
+                    </div>
+                    <div className="space-y-2 sm:col-span-2">
+                      <Label htmlFor="edit-extra-child-price">Price per extra child (beyond max child seats)</Label>
+                      <Input
+                        id="edit-extra-child-price"
+                        type="number"
+                        step="0.01"
+                        value={editDraft.additionalChildPrice}
+                        onChange={(e) =>
+                          setEditDraft((d) => ({ ...d, additionalChildPrice: e.target.value }))
+                        }
+                      />
+                    </div>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+
+            <div className="flex items-start justify-between gap-4 rounded-lg border border-border bg-card px-3 py-2">
+              <div className="space-y-1">
+                <Label htmlFor="edit-pkg-only">Package-only service</Label>
+                <p className="text-xs text-muted-foreground">
+                  When enabled, customers must select an event package to book.
+                </p>
+              </div>
+              <Switch
+                id="edit-pkg-only"
+                checked={editDraft.isPackageService}
+                onCheckedChange={(v) => {
+                  if (
+                    !v &&
+                    selected &&
+                    packages.some((p) => p.serviceId === selected.id)
+                  ) {
+                    setPackageDisableConfirmOpen(true)
+                    return
+                  }
+                  setEditDraft((d) => ({ ...d, isPackageService: v }))
+                }}
+              />
+            </div>
+            {editDraft.isPackageService ? (
+              <Alert className="border-amber-500/50 bg-amber-500/10">
+                <AlertTitle className="text-amber-950 dark:text-amber-100">Package-only</AlertTitle>
+                <AlertDescription className="text-amber-900/90 dark:text-amber-50/90">
+                  Customers will not be able to book this service directly. They must choose an event
+                  package.
+                </AlertDescription>
+              </Alert>
+            ) : null}
+            {editDraft.isPackageService && selected ? (
+              <ServicePackageLinker
+                serviceId={selected.id}
+                serviceName={selected.name}
+                onRequestEditPackage={openEditPackage}
+                onRequestDuplicatePackage={(id) => duplicatePackage(id)}
+              />
+            ) : null}
+
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="edit-sub-price">Subscription price (optional)</Label>
@@ -1192,53 +1862,104 @@ export default function AdminSchedulingServicesPage() {
                 </AccordionContent>
               </AccordionItem>
             </Accordion>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <Label>Packages</Label>
-                <Button type="button" size="sm" variant="outline" onClick={openNewPackage}>
-                  New package
-                </Button>
-              </div>
-              {selectedServicePackages.length > 0 ? (
-                <div className="space-y-2">
-                  {selectedServicePackages.map((p) => (
-                    <div
-                      key={p.id}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2"
-                    >
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-foreground">
-                          {p.tier} · {p.name}
-                        </p>
-                        <p className="text-xs text-muted-foreground">£{p.basePrice.toFixed(2)}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="secondary">{p.isActive ? 'Active' : 'Inactive'}</Badge>
-                        <Button type="button" size="sm" variant="outline" onClick={() => openEditPackage(p.id)}>
-                          Edit
-                        </Button>
-                        <Button type="button" size="sm" variant="outline" onClick={() => duplicatePackage(p.id)}>
-                          Duplicate
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="text-destructive border-destructive"
-                          onClick={() => removePackage(p.id)}
+
+            <Accordion type="single" collapsible className="border border-border rounded-lg px-3">
+              <AccordionItem value="svc-addons">
+                <AccordionTrigger className="text-sm font-semibold">
+                  Linked add-ons (optional)
+                </AccordionTrigger>
+                <AccordionContent>
+                  <div className="space-y-3 pb-2">
+                    <p className="text-xs text-muted-foreground">
+                      Add-ons customers can select when booking this {LABELS.service.toLowerCase()}.
+                    </p>
+                    {(selectedLive?.linkedAddOns ?? []).map((row) => {
+                      const addon = addOnCatalog.find((a) => a.id === row.addOnId)
+                      return (
+                        <div
+                          key={row.id}
+                          className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2"
                         >
-                          Delete
+                          <span className="text-sm font-semibold text-foreground">
+                            {addon?.name ?? row.addOnId}
+                          </span>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="flex items-center gap-2">
+                              <Label className="text-xs">Free</Label>
+                              <Switch
+                                checked={row.isFree}
+                                onCheckedChange={(v) => {
+                                  if (!selected) return
+                                  setSchedulingAddOnFree('service', selected.id, row.addOnId, v)
+                                }}
+                              />
+                            </div>
+                            {!row.isFree && addon ? (
+                              <Badge variant="secondary">{formatPrice(addon.price)}</Badge>
+                            ) : null}
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="text-destructive"
+                              onClick={() =>
+                                selected &&
+                                unlinkSchedulingAddOn('service', selected.id, row.addOnId)
+                              }
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                    <Popover open={editAddOnOpen} onOpenChange={setEditAddOnOpen}>
+                      <PopoverTrigger asChild>
+                        <Button type="button" variant="outline" className="w-full justify-between">
+                          Link add-on
+                          <ChevronsUpDown className="h-4 w-4 opacity-50" />
                         </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  No packages yet. Create tiered packages to override pricing and features.
-                </p>
-              )}
-            </div>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-80 p-0" align="start">
+                        <Command>
+                          <CommandInput placeholder="Search add-ons…" />
+                          <CommandList>
+                            <CommandEmpty>No add-ons found.</CommandEmpty>
+                            <CommandGroup>
+                              {addOnCatalog
+                                .filter(
+                                  (a) =>
+                                    !(selectedLive?.linkedAddOns ?? []).some(
+                                      (p) => p.addOnId === a.id,
+                                    ),
+                                )
+                                .map((a) => (
+                                  <CommandItem
+                                    key={a.id}
+                                    value={a.name}
+                                    onSelect={() => {
+                                      if (selected) {
+                                        linkSchedulingAddOn('service', selected.id, a.id, false)
+                                      }
+                                      setEditAddOnOpen(false)
+                                    }}
+                                  >
+                                    {a.name}
+                                    <span className="ml-auto text-xs text-muted-foreground">
+                                      {formatPrice(a.price)}
+                                    </span>
+                                  </CommandItem>
+                                ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+
             <div className="flex items-center justify-between">
               <Label htmlFor="edit-active">Active</Label>
               <Switch
@@ -1312,6 +2033,118 @@ export default function AdminSchedulingServicesPage() {
               rows={5}
               placeholder={'Private space\nDecorations\nDedicated host'}
             />
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="pkg-dep">Deposit amount (optional)</Label>
+              <Input
+                id="pkg-dep"
+                type="number"
+                step="0.01"
+                value={packageDepositAmount}
+                onChange={(e) => setPackageDepositAmount(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pkg-dur">Duration (minutes)</Label>
+              <Input
+                id="pkg-dur"
+                type="number"
+                value={packageDuration}
+                onChange={(e) => setPackageDuration(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2 sm:col-span-2">
+              <Label htmlFor="pkg-whole">Requires exclusive venue access</Label>
+              <Switch
+                id="pkg-whole"
+                checked={packageIsWholeVenue}
+                onCheckedChange={setPackageIsWholeVenue}
+              />
+            </div>
+            {packageIsWholeVenue ? (
+              <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2 sm:col-span-2">
+                <Label htmlFor="pkg-appr">Manager must approve before confirming</Label>
+                <Switch
+                  id="pkg-appr"
+                  checked={packageRequiresApproval}
+                  onCheckedChange={setPackageRequiresApproval}
+                />
+              </div>
+            ) : null}
+            <div className="space-y-2">
+              <Label htmlFor="pkg-min-c">Min children</Label>
+              <Input
+                id="pkg-min-c"
+                type="number"
+                value={packageMinChild}
+                onChange={(e) => setPackageMinChild(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pkg-max-c">Max children</Label>
+              <Input
+                id="pkg-max-c"
+                type="number"
+                value={packageMaxChild}
+                onChange={(e) => setPackageMaxChild(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pkg-min-a">Min adults</Label>
+              <Input
+                id="pkg-min-a"
+                type="number"
+                value={packageMinAdult}
+                onChange={(e) => setPackageMinAdult(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pkg-max-a">Max adults</Label>
+              <Input
+                id="pkg-max-a"
+                type="number"
+                value={packageMaxAdult}
+                onChange={(e) => setPackageMaxAdult(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="pkg-extra-child">Extra per child (beyond max)</Label>
+              <Input
+                id="pkg-extra-child"
+                type="number"
+                step="0.01"
+                value={packageAdditionalChildPrice}
+                onChange={(e) => setPackageAdditionalChildPrice(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pkg-setup">Setup time (minutes)</Label>
+              <Input
+                id="pkg-setup"
+                type="number"
+                value={packageSetupTime}
+                onChange={(e) => setPackageSetupTime(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pkg-staff">Staff count</Label>
+              <Input
+                id="pkg-staff"
+                type="number"
+                value={packageStaffCount}
+                onChange={(e) => setPackageStaffCount(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pkg-rooms">Party rooms</Label>
+              <Input
+                id="pkg-rooms"
+                type="number"
+                value={packagePartyRooms}
+                onChange={(e) => setPackagePartyRooms(e.target.value)}
+              />
+            </div>
           </div>
           <div className="flex items-center justify-between">
             <Label htmlFor="pkg-active">Active</Label>
@@ -1463,6 +2296,271 @@ export default function AdminSchedulingServicesPage() {
               />
             </div>
           </div>
+
+          <Accordion type="single" collapsible className="border border-border rounded-lg px-3">
+            <AccordionItem value="new-pricing-seats">
+              <AccordionTrigger className="text-sm font-semibold">
+                Pricing &amp; seat rules
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="grid grid-cols-1 gap-3 pb-2 sm:grid-cols-2">
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label htmlFor="new-sibling">Sibling price (per additional family child)</Label>
+                    <Input
+                      id="new-sibling"
+                      type="number"
+                      step="0.01"
+                      value={createDraft.siblingPrice}
+                      onChange={(e) => setCreateDraft((d) => ({ ...d, siblingPrice: e.target.value }))}
+                      placeholder="e.g. 10.00 — leave blank to charge base price for all children"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      2nd and further children from the same family pay this rate.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-free-adults">Free adults per family</Label>
+                    <Input
+                      id="new-free-adults"
+                      type="number"
+                      min={0}
+                      max={20}
+                      value={createDraft.freeAdultCount}
+                      onChange={(e) => setCreateDraft((d) => ({ ...d, freeAdultCount: e.target.value }))}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Adults included at no extra charge per booking.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-extra-adult">Price per extra adult (beyond free count)</Label>
+                    <Input
+                      id="new-extra-adult"
+                      type="number"
+                      step="0.01"
+                      value={createDraft.additionalAdultPrice}
+                      onChange={(e) =>
+                        setCreateDraft((d) => ({ ...d, additionalAdultPrice: e.target.value }))
+                      }
+                      placeholder="e.g. 10.00"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-min-seats">Minimum participants</Label>
+                    <Input
+                      id="new-min-seats"
+                      type="number"
+                      min={1}
+                      value={createDraft.minSeats}
+                      onChange={(e) => setCreateDraft((d) => ({ ...d, minSeats: e.target.value }))}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Booking stays pending until this many participants join.
+                    </p>
+                  </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label htmlFor="new-price-hour">Hourly rate (duration-based billing)</Label>
+                    <Input
+                      id="new-price-hour"
+                      type="number"
+                      step="0.01"
+                      value={createDraft.pricePerHour}
+                      onChange={(e) => setCreateDraft((d) => ({ ...d, pricePerHour: e.target.value }))}
+                      placeholder="e.g. 75.00 — overrides per-participant pricing"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Use for room rentals. Total = rate × hours.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-min-child">Min children</Label>
+                    <Input
+                      id="new-min-child"
+                      type="number"
+                      min={0}
+                      value={createDraft.minChildSeats}
+                      onChange={(e) => setCreateDraft((d) => ({ ...d, minChildSeats: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-max-child">Max children</Label>
+                    <Input
+                      id="new-max-child"
+                      type="number"
+                      min={0}
+                      value={createDraft.maxChildSeats}
+                      onChange={(e) => setCreateDraft((d) => ({ ...d, maxChildSeats: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-min-adult-seat">Min adults</Label>
+                    <Input
+                      id="new-min-adult-seat"
+                      type="number"
+                      min={0}
+                      value={createDraft.minAdultSeats}
+                      onChange={(e) => setCreateDraft((d) => ({ ...d, minAdultSeats: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-max-adult-seat">Max adults</Label>
+                    <Input
+                      id="new-max-adult-seat"
+                      type="number"
+                      min={0}
+                      value={createDraft.maxAdultSeats}
+                      onChange={(e) => setCreateDraft((d) => ({ ...d, maxAdultSeats: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label htmlFor="new-extra-child-price">Price per extra child (beyond max child seats)</Label>
+                    <Input
+                      id="new-extra-child-price"
+                      type="number"
+                      step="0.01"
+                      value={createDraft.additionalChildPrice}
+                      onChange={(e) =>
+                        setCreateDraft((d) => ({ ...d, additionalChildPrice: e.target.value }))
+                      }
+                    />
+                  </div>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+
+          <div className="flex items-start justify-between gap-4 rounded-lg border border-border bg-card px-3 py-2">
+            <div className="space-y-1">
+              <Label htmlFor="new-pkg-only">Package-only service</Label>
+              <p className="text-xs text-muted-foreground">
+                When enabled, customers must select an event package to book.
+              </p>
+            </div>
+            <Switch
+              id="new-pkg-only"
+              checked={createDraft.isPackageService}
+              onCheckedChange={(v) => setCreateDraft((d) => ({ ...d, isPackageService: v }))}
+            />
+          </div>
+          {createDraft.isPackageService ? (
+            <Alert className="border-amber-500/50 bg-amber-500/10">
+              <AlertTitle className="text-amber-950 dark:text-amber-100">Package-only</AlertTitle>
+              <AlertDescription className="text-amber-900/90 dark:text-amber-50/90">
+                After you create this {LABELS.service.toLowerCase()}, open it again to link or create
+                packages.
+              </AlertDescription>
+            </Alert>
+          ) : null}
+
+          <Accordion type="single" collapsible className="border border-border rounded-lg px-3">
+            <AccordionItem value="new-svc-addons">
+              <AccordionTrigger className="text-sm font-semibold">
+                Linked add-ons (optional)
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-3 pb-2">
+                  <p className="text-xs text-muted-foreground">
+                    Add-ons customers can select when booking this {LABELS.service.toLowerCase()}.
+                  </p>
+                  {createDraft.pendingServiceAddOnLinks.map((row) => {
+                    const addon = addOnCatalog.find((a) => a.id === row.addOnId)
+                    return (
+                      <div
+                        key={row.addOnId}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2"
+                      >
+                        <span className="text-sm font-semibold text-foreground">
+                          {addon?.name ?? row.addOnId}
+                        </span>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex items-center gap-2">
+                            <Label className="text-xs">Free</Label>
+                            <Switch
+                              checked={row.isFree}
+                              onCheckedChange={(v) =>
+                                setCreateDraft((d) => ({
+                                  ...d,
+                                  pendingServiceAddOnLinks: d.pendingServiceAddOnLinks.map((x) =>
+                                    x.addOnId === row.addOnId ? { ...x, isFree: v } : x,
+                                  ),
+                                }))
+                              }
+                            />
+                          </div>
+                          {!row.isFree && addon ? (
+                            <Badge variant="secondary">{formatPrice(addon.price)}</Badge>
+                          ) : null}
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="text-destructive"
+                            onClick={() =>
+                              setCreateDraft((d) => ({
+                                ...d,
+                                pendingServiceAddOnLinks: d.pendingServiceAddOnLinks.filter(
+                                  (x) => x.addOnId !== row.addOnId,
+                                ),
+                              }))
+                            }
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                  <Popover open={createAddOnOpen} onOpenChange={setCreateAddOnOpen}>
+                    <PopoverTrigger asChild>
+                      <Button type="button" variant="outline" className="w-full justify-between">
+                        Link add-on
+                        <ChevronsUpDown className="h-4 w-4 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-80 p-0" align="start">
+                      <Command>
+                        <CommandInput placeholder="Search add-ons…" />
+                        <CommandList>
+                          <CommandEmpty>No add-ons found.</CommandEmpty>
+                          <CommandGroup>
+                            {addOnCatalog
+                              .filter(
+                                (a) =>
+                                  !createDraft.pendingServiceAddOnLinks.some(
+                                    (p) => p.addOnId === a.id,
+                                  ),
+                              )
+                              .map((a) => (
+                                <CommandItem
+                                  key={a.id}
+                                  value={a.name}
+                                  onSelect={() => {
+                                    setCreateDraft((d) => ({
+                                      ...d,
+                                      pendingServiceAddOnLinks: [
+                                        ...d.pendingServiceAddOnLinks,
+                                        { addOnId: a.id, isFree: false },
+                                      ],
+                                    }))
+                                    setCreateAddOnOpen(false)
+                                  }}
+                                >
+                                  {a.name}
+                                  <span className="ml-auto text-xs text-muted-foreground">
+                                    {formatPrice(a.price)}
+                                  </span>
+                                </CommandItem>
+                              ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="new-sub-price">Subscription price (optional)</Label>
@@ -1652,6 +2750,29 @@ export default function AdminSchedulingServicesPage() {
           </div>
         </div>
       </CrudModal>
+
+      <AlertDialog open={packageDisableConfirmOpen} onOpenChange={setPackageDisableConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Turn off package-only?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Customers can book this service directly without a package. Linked packages remain but are
+              no longer required.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setEditDraft((d) => ({ ...d, isPackageService: false }))
+                setPackageDisableConfirmOpen(false)
+              }}
+            >
+              Continue
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

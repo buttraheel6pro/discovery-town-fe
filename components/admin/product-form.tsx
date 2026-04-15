@@ -3,12 +3,16 @@
 
 import { useCallback, useMemo, useState } from 'react'
 
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import type { Product, ProductCategory } from '@/lib/types'
 
@@ -31,12 +35,15 @@ export type ProductDraft = {
   availablePOS: boolean
   isActive: boolean
   imageUrl: string
+  canBeAddOn: boolean
 }
 
 export interface ProductFormProps {
   readonly value: ProductDraft
   readonly onChange: (next: ProductDraft) => void
   readonly categories: ProductCategory[]
+  /** When set, product is already promoted — show read-only linked add-on chip. */
+  readonly lockedPromotedAddOn?: { readonly id: string; readonly name: string } | null
   readonly disabled?: boolean
   readonly className?: string
 }
@@ -67,6 +74,7 @@ export function productToDraft(product: Product, categories: ProductCategory[]):
     availablePOS: product.availablePOS ?? true,
     isActive: product.isActive ?? true,
     imageUrl: product.imageUrl ?? '',
+    canBeAddOn: false,
   }
 }
 
@@ -79,7 +87,7 @@ export function draftToProductPatch(draft: ProductDraft): Partial<Product> {
   const stockCount = Number.parseInt(draft.stockCount || '0', 10)
   const lowStockThreshold = Number.parseInt(draft.lowStockThreshold || '0', 10)
 
-  return {
+  const base: Partial<Product> = {
     name: draft.name.trim(),
     sku: draft.sku.trim() || undefined,
     description: draft.description.trim() || undefined,
@@ -99,12 +107,17 @@ export function draftToProductPatch(draft: ProductDraft): Partial<Product> {
     isActive: draft.isActive,
     imageUrl: draft.imageUrl.trim() || undefined,
   }
+  if (draft.canBeAddOn) {
+    return { ...base, canBeAddOn: true }
+  }
+  return base
 }
 
 export function ProductForm({
   value,
   onChange,
   categories,
+  lockedPromotedAddOn = null,
   disabled = false,
   className,
 }: Readonly<ProductFormProps>) {
@@ -371,6 +384,50 @@ export function ProductForm({
             disabled={disabled}
           />
         </div>
+      </div>
+
+      <div className="space-y-3 rounded-xl border border-border bg-card p-4">
+        <p className="text-sm font-semibold text-foreground">Booking add-on</p>
+        {lockedPromotedAddOn ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Badge className="border border-emerald-600/40 bg-emerald-600/10 px-3 py-1.5 text-sm font-medium text-emerald-800 hover:bg-emerald-600/15 dark:text-emerald-200">
+                Linked add-on: {lockedPromotedAddOn.name}
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs text-left">
+              This product is permanently linked to an add-on. This cannot be reversed.
+            </TooltipContent>
+          </Tooltip>
+        ) : (
+          <>
+            <div className="flex items-start gap-3">
+              <Checkbox
+                id="prod-addon"
+                checked={value.canBeAddOn}
+                onCheckedChange={(v) => set('canBeAddOn', Boolean(v))}
+                disabled={disabled}
+              />
+              <div className="space-y-1">
+                <Label htmlFor="prod-addon" className="text-sm font-medium leading-snug">
+                  Make available as a booking add-on
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  This product can also be selected during bookings and event packages.
+                </p>
+              </div>
+            </div>
+            {value.canBeAddOn ? (
+              <Alert className="border-amber-500/50 bg-amber-500/10">
+                <AlertTitle className="text-amber-900 dark:text-amber-100">Important</AlertTitle>
+                <AlertDescription className="text-amber-900/90 dark:text-amber-100/90">
+                  Once saved, this product will be permanently linked to an add-on. This cannot be
+                  reversed.
+                </AlertDescription>
+              </Alert>
+            ) : null}
+          </>
+        )}
       </div>
     </div>
   )

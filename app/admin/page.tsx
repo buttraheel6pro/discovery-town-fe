@@ -23,7 +23,6 @@ import {
   Cell,
 } from "recharts";
 import { TrendingUp, Users, Calendar, DollarSign, Zap, UserCircle, Building2, Package } from "lucide-react";
-import { facilities, users, events } from "@/lib/mock-data";
 import { CapacityRing } from "@/components/admin/capacity-ring";
 import { KpiCard } from "@/components/admin/kpi-card";
 import { RevenueLineChart } from "@/components/admin/revenue-line-chart";
@@ -37,22 +36,14 @@ import { useInventory } from "@/lib/inventory-store";
 import { useReports } from "@/lib/reports-store";
 import { ContactAvatar } from "@/components/customer/contact-avatar";
 import { ContactTypeBadge } from "@/components/customer/contact-type-badge";
-import type { BillingCycle, ContactSubscription, MembershipPlan } from "@/lib/types";
+import type { BillingCycle, ContactSubscription, MembershipPlan, SchedulingServiceType } from "@/lib/types";
 import { getLowStockProducts } from "@/lib/utils";
 
-const revenueData = [
-  { month: "Jan", revenue: 4000, bookings: 2400 },
-  { month: "Feb", revenue: 3000, bookings: 1398 },
-  { month: "Mar", revenue: 2000, bookings: 9800 },
-  { month: "Apr", revenue: 2780, bookings: 3908 },
-  { month: "May", revenue: 1890, bookings: 4800 },
-  { month: "Jun", revenue: 2390, bookings: 3800 },
+const FACILITY_SERVICE_TYPES: SchedulingServiceType[] = [
+  "COURT_BOOKING",
+  "OPEN_PLAY",
+  "PRIVATE_HIRE",
 ];
-
-const facilityData = facilities.map((f) => ({
-  name: f.name,
-  occupancy: Math.floor(Math.random() * 100),
-}));
 
 const COLORS = ["#ff9a56", "#1a2340", "#4a5f8f", "#8b9bbb"];
 
@@ -69,17 +60,14 @@ function monthlyValueForPlan(
 }
 
 export default function AdminDashboard() {
-  const { slots, bookings } = useScheduling();
+  const { services, slots, bookings } = useScheduling();
   const { contacts, subscriptions, membershipPlans } = useClients();
   const { inquiries } = useCalendar();
   const { orders: shopOrders, products: shopProducts } = useInventory();
   const { kpiDashboard, revenueSummary } = useReports();
-  const totalRevenue = 15940;
-  const totalBookings = 26706;
-  const totalUsers = users.length;
-  const activeEvents = events.filter(
-    (e) => new Date(e.date) > new Date(),
-  ).length;
+  const totalRevenue = revenueSummary.net;
+  const totalBookings = bookings.length;
+  const totalUsers = contacts.length;
 
   const todayStr = new Date().toISOString().slice(0, 10);
   const todaysSlots = slots
@@ -120,6 +108,27 @@ export default function AdminDashboard() {
     .reduce((s, o) => s + o.total, 0);
 
   const lowStockAlerts = getLowStockProducts(shopProducts).length;
+
+  const facilityData = services
+    .filter((service) => service.isActive && FACILITY_SERVICE_TYPES.includes(service.serviceType))
+    .slice(0, 4)
+    .map((service) => {
+      const serviceSlots = slots.filter((slot) => slot.serviceId === service.id);
+      const capacity = serviceSlots.reduce((sum, slot) => sum + slot.effectiveCapacity, 0);
+      const booked = serviceSlots.reduce((sum, slot) => sum + slot.bookedCount, 0);
+      const occupancy =
+        capacity > 0 ? Math.max(1, Math.min(100, Math.round((booked / capacity) * 100))) : 0;
+      return {
+        name: service.name,
+        occupancy,
+      };
+    });
+
+  const revenueData = revenueSummary.daily.slice(-6).map((entry) => ({
+    month: new Date(entry.date).toLocaleDateString("en-GB", { month: "short" }),
+    revenue: entry.net,
+    bookings: bookings.filter((booking) => booking.createdAt.startsWith(entry.date)).length,
+  }));
 
   const todaysOrdersPreview = shopOrders
     .filter((o) => o.createdAt.startsWith(todayStr))

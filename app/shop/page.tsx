@@ -1,13 +1,6 @@
-/** Shop page — browse products and add to cart. */
-
-import { Suspense } from 'react'
-
-import { ShopPageClient } from '@/components/customer/shop-page-client'
+/** Legacy shop route — redirects to the new Store experience. */
+import { redirect } from 'next/navigation'
 
 export default function ShopPage() {
-  return (
-    <Suspense fallback={<div className="min-h-[60vh] bg-background" />}>
-      <ShopPageClient />
-    </Suspense>
-  )
+  redirect('/store/shop')
 }

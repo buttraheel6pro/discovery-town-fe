@@ -14,6 +14,7 @@ interface NavItem {
   label: string;
   href: string;
   icon: LucideIcon;
+  badgeCount?: number;
 }
 
 interface NavGroupProps {
@@ -53,6 +54,9 @@ export function SidebarItem({ item, isActive, isChild = false }: { item: NavItem
     >
       {!isChild && <Icon className="w-[18px] h-[18px] flex-shrink-0" />}
       <span className="truncate">{item.label}</span>
+      {item.badgeCount != null && item.badgeCount > 0 ? (
+        <span className="ml-auto inline-flex h-2.5 w-2.5 rounded-full bg-destructive" aria-label={`${item.badgeCount} pending`} />
+      ) : null}
       {isActive && !isChild && (
         <div className="absolute left-1.5 w-1 h-5 bg-sidebar-primary rounded-full" />
       )}

@@ -3,6 +3,7 @@
 import { useMemo, useState, use } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import {
   ArrowLeft,
   Calendar,
@@ -14,6 +15,8 @@ import {
   Share2,
   Tag,
 } from 'lucide-react'
+import { BookingFlowCouponSection } from '@/components/customer/booking-flow-coupon-section'
+import { EventBookingWidget } from '@/components/customer/event-booking-widget'
 import { CustomerNavbar } from '@/components/customer/navbar'
 import { CustomerFooter } from '@/components/customer/footer'
 import { PackageSelector } from '@/components/customer/package-selector'
@@ -38,7 +41,7 @@ import { useBookingForm } from '@/hooks/use-booking-form'
 import { useClients } from '@/lib/client-store'
 import { useScheduling } from '@/lib/scheduling-store'
 import { formatPrice, isDocumentSignedAndValid } from '@/lib/utils'
-import type { SchedulingService, SchedulingSlot } from '@/lib/types'
+import type { EventOccasion, SchedulingService, SchedulingSlot } from '@/lib/types'
 
 function formatLongDate(dateStr: string | undefined) {
   if (!dateStr) return '—'
@@ -55,6 +58,7 @@ function EventDetailContent({
   service,
   eventSlotBase,
 }: Readonly<{ service: SchedulingService; eventSlotBase: SchedulingSlot | undefined }>) {
+  const searchParams = useSearchParams()
   const { slots, packages } = useScheduling()
   const { contacts, subscriptions, documents } = useClients()
 
@@ -68,6 +72,16 @@ function EventDetailContent({
           (s.status === 'ACTIVE' || s.status === 'TRIALING'),
       ),
   )
+  const hasSubscriptionForCoupons = Boolean(
+    primaryContact &&
+      subscriptions.some(
+        (s) =>
+          s.contactId === primaryContact.id &&
+          (s.status === 'ACTIVE' ||
+            s.status === 'TRIALING' ||
+            s.status === 'PAUSED'),
+      ),
+  )
   const membersOnlyBlocked = service.category.membersOnly === true && !hasActiveMembership
 
   const eventSlot = useMemo(() => {
@@ -75,10 +89,14 @@ function EventDetailContent({
     return found ?? eventSlotBase
   }, [slots, service.id, eventSlotBase])
 
-  const activePackages = useMemo(
-    () => packages.filter((p) => p.serviceId === service.id && p.isActive),
-    [packages, service.id],
-  )
+  const activePackages = useMemo(() => {
+    const packageServiceIds = new Set<string>([service.id])
+    if (service.serviceType === 'PARTY_PACKAGE') {
+      packageServiceIds.add('svc-5')
+      packageServiceIds.add('svc-event-party-booking')
+    }
+    return packages.filter((p) => packageServiceIds.has(p.serviceId) && p.isActive)
+  }, [packages, service.id, service.serviceType])
   const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null)
   const selectedPackage = useMemo(
     () => activePackages.find((p) => p.id === selectedPackageId) ?? null,
@@ -98,11 +116,33 @@ function EventDetailContent({
 
   const [registered, setRegistered] = useState(false)
   const [waitlistOpen, setWaitlistOpen] = useState(false)
+  const [privateSelectedPackageId, setPrivateSelectedPackageId] = useState<string | null>(null)
+  const [privateFlowSummary, setPrivateFlowSummary] = useState<{
+    occasion: EventOccasion
+    birthdayName: string
+    birthdayAge: number | null
+    packageName: string | null
+    date: string | null
+    timeRange: string | null
+    children: number
+    adults: number
+    selectedAddOnCount: number
+  } | null>(null)
 
   const bookingForm = useBookingForm({
     service: serviceForBooking,
     slot: slotForBooking,
   })
+
+  const bookingPricingResetKey = useMemo(
+    () =>
+      [
+        eventSlot?.id ?? '',
+        selectedPackageId ?? '',
+        String(bookingForm.totalBeforeCoupon),
+      ].join('|'),
+    [bookingForm.totalBeforeCoupon, eventSlot?.id, selectedPackageId],
+  )
 
   const requiredWaiverDocs = useMemo(() => {
     if (!service.requiresWaiver) return []
@@ -143,6 +183,13 @@ function EventDetailContent({
   const fillPct = max > 0 ? Math.round((regCount / max) * 100) : 0
   const status = service.eventStatus ?? 'DRAFT'
   const published = status === 'PUBLISHED'
+  const isPartyPackageFlow = service.serviceType === 'PARTY_PACKAGE'
+  const isPrivateEventJourney =
+    isPartyPackageFlow && searchParams.get('privateEvent') === '1'
+  const privateRoomPackages = activePackages.slice(0, 3)
+  const wholeVenuePackages = activePackages.slice(3, 6)
+  const privateSelectedPackage =
+    activePackages.find((entry) => entry.id === privateSelectedPackageId) ?? null
   const agendaItems = service.agenda ?? []
   const tags = service.tags ?? []
 
@@ -266,6 +313,51 @@ function EventDetailContent({
             </p>
           </section>
 
+          {isPrivateEventJourney ? (
+            <section className="rounded-xl border border-border bg-card p-4 sm:p-5">
+              <h2 className="text-xl font-bold mb-3">Choose your package</h2>
+              <div className="space-y-5">
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-foreground">Private room booking</p>
+                  <PackageSelector
+                    packages={privateRoomPackages}
+                    selectedId={privateSelectedPackageId}
+                    onSelect={setPrivateSelectedPackageId}
+                    variant="full"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-foreground">Whole venue</p>
+                  <PackageSelector
+                    packages={wholeVenuePackages}
+                    selectedId={privateSelectedPackageId}
+                    onSelect={setPrivateSelectedPackageId}
+                    variant="full"
+                  />
+                </div>
+                <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
+                  <p className="font-semibold text-foreground">
+                    Selected package: {privateSelectedPackage?.name ?? 'Not selected'}
+                  </p>
+                  <p className="mt-1 text-muted-foreground">
+                    Occasion: {privateFlowSummary?.occasion?.replace('_', ' ') ?? 'Not set'}
+                  </p>
+                  <p className="text-muted-foreground">
+                    Date & time: {privateFlowSummary?.date ?? 'Not set'}{' '}
+                    {privateFlowSummary?.timeRange ? `· ${privateFlowSummary.timeRange}` : ''}
+                  </p>
+                  <p className="text-muted-foreground">
+                    Guests: {privateFlowSummary?.children ?? 0} children ·{' '}
+                    {privateFlowSummary?.adults ?? 0} adults
+                  </p>
+                  <p className="text-muted-foreground">
+                    Add-ons: {privateFlowSummary?.selectedAddOnCount ?? 0} selected
+                  </p>
+                </div>
+              </div>
+            </section>
+          ) : null}
+
           {agendaItems.length > 0 ? (
             <>
               <Separator />
@@ -322,10 +414,23 @@ function EventDetailContent({
         <aside>
           <Card className="sticky top-24 shadow-xl">
             <CardHeader className="pb-3">
-              <CardTitle className="text-lg font-bold">Register for this Event</CardTitle>
+              <CardTitle className="text-lg font-bold">
+                {isPrivateEventJourney ? 'Plan your private event' : 'Register for this Event'}
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-5">
-              {registered ? (
+              {isPrivateEventJourney ? (
+                <EventBookingWidget
+                  key={privateSelectedPackageId ?? 'private-flow'}
+                  serviceId={service.id}
+                  embedded
+                  showOccasionStep
+                  showPackageStep={false}
+                  externalSelectedPackageId={privateSelectedPackageId}
+                  canStart={Boolean(privateSelectedPackageId)}
+                  onProgressChange={setPrivateFlowSummary}
+                />
+              ) : registered ? (
                 <div className="text-center py-6 space-y-3">
                   <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto" />
                   <p className="font-bold text-lg">You&apos;re Registered!</p>
@@ -464,6 +569,60 @@ function EventDetailContent({
                     </div>
                   ) : null}
 
+                  {bookingForm.categoryIncludedAddOns.length > 0 ||
+                  bookingForm.categoryOptionalAddOns.length > 0 ? (
+                    <div className="space-y-2 rounded-lg border border-border p-3">
+                      <span className="text-sm font-semibold">Category add-ons</span>
+                      {bookingForm.categoryIncludedAddOns.length > 0 ? (
+                        <div className="space-y-1.5">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                            Included
+                          </p>
+                          {bookingForm.categoryIncludedAddOns.map((addOn) => (
+                            <div
+                              key={addOn.id}
+                              className="flex items-center justify-between text-sm"
+                            >
+                              <span>{addOn.name}</span>
+                              <span className="font-semibold text-emerald-700">Included</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                      {bookingForm.categoryOptionalAddOns.length > 0 ? (
+                        <div className="space-y-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                            Optional
+                          </p>
+                          {bookingForm.categoryOptionalAddOns.map((addOn) => (
+                            <label
+                              key={addOn.id}
+                              className="flex items-center justify-between gap-3 text-sm"
+                            >
+                              <div className="flex items-center gap-2">
+                                <Checkbox
+                                  checked={bookingForm.selectedCategoryAddOnIds.includes(
+                                    addOn.id,
+                                  )}
+                                  onCheckedChange={(checked) =>
+                                    bookingForm.setCategoryAddOnSelected(
+                                      addOn.id,
+                                      Boolean(checked),
+                                    )
+                                  }
+                                />
+                                <span>{addOn.name}</span>
+                              </div>
+                              <span className="text-muted-foreground">
+                                {formatPrice(addOn.price)}
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
                   {bookingForm.needsParticipant ? (
                     <div className="space-y-2">
                       <Label>Lead participant</Label>
@@ -498,7 +657,8 @@ function EventDetailContent({
                           />
                           {service.category.requiresAttendee ? (
                             <p className="text-xs text-muted-foreground">
-                              This event requires you to select a participant.
+                              The booked child must attend with a responsible adult (you or another
+                              adult on this booking).
                             </p>
                           ) : null}
                         </>
@@ -590,41 +750,28 @@ function EventDetailContent({
                     </div>
                   ) : null}
 
-                  <Separator />
-
-                  <div className="space-y-1.5 text-sm">
-                    {bookingForm.isFreeInfant && bookingForm.freeInfantMonths != null ? (
-                      <p className="text-sm font-semibold text-foreground">
-                        Infant (under {bookingForm.freeInfantMonths} months): FREE
-                      </p>
-                    ) : null}
-
-                    {bookingForm.depositPercent != null &&
-                    bookingForm.depositDueToday != null &&
-                    bookingForm.depositDueOnArrival != null ? (
-                      <div className="space-y-1 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Due today (deposit)</span>
-                          <span className="font-semibold text-foreground">
-                            {formatPrice(bookingForm.depositDueToday)}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Due on arrival (balance)</span>
-                          <span className="font-semibold text-foreground">
-                            {formatPrice(bookingForm.depositDueOnArrival)}
-                          </span>
-                        </div>
-                      </div>
-                    ) : null}
-                    <div className="flex justify-between font-bold text-base">
+                  <BookingFlowCouponSection
+                    pricingResetKey={bookingPricingResetKey}
+                    totalBeforeCoupon={bookingForm.totalBeforeCoupon}
+                    grandTotal={bookingForm.grandTotal}
+                    checkoutCouponDiscount={bookingForm.checkoutCouponDiscount}
+                    setCoupon={bookingForm.setCoupon}
+                    appliedCouponCode={bookingForm.checkoutCouponCode}
+                    appliedCouponDiscount={bookingForm.checkoutCouponDiscount}
+                    hasActiveSubscription={hasSubscriptionForCoupons}
+                    contactId={primaryContact?.id}
+                    isFreeInfant={bookingForm.isFreeInfant}
+                    freeInfantMonths={bookingForm.freeInfantMonths}
+                    depositPercent={bookingForm.depositPercent}
+                    depositDueToday={bookingForm.depositDueToday}
+                    depositDueOnArrival={bookingForm.depositDueOnArrival}
+                    totalLabel={
                       <span className="flex items-center gap-1">
                         <Ticket className="w-3.5 h-3.5" />
                         Total
                       </span>
-                      <span className="text-accent">{formatPrice(bookingForm.grandTotal)}</span>
-                    </div>
-                  </div>
+                    }
+                  />
 
                   {membersOnlyBlocked ? (
                     <div className="space-y-2">

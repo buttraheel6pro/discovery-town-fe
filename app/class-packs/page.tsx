@@ -74,7 +74,7 @@ export default function ClassPacksMarketingPage() {
               {(packs.length ? packs : cmCreditPackDefinitions).map((pack) => (
                 <ListingCard
                   key={pack.id}
-                  href="/account/credits"
+                  href={`/class-packs/checkout?pack=${pack.id}`}
                   title={pack.name}
                   description={pack.description}
                   imageUrl="https://images.unsplash.com/photo-1518611012118-696072aa579a?w=800&q=80"
@@ -94,8 +94,8 @@ export default function ClassPacksMarketingPage() {
                     </p>
                   }
                   footer={
-                    <span className="text-sm font-semibold text-accent w-full block text-center">
-                      Buy from account →
+                    <span className="block w-full text-center text-sm font-semibold text-accent">
+                      Buy now →
                     </span>
                   }
                 />

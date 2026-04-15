@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useMemo } from "react";
 import {
   Activity,
   BarChart3,
@@ -25,6 +26,7 @@ import {
   Users2,
 } from "lucide-react";
 import { SidebarGroup, SidebarItem } from "./sidebar-group";
+import { useEventInquiriesCount } from "@/hooks/use-event-inquiries-count";
 
 const topLevelItems = [
   {
@@ -88,6 +90,11 @@ const sidebarGroups = [
         label: "Packages",
         href: "/admin/scheduling/packages",
         icon: Package,
+      },
+      {
+        label: "Event Inquiries",
+        href: "/admin/scheduling/inquiries",
+        icon: Activity,
       },
       {
         label: "Waivers",
@@ -198,6 +205,20 @@ function isItemActive(href: string, pathname: string) {
 
 export function AdminSidebar() {
   const pathname = usePathname();
+  const pendingEventInquiries = useEventInquiriesCount();
+  const sidebarGroupsWithInquiries = useMemo(() => {
+    return sidebarGroups.map((group) => {
+      if (group.label !== "Operations") return group;
+      return {
+        ...group,
+        items: group.items.map((item) =>
+          item.href === "/admin/scheduling/inquiries"
+            ? { ...item, badgeCount: pendingEventInquiries }
+            : item,
+        ),
+      };
+    });
+  }, [pendingEventInquiries]);
 
   return (
     <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r border-sidebar-border bg-sidebar pt-6 flex flex-col">
@@ -224,7 +245,7 @@ export function AdminSidebar() {
         </div>
 
         <div className="space-y-1.5 pt-0.5">
-          {sidebarGroups.map((group) => (
+          {sidebarGroupsWithInquiries.map((group) => (
             <SidebarGroup
               key={group.label}
               label={group.label}

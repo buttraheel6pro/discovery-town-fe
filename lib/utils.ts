@@ -4,6 +4,7 @@ import { twMerge } from 'tailwind-merge'
 import { z } from 'zod'
 
 import type {
+  AddOn,
   OpenPricingModel,
   StockStatus,
   Product,
@@ -180,6 +181,25 @@ export function getAgeRangeLabel(
   if (!ageMax) return `${ageMin}+`
   if (!ageMin) return `Up to ${ageMax}`
   return `Ages ${ageMin}–${ageMax}`
+}
+
+/** Map legacy booking `AddOn` rows into scheduling checkout add-on shape (admin catalog pickers). */
+export function bookingAddOnToSchedulingAddOn(a: AddOn): SchedulingServiceAddOn {
+  return {
+    id: a.id,
+    name: a.name,
+    description: a.description,
+    price: a.price,
+    pricingType: a.pricingType === 'PER_PERSON' ? 'PER_PERSON' : 'FLAT',
+    isActive: a.isActive,
+  }
+}
+
+/** Strip simple HTML tags for plain-text descriptions (e.g. product → add-on). */
+export function plainTextFromHtml(html: string | undefined): string | undefined {
+  if (!html?.trim()) return undefined
+  const t = html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+  return t.length > 0 ? t : undefined
 }
 
 /** Line total for a catalog add-on given quantity, guests, and duration (hours). */

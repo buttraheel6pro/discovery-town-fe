@@ -1,27 +1,61 @@
 /** Cart page — shared cart for shop + future checkout flows. */
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, ShoppingBag } from 'lucide-react'
 
-import { CouponValidationFeedback } from '@/components/customer/coupon-validation-feedback'
+import { CouponPanel } from '@/components/customer/coupon-panel'
 import { CustomerFooter } from '@/components/customer/footer'
 import { CustomerNavbar } from '@/components/customer/navbar'
 import { ShopCartItem } from '@/components/customer/shop-cart-item'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
+import { useClients } from '@/lib/client-store'
 import { calcCartTotals, formatPrice } from '@/lib/utils'
 import { useInventory } from '@/lib/inventory-store'
+import type { Coupon } from '@/lib/types'
 
 export default function CartPage() {
-  const { cart, updateCartQuantity, removeFromCart, applyCoupon, removeCoupon } = useInventory()
-  const [promoCode, setPromoCode] = useState('')
+  const { cart, updateCartQuantity, removeFromCart, setCouponDirect, removeCoupon } =
+    useInventory()
+  const { contacts, subscriptions } = useClients()
+
+  const primaryContact =
+    contacts.find((c) => c.contactType === 'CUSTOMER') ?? contacts[0] ?? null
+  const hasActiveSubscription = Boolean(
+    primaryContact &&
+      subscriptions.some(
+        (s) =>
+          s.contactId === primaryContact.id &&
+          (s.status === 'ACTIVE' ||
+            s.status === 'TRIALING' ||
+            s.status === 'PAUSED'),
+      ),
+  )
 
   const { subtotal, tax, total } = useMemo(() => {
     return calcCartTotals(cart.items, cart.couponDiscount, 20)
   }, [cart.couponDiscount, cart.items])
+  const groupedRequestItems = useMemo(
+    () =>
+      cart.items.filter(
+        (item) => item.type === 'booking' && typeof item.metadata?.requestType === 'string',
+      ),
+    [cart.items],
+  )
+  const standardItems = useMemo(
+    () => cart.items.filter((item) => !groupedRequestItems.some((requestItem) => requestItem.id === item.id)),
+    [cart.items, groupedRequestItems],
+  )
+
+  function handleCouponApplied(coupon: Coupon | null, discountAmount: number) {
+    if (!coupon || discountAmount <= 0) {
+      removeCoupon()
+      return
+    }
+    setCouponDirect(coupon.code, discountAmount)
+  }
 
   return (
     <>
@@ -29,7 +63,7 @@ export default function CartPage() {
       <main>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
           <Link
-            href="/shop"
+            href="/store/shop"
             className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-6"
           >
             <ArrowLeft className="w-4 h-4" /> Continue Shopping
@@ -46,7 +80,7 @@ export default function CartPage() {
             <div className="text-center py-24 space-y-4">
               <ShoppingBag className="w-16 h-16 text-muted-foreground mx-auto" />
               <p className="text-xl font-bold text-muted-foreground">Your cart is empty</p>
-              <Link href="/shop">
+              <Link href="/store/shop">
                 <Button className="bg-accent text-accent-foreground hover:bg-accent/90">
                   Browse products
                 </Button>
@@ -55,7 +89,32 @@ export default function CartPage() {
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
               <div className="lg:col-span-2 space-y-4">
-                {cart.items.map((item) => (
+                {groupedRequestItems.length > 0 ? (
+                  <div className="space-y-3 rounded-xl border border-border bg-card p-4">
+                    <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground">
+                      Request bundles
+                    </h2>
+                    {groupedRequestItems.map((item) => (
+                      <div key={item.id} className="rounded-lg border border-border bg-background p-3 text-sm">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-semibold text-foreground">{item.name}</p>
+                            {item.description ? (
+                              <p className="text-xs whitespace-pre-line text-muted-foreground">
+                                {item.description}
+                              </p>
+                            ) : null}
+                          </div>
+                          <Button variant="ghost" size="sm" onClick={() => removeFromCart(item.id)}>
+                            Remove
+                          </Button>
+                        </div>
+                        <p className="mt-2 font-semibold text-foreground">{formatPrice(item.price)}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                {standardItems.map((item) => (
                   <ShopCartItem
                     key={item.id}
                     item={item}
@@ -70,38 +129,15 @@ export default function CartPage() {
                   <h2 className="font-bold text-lg">Order summary</h2>
                   <Separator />
 
-                  <div className="space-y-2">
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="Promo code"
-                        value={promoCode}
-                        onChange={(e) => setPromoCode(e.target.value)}
-                        className="h-9 text-sm"
-                      />
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => promoCode.trim() && applyCoupon(promoCode.trim())}
-                      >
-                        Apply
-                      </Button>
-                    </div>
-                    <CouponValidationFeedback code={promoCode} subtotal={subtotal} />
-                    {cart.couponCode ? (
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-green-700 font-semibold">
-                          Applied <span className="font-mono">{cart.couponCode}</span>
-                        </span>
-                        <button
-                          type="button"
-                          className="text-muted-foreground underline"
-                          onClick={removeCoupon}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
+                  <CouponPanel
+                    context="ORDER"
+                    subtotal={subtotal}
+                    onCouponApplied={handleCouponApplied}
+                    hasActiveSubscription={hasActiveSubscription}
+                    contactId={cart.contactId ?? primaryContact?.id}
+                    externalAppliedCode={cart.couponCode}
+                    externalDiscount={cart.couponDiscount}
+                  />
 
                   <Separator />
 
@@ -144,5 +180,5 @@ export default function CartPage() {
       </main>
       <CustomerFooter />
     </>
-  );
+  )
 }

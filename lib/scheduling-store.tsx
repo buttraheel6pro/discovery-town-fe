@@ -3,30 +3,43 @@
 
 import React, { createContext, useContext, useMemo, useState } from 'react'
 
+import { newAdminEntityId } from '@/lib/scheduling-admin-builders'
 import {
   schedulingBookings as initialBookings,
   eventPackagesMock as initialPackages,
+  schedulingCategories as initialCategories,
   schedulingServices as initialServices,
   schedulingSlots as initialSlots,
   schedulingWaitlistEntries as initialWaitlist,
 } from '@/lib/mock-data'
 import type {
+  CategoryAddOn,
   EventPackage,
   SchedulingBooking,
+  SchedulingCategory,
   SchedulingService,
   SchedulingSlot,
   SchedulingWaitlistEntry,
   WaitlistStatus,
 } from '@/lib/types'
 
+export type SchedulingAddOnParent = 'category' | 'service'
+const INQUIRY_ACTION_STAFF_ID = 'staff-1'
+const INQUIRY_ACTION_STAFF_NAME = 'Sarah Mitchell'
+
 interface SchedulingStore {
+  categories: SchedulingCategory[]
   services: SchedulingService[]
   slots: SchedulingSlot[]
   bookings: SchedulingBooking[]
   waitlist: SchedulingWaitlistEntry[]
   packages: EventPackage[]
+  addCategory: (category: SchedulingCategory) => void
+  updateCategory: (categoryId: string, patch: Partial<SchedulingCategory>) => void
   addBooking: (booking: SchedulingBooking) => void
   cancelBooking: (bookingId: string, reason: string) => void
+  approveBooking: (bookingId: string) => void
+  declineBooking: (bookingId: string, reason: string) => void
   cancelSlot: (slotId: string, reason: string) => void
   publishSlot: (slotId: string) => void
   draftSlot: (slotId: string) => void
@@ -35,6 +48,25 @@ interface SchedulingStore {
   removeFromWaitlist: (entryId: string) => void
   promoteWaitlist: (slotId: string) => void
   addSlot: (slot: SchedulingSlot) => void
+  addSlots: (slots: SchedulingSlot[]) => void
+  linkSchedulingAddOn: (
+    parent: SchedulingAddOnParent,
+    parentId: string,
+    addOnId: string,
+    isFree: boolean,
+  ) => void
+  unlinkSchedulingAddOn: (
+    parent: SchedulingAddOnParent,
+    parentId: string,
+    addOnId: string,
+  ) => void
+  setSchedulingAddOnFree: (
+    parent: SchedulingAddOnParent,
+    parentId: string,
+    addOnId: string,
+    isFree: boolean,
+  ) => void
+  canDetachPackage: (serviceId: string, packageId: string) => boolean
   addService: (service: SchedulingService) => void
   updateService: (serviceId: string, patch: Partial<SchedulingService>) => void
   removeService: (serviceId: string) => void
@@ -49,8 +81,17 @@ const SchedulingContext = createContext<SchedulingStore | null>(null)
 export function SchedulingProvider({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  const [categories, setCategories] = useState<SchedulingCategory[]>(() =>
+    initialCategories.map((c) => ({
+      ...c,
+      linkedAddOns: c.linkedAddOns?.map((l) => ({ ...l })),
+    })),
+  )
   const [services, setServices] = useState<SchedulingService[]>(() =>
-    initialServices.map((s) => ({ ...s })),
+    initialServices.map((s) => ({
+      ...s,
+      linkedAddOns: s.linkedAddOns?.map((l) => ({ ...l })),
+    })),
   )
   const [slots, setSlots] = useState<SchedulingSlot[]>(() =>
     initialSlots.map((sl) => ({ ...sl, service: { ...sl.service } })),
@@ -103,6 +144,41 @@ export function SchedulingProvider({
                 status: 'CANCELLED',
                 cancelledAt,
                 cancellationReason: reason,
+              }
+            : b,
+        ),
+      )
+    }
+
+    function approveBooking(bookingId: string) {
+      setBookings((prev) =>
+        prev.map((b) =>
+          b.id === bookingId
+            ? {
+                ...b,
+                status: 'CONFIRMED',
+                cancellationReason: null,
+                cancelledAt: null,
+                actedByStaffId: INQUIRY_ACTION_STAFF_ID,
+                actedByStaffName: INQUIRY_ACTION_STAFF_NAME,
+              }
+            : b,
+        ),
+      )
+    }
+
+    function declineBooking(bookingId: string, reason: string) {
+      const cancelledAt = new Date().toISOString()
+      setBookings((prev) =>
+        prev.map((b) =>
+          b.id === bookingId
+            ? {
+                ...b,
+                status: 'CANCELLED',
+                cancellationReason: reason,
+                cancelledAt,
+                actedByStaffId: INQUIRY_ACTION_STAFF_ID,
+                actedByStaffName: INQUIRY_ACTION_STAFF_NAME,
               }
             : b,
         ),
@@ -186,6 +262,182 @@ export function SchedulingProvider({
       setSlots((prev) => [normalized, ...prev])
     }
 
+    function addSlots(nextSlots: SchedulingSlot[]) {
+      const normalized = nextSlots.map((slot) => ({
+        ...slot,
+        isActive: slot.isActive ?? true,
+        checkInCount: slot.checkInCount ?? 0,
+      }))
+      setSlots((prev) => [...normalized, ...prev])
+    }
+
+    function addCategory(category: SchedulingCategory) {
+      setCategories((prev) => [...prev, { ...category }])
+    }
+
+    function updateCategory(categoryId: string, patch: Partial<SchedulingCategory>) {
+      setCategories((prev) =>
+        prev.map((c) => (c.id === categoryId ? { ...c, ...patch } : c)),
+      )
+    }
+
+    function linkSchedulingAddOn(
+      parent: SchedulingAddOnParent,
+      parentId: string,
+      addOnId: string,
+      isFree: boolean,
+    ) {
+      const link: CategoryAddOn = {
+        id: newAdminEntityId('cao'),
+        categoryId: parentId,
+        addOnId,
+        isOptional: true,
+        isFree,
+      }
+      if (parent === 'service') {
+        setServices((prev) =>
+          prev.map((s) => {
+            if (s.id !== parentId) return s
+            const links = s.linkedAddOns ?? []
+            if (links.some((l) => l.addOnId === addOnId)) return s
+            return { ...s, linkedAddOns: [...links, link] }
+          }),
+        )
+        setSlots((prev) =>
+          prev.map((slot) =>
+            slot.serviceId === parentId
+              ? {
+                  ...slot,
+                  service: {
+                    ...slot.service,
+                    linkedAddOns: [
+                      ...(slot.service.linkedAddOns ?? []),
+                      ...(slot.service.linkedAddOns?.some((l) => l.addOnId === addOnId)
+                        ? []
+                        : [link]),
+                    ],
+                  },
+                }
+              : slot,
+          ),
+        )
+        return
+      }
+      setCategories((prev) =>
+        prev.map((c) => {
+          if (c.id !== parentId) return c
+          const links = c.linkedAddOns ?? []
+          if (links.some((l) => l.addOnId === addOnId)) return c
+          return { ...c, linkedAddOns: [...links, link] }
+        }),
+      )
+    }
+
+    function unlinkSchedulingAddOn(
+      parent: SchedulingAddOnParent,
+      parentId: string,
+      addOnId: string,
+    ) {
+      if (parent === 'service') {
+        setServices((prev) =>
+          prev.map((s) =>
+            s.id === parentId
+              ? {
+                  ...s,
+                  linkedAddOns: (s.linkedAddOns ?? []).filter((l) => l.addOnId !== addOnId),
+                }
+              : s,
+          ),
+        )
+        setSlots((prev) =>
+          prev.map((slot) =>
+            slot.serviceId === parentId
+              ? {
+                  ...slot,
+                  service: {
+                    ...slot.service,
+                    linkedAddOns: (slot.service.linkedAddOns ?? []).filter(
+                      (l) => l.addOnId !== addOnId,
+                    ),
+                  },
+                }
+              : slot,
+          ),
+        )
+        return
+      }
+      setCategories((prev) =>
+        prev.map((c) =>
+          c.id === parentId
+            ? {
+                ...c,
+                linkedAddOns: (c.linkedAddOns ?? []).filter((l) => l.addOnId !== addOnId),
+              }
+            : c,
+        ),
+      )
+    }
+
+    function setSchedulingAddOnFree(
+      parent: SchedulingAddOnParent,
+      parentId: string,
+      addOnId: string,
+      isFree: boolean,
+    ) {
+      if (parent === 'service') {
+        setServices((prev) =>
+          prev.map((s) =>
+            s.id === parentId
+              ? {
+                  ...s,
+                  linkedAddOns: (s.linkedAddOns ?? []).map((l) =>
+                    l.addOnId === addOnId ? { ...l, isFree } : l,
+                  ),
+                }
+              : s,
+          ),
+        )
+        setSlots((prev) =>
+          prev.map((slot) =>
+            slot.serviceId === parentId
+              ? {
+                  ...slot,
+                  service: {
+                    ...slot.service,
+                    linkedAddOns: (slot.service.linkedAddOns ?? []).map((l) =>
+                      l.addOnId === addOnId ? { ...l, isFree } : l,
+                    ),
+                  },
+                }
+              : slot,
+          ),
+        )
+        return
+      }
+      setCategories((prev) =>
+        prev.map((c) =>
+          c.id === parentId
+            ? {
+                ...c,
+                linkedAddOns: (c.linkedAddOns ?? []).map((l) =>
+                  l.addOnId === addOnId ? { ...l, isFree } : l,
+                ),
+              }
+            : c,
+        ),
+      )
+    }
+
+    function canDetachPackage(serviceId: string, packageId: string): boolean {
+      const blocked = bookings.some(
+        (b) =>
+          b.serviceId === serviceId &&
+          b.eventPackageId === packageId &&
+          b.status === 'CONFIRMED',
+      )
+      return !blocked
+    }
+
     function addService(service: SchedulingService) {
       setServices((prev) => [service, ...prev])
     }
@@ -247,13 +499,18 @@ export function SchedulingProvider({
     }
 
     return {
+      categories,
       services,
       slots,
       bookings,
       waitlist,
       packages,
+      addCategory,
+      updateCategory,
       addBooking,
       cancelBooking,
+      approveBooking,
+      declineBooking,
       cancelSlot,
       publishSlot,
       draftSlot,
@@ -262,6 +519,11 @@ export function SchedulingProvider({
       removeFromWaitlist,
       promoteWaitlist,
       addSlot,
+      addSlots,
+      linkSchedulingAddOn,
+      unlinkSchedulingAddOn,
+      setSchedulingAddOnFree,
+      canDetachPackage,
       addService,
       updateService,
       removeService,
@@ -270,7 +532,7 @@ export function SchedulingProvider({
       removePackage,
       duplicatePackage,
     }
-  }, [services, slots, bookings, waitlist, packages])
+  }, [categories, services, slots, bookings, waitlist, packages])
 
   return (
     <SchedulingContext.Provider value={value}>

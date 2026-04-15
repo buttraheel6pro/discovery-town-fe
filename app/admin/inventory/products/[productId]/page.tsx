@@ -6,7 +6,12 @@ import { useParams } from 'next/navigation'
 import Image from 'next/image'
 
 import { CrudModal } from '@/components/admin/crud-modal'
-import { ProductForm, type ProductDraft, draftToProductPatch } from '@/components/admin/product-form'
+import {
+  ProductForm,
+  type ProductDraft,
+  draftToProductPatch,
+  productToDraft,
+} from '@/components/admin/product-form'
 import { StockAdjustmentModal } from '@/components/admin/stock-adjustment-modal'
 import { StockMovementTimeline } from '@/components/admin/stock-movement-timeline'
 import { StockStatusBadge } from '@/components/admin/stock-status-badge'
@@ -15,38 +20,18 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useToast } from '@/hooks/use-toast'
 import { formatPrice } from '@/lib/utils'
 import { useInventory } from '@/lib/inventory-store'
 import type { Product, ProductCategory } from '@/lib/types'
-
-function productToDraft(product: Product, categories: ProductCategory[]): ProductDraft {
-  return {
-    name: product.name ?? '',
-    sku: product.sku ?? '',
-    description: product.description ?? '',
-    categoryId: product.categoryId ?? categories[0]?.id ?? '',
-    price: String(product.price ?? ''),
-    memberPrice: product.memberPrice != null ? String(product.memberPrice) : '',
-    compareAtPrice: product.compareAtPrice != null ? String(product.compareAtPrice) : '',
-    costPrice: product.costPrice != null ? String(product.costPrice) : '',
-    taxable: product.taxable ?? true,
-    taxRate: String(product.taxRate ?? 20),
-    trackInventory: product.trackInventory ?? true,
-    stockCount: String(product.stockCount ?? 0),
-    lowStockThreshold: String(product.lowStockThreshold ?? 10),
-    allowBackorders: product.allowBackorders ?? false,
-    availableOnline: product.availableOnline ?? true,
-    availablePOS: product.availablePOS ?? true,
-    isActive: product.isActive ?? true,
-    imageUrl: product.imageUrl ?? '',
-  }
-}
 
 export default function AdminInventoryProductDetailPage() {
   const params = useParams<{ productId: string }>()
   const productId = params.productId
 
-  const { products, productCategories, stockMovements, updateProduct } = useInventory()
+  const { toast } = useToast()
+  const { products, productCategories, bookingAddOns, stockMovements, updateProduct, promoteProductToAddOn } =
+    useInventory()
   const categories = useMemo(
     () => productCategories.slice().sort((a, b) => a.displayOrder - b.displayOrder),
     [productCategories],
@@ -88,6 +73,28 @@ export default function AdminInventoryProductDetailPage() {
     ),
   )
 
+  const lockedPromotedAddOn = useMemo(() => {
+    if (!product?.linkedAddOnId) return null
+    const name =
+      bookingAddOns.find((a) => a.id === product.linkedAddOnId)?.name ?? product.name
+    return { id: product.linkedAddOnId, name }
+  }, [product, bookingAddOns])
+
+  function persistEdit() {
+    if (!product) return
+    const wantsPromote = draft.canBeAddOn && !product.linkedAddOnId
+    const patch = draftToProductPatch(draft)
+    updateProduct(product.id, patch)
+    if (wantsPromote) {
+      const merged = { ...product, ...patch } as Product
+      const result = promoteProductToAddOn(product.id, merged)
+      if (!result.ok) {
+        toast({ title: 'Add-on link failed', description: result.message, variant: 'destructive' })
+      }
+    }
+    setEditOpen(false)
+  }
+
   if (!product) {
     return (
       <Card>
@@ -97,13 +104,6 @@ export default function AdminInventoryProductDetailPage() {
         </CardHeader>
       </Card>
     )
-  }
-
-  const activeProduct = product
-
-  function persistEdit() {
-    updateProduct(activeProduct.id, draftToProductPatch(draft))
-    setEditOpen(false)
   }
 
   return (
@@ -224,7 +224,12 @@ export default function AdminInventoryProductDetailPage() {
           </>
         }
       >
-        <ProductForm value={draft} onChange={setDraft} categories={categories} />
+        <ProductForm
+          value={draft}
+          onChange={setDraft}
+          categories={categories}
+          lockedPromotedAddOn={lockedPromotedAddOn}
+        />
       </CrudModal>
 
       <StockAdjustmentModal product={product} open={adjustOpen} onClose={() => setAdjustOpen(false)} />

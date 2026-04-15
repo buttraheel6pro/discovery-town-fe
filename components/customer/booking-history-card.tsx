@@ -7,8 +7,10 @@ import Link from 'next/link'
 
 import { BookingStatusBadge } from '@/components/customer/booking-status-badge'
 import { ServiceTypeBadge } from '@/components/customer/service-type-badge'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn, formatSlotDate, formatSlotTimeRange, formatPrice } from '@/lib/utils'
 import type { SchedulingBooking } from '@/lib/types'
 
@@ -60,6 +62,19 @@ export function BookingHistoryCard({
                   {booking.service.name}
                 </p>
                 <ServiceTypeBadge serviceType={booking.bookingType} />
+                {booking.actedByStaffId ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Badge variant="outline" className="text-[10px] font-semibold">
+                        Staff-assisted
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      Created by {booking.actedByStaffName ?? 'staff member'} on behalf of this
+                      contact.
+                    </TooltipContent>
+                  </Tooltip>
+                ) : null}
               </div>
 
               <p className="text-xs text-muted-foreground mt-1">{dateLine}</p>

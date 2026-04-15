@@ -5,11 +5,14 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 
+import { SlotRecurringForm } from '@/components/admin/slot-recurring-form'
 import { BookingModeBadge } from '@/components/admin/booking-mode-badge'
 import { CapacityRing } from '@/components/admin/capacity-ring'
 import { PublishStatusBadge } from '@/components/admin/publish-status-badge'
 import { SlotStatusBadge } from '@/components/admin/slot-status-badge'
 import { ServiceTypeBadge } from '@/components/customer/service-type-badge'
+import { ChevronDown } from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -37,6 +40,7 @@ const statusOptions: Array<SchedulingSlotStatus | 'ALL'> = [
 
 export default function AdminSchedulingPage() {
   const { slots, cancelSlot } = useScheduling()
+  const [recurringOpen, setRecurringOpen] = useState(false)
   const [q, setQ] = useState('')
   const [status, setStatus] = useState<SchedulingSlotStatus | 'ALL'>('ALL')
   const [selected, setSelected] = useState<Record<string, boolean>>({})
@@ -97,11 +101,29 @@ export default function AdminSchedulingPage() {
             Manage scheduled {LABELS.serviceSlots.toLowerCase()} and open {LABELS.services.toLowerCase()}.
           </p>
         </div>
-        <Link href="/admin/scheduling/new">
-          <Button className="bg-accent text-accent-foreground hover:bg-accent/90">
-            {LABELS.createSlot}
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button className="bg-accent text-accent-foreground hover:bg-accent/90">
+                {LABELS.createSlot}
+                <ChevronDown className="ml-2 h-4 w-4" aria-hidden />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem asChild>
+                <Link href="/admin/scheduling/new">Single session</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => {
+                  setRecurringOpen(true)
+                }}
+              >
+                Recurring series
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <SlotRecurringForm open={recurringOpen} onOpenChange={setRecurringOpen} />
+        </div>
       </div>
 
       <Card>

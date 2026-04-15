@@ -10,6 +10,8 @@ import {
   contactNotes as initialNotes,
   contactTags as initialTags,
   membershipPlans as initialMembershipPlans,
+  planAddOns as initialPlanAddOns,
+  planCoupons as initialPlanCoupons,
 } from '@/lib/mock-data'
 import type {
   ClientDocument,
@@ -24,6 +26,8 @@ import type {
   CreditLedgerEntry,
   CreditTransactionType,
   MembershipPlan,
+  PlanAddOn,
+  PlanCoupon,
   SubscriptionStatus,
 } from '@/lib/types'
 
@@ -32,6 +36,8 @@ interface ClientStore {
   tags: ContactTag[]
   /** Membership product catalog (admin + account plan picker). */
   membershipPlans: MembershipPlan[]
+  planAddOns: PlanAddOn[]
+  planCoupons: PlanCoupon[]
   subscriptions: ContactSubscription[]
   packDefinitions: CmCreditPackDefinition[]
   documents: ClientDocument[]
@@ -52,7 +58,13 @@ interface ClientStore {
   resumeSubscription: (subscriptionId: string) => void
   cancelSubscription: (subscriptionId: string) => void
   addMembershipPlan: (plan: MembershipPlan) => void
+  addMembershipPlansBulk: (monthly: MembershipPlan, annual: MembershipPlan) => void
   updateMembershipPlan: (planId: string, patch: Partial<MembershipPlan>) => void
+  addPlanAddOn: (row: PlanAddOn) => void
+  updatePlanAddOn: (id: string, patch: Partial<PlanAddOn>) => void
+  removePlanAddOn: (id: string) => void
+  addPlanCoupon: (row: PlanCoupon) => void
+  removePlanCoupon: (id: string) => void
   addPackDefinition: (def: CmCreditPackDefinition) => void
   updatePackDefinition: (
     id: string,
@@ -81,6 +93,12 @@ export function ClientProvider({
   )
   const [membershipPlans, setMembershipPlans] = useState<MembershipPlan[]>(() =>
     initialMembershipPlans.map((p) => ({ ...p })),
+  )
+  const [planAddOns, setPlanAddOns] = useState<PlanAddOn[]>(() =>
+    initialPlanAddOns.map((r) => ({ ...r })),
+  )
+  const [planCoupons, setPlanCoupons] = useState<PlanCoupon[]>(() =>
+    initialPlanCoupons.map((r) => ({ ...r })),
   )
   const [packDefinitions, setPackDefinitions] = useState<
     CmCreditPackDefinition[]
@@ -319,6 +337,10 @@ export function ClientProvider({
       setMembershipPlans((prev) => [plan, ...prev])
     }
 
+    function addMembershipPlansBulk(monthly: MembershipPlan, annual: MembershipPlan) {
+      setMembershipPlans((prev) => [monthly, annual, ...prev])
+    }
+
     function updateMembershipPlan(planId: string, patch: Partial<MembershipPlan>) {
       const updatedAt = new Date().toISOString()
       setMembershipPlans((prev) =>
@@ -326,6 +348,28 @@ export function ClientProvider({
           p.id === planId ? { ...p, ...patch, updatedAt } : p,
         ),
       )
+    }
+
+    function addPlanAddOn(row: PlanAddOn) {
+      setPlanAddOns((prev) => [row, ...prev])
+    }
+
+    function updatePlanAddOn(id: string, patch: Partial<PlanAddOn>) {
+      setPlanAddOns((prev) =>
+        prev.map((r) => (r.id === id ? { ...r, ...patch } : r)),
+      )
+    }
+
+    function removePlanAddOn(id: string) {
+      setPlanAddOns((prev) => prev.filter((r) => r.id !== id))
+    }
+
+    function addPlanCoupon(row: PlanCoupon) {
+      setPlanCoupons((prev) => [row, ...prev])
+    }
+
+    function removePlanCoupon(id: string) {
+      setPlanCoupons((prev) => prev.filter((r) => r.id !== id))
     }
 
     function addPackDefinition(def: CmCreditPackDefinition) {
@@ -421,6 +465,8 @@ export function ClientProvider({
       contacts,
       tags,
       membershipPlans,
+      planAddOns,
+      planCoupons,
       subscriptions,
       packDefinitions,
       documents,
@@ -441,7 +487,13 @@ export function ClientProvider({
       resumeSubscription,
       cancelSubscription,
       addMembershipPlan,
+      addMembershipPlansBulk,
       updateMembershipPlan,
+      addPlanAddOn,
+      updatePlanAddOn,
+      removePlanAddOn,
+      addPlanCoupon,
+      removePlanCoupon,
       addPackDefinition,
       updatePackDefinition,
       purchasePack,
@@ -453,7 +505,17 @@ export function ClientProvider({
       addRelationship,
       removeRelationship,
     }
-  }, [contacts, tags, membershipPlans, packDefinitions, documents, notes, subscriptions])
+  }, [
+    contacts,
+    tags,
+    membershipPlans,
+    planAddOns,
+    planCoupons,
+    packDefinitions,
+    documents,
+    notes,
+    subscriptions,
+  ])
 
   return (
     <ClientContext.Provider value={value}>{children}</ClientContext.Provider>

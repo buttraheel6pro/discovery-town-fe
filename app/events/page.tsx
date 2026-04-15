@@ -1,12 +1,14 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import Link from 'next/link'
 import { Search, X } from 'lucide-react'
 
-import { CustomerNavbar } from '@/components/customer/navbar'
 import { CustomerFooter } from '@/components/customer/footer'
-import { EventCard } from '@/components/customer/event-card'
-import { FilterSidebar } from '@/components/customer/filter-sidebar'
+import { HorizontalScrollSection } from '@/components/customer/horizontal-scroll-section'
+import { CustomerNavbar } from '@/components/customer/navbar'
+import { PromoLinkGridSection } from '@/components/customer/promo-link-grid-section'
+import { ServiceScrollCard } from '@/components/customer/service-scroll-card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useScheduling } from '@/lib/scheduling-store'
@@ -16,8 +18,89 @@ const statuses: Array<'All' | Event['status']> = ['All', 'PUBLISHED', 'DRAFT']
 
 const eventServiceTypes: SchedulingServiceType[] = ['PARTY_PACKAGE', 'WORKSHOP', 'CAMP']
 
+const LEGACY_EVENT_SERVICE_ID_PREFIXES = [
+  'svc-play-',
+  'svc-swim-',
+  'svc-class-',
+  'svc-party-',
+  'svc-camp-adventure',
+  'svc-ph-',
+  'event-',
+]
+
+const LEGACY_EVENT_SERVICE_IDS = new Set([
+  'svc-1',
+  'svc-2',
+  'svc-3',
+  'svc-4',
+  'svc-6',
+  'svc-preschool-1',
+])
+
+function isCurrentEventServiceId(serviceId: string): boolean {
+  if (LEGACY_EVENT_SERVICE_IDS.has(serviceId)) {
+    return false
+  }
+
+  return !LEGACY_EVENT_SERVICE_ID_PREFIXES.some((prefix) => serviceId.startsWith(prefix))
+}
+
+const TAKE_OUT_PARTY_ITEMS = [
+  {
+    id: 'takeout-pizza',
+    title: 'Pizza Trays',
+    imageUrl: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=1200&q=80',
+    href: '/events/take-out-party',
+  },
+  {
+    id: 'takeout-cupcakes',
+    title: 'Cupcakes',
+    imageUrl: 'https://images.unsplash.com/photo-1486427944299-d1955d23e34d?w=1200&q=80',
+    href: '/events/take-out-party',
+  },
+  {
+    id: 'takeout-snacks',
+    title: 'Party Snacks',
+    imageUrl: 'https://images.unsplash.com/photo-1499636136210-6f4ee915583e?w=1200&q=80',
+    href: '/events/take-out-party',
+  },
+  {
+    id: 'takeout-drinks',
+    title: 'Drinks & Supplies',
+    imageUrl: 'https://images.unsplash.com/photo-1497534446932-c925b458314e?w=1200&q=80',
+    href: '/events/take-out-party',
+  },
+] as const
+
+const WE_BRING_PARTY_ITEMS = [
+  {
+    id: 'bring-inflatables',
+    title: 'Inflatables',
+    imageUrl: 'https://images.unsplash.com/photo-1514517220031-58f8ff5d5d17?w=1200&q=80',
+    href: '/we-bring-the-party',
+  },
+  {
+    id: 'bring-games',
+    title: 'Interactive Games',
+    imageUrl: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=1200&q=80',
+    href: '/we-bring-the-party',
+  },
+  {
+    id: 'bring-entertainers',
+    title: 'Entertainers',
+    imageUrl: 'https://images.unsplash.com/photo-1527529482837-4698179dc6ce?w=1200&q=80',
+    href: '/we-bring-the-party',
+  },
+  {
+    id: 'bring-catering',
+    title: 'Party Catering',
+    imageUrl: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=1200&q=80',
+    href: '/we-bring-the-party',
+  },
+] as const
+
 export default function EventsPage() {
-  const { services, slots } = useScheduling()
+  const { services } = useScheduling()
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<'All' | Event['status']>('All')
 
@@ -31,19 +114,16 @@ export default function EventsPage() {
       services.filter(
         (s) =>
           s.isActive &&
+          isCurrentEventServiceId(s.id) &&
           s.bookingMode === 'SCHEDULED' &&
           eventServiceTypes.includes(s.serviceType),
       ),
     [services],
   )
-
-  const slotByServiceId = useMemo(() => {
-    const map = new Map<string, (typeof slots)[0]>()
-    for (const sl of slots) {
-      if (!map.has(sl.serviceId)) map.set(sl.serviceId, sl)
-    }
-    return map
-  }, [slots])
+  const featuredPartyServiceId = useMemo(
+    () => eventCatalog.find((entry) => entry.serviceType === 'PARTY_PACKAGE')?.id ?? null,
+    [eventCatalog],
+  )
 
   const filtered = useMemo(() => {
     let result = [...eventCatalog]
@@ -66,30 +146,28 @@ export default function EventsPage() {
   }, [eventCatalog, search, status])
 
   const hasActiveFilters = Boolean(search) || status !== 'All'
-  const activeCount = (search ? 1 : 0) + (status !== 'All' ? 1 : 0)
-
-  const filterBody = (
-    <div className="space-y-2">
-      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-        Status
-      </p>
-      <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by status">
-        {statuses.map((s) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => setStatus(s)}
-            className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
-              status === s
-                ? 'border-accent bg-accent text-accent-foreground'
-                : 'border-border bg-background text-muted-foreground hover:bg-secondary'
-            }`}
-          >
-            {s === 'All' ? 'All Events' : s === 'PUBLISHED' ? 'Open' : 'Coming Soon'}
-          </button>
-        ))}
-      </div>
-    </div>
+  const groupedSections = useMemo(
+    () => [
+      {
+        key: 'party',
+        title: 'Party Packages',
+        description: 'Birthday and celebration experiences designed for families.',
+        items: filtered.filter((service) => service.serviceType === 'PARTY_PACKAGE'),
+      },
+      {
+        key: 'workshops',
+        title: 'Workshops',
+        description: 'Skill-based sessions and speciality workshops.',
+        items: filtered.filter((service) => service.serviceType === 'WORKSHOP'),
+      },
+      {
+        key: 'camps',
+        title: 'Event Camps',
+        description: 'Camp-style event experiences and holiday programs.',
+        items: filtered.filter((service) => service.serviceType === 'CAMP'),
+      },
+    ],
+    [filtered],
   )
 
   return (
@@ -129,6 +207,22 @@ export default function EventsPage() {
                 aria-label="Search events"
               />
             </div>
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by status">
+              {statuses.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setStatus(s)}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    status === s
+                      ? 'border-accent bg-accent text-accent-foreground'
+                      : 'border-border bg-background text-muted-foreground hover:bg-secondary'
+                  }`}
+                >
+                  {s === 'All' ? 'All Events' : s === 'PUBLISHED' ? 'Open' : 'Coming Soon'}
+                </button>
+              ))}
+            </div>
             {hasActiveFilters ? (
               <Button
                 variant="ghost"
@@ -143,38 +237,100 @@ export default function EventsPage() {
           </div>
         </section>
 
-        <section className="bg-background py-12" aria-live="polite" aria-label="Event results">
+        <section className="bg-background pb-4 pt-8">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <div className="flex flex-col gap-8 lg:flex-row lg:items-start">
-              <FilterSidebar
-                title="Event filters"
-                activeCount={activeCount}
-                onClear={hasActiveFilters ? handleClear : undefined}
-              >
-                {filterBody}
-              </FilterSidebar>
-
-              <div className="min-w-0 flex-1">
-                <p className="mb-6 text-sm text-muted-foreground">
-                  <span className="font-semibold text-foreground">{filtered.length}</span>{' '}
-                  {filtered.length === 1 ? 'event' : 'events'}
-                </p>
-                {filtered.length === 0 ? (
-                  <div className="space-y-4 py-20 text-center">
-                    <p className="text-2xl font-bold text-muted-foreground">No events found</p>
-                    <Button type="button" onClick={handleClear}>
-                      View all events
+            <div className="rounded-2xl border border-border bg-gradient-to-r from-card to-secondary/50 p-5 shadow-sm md:p-8">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-accent">
+                    Plan your celebration
+                  </p>
+                  <h2
+                    className="text-2xl font-black text-foreground md:text-3xl"
+                    style={{ fontFamily: 'var(--font-barlow)' }}
+                  >
+                    Book a Venue or Private Room
+                  </h2>
+                  <p className="max-w-2xl text-sm text-muted-foreground">
+                    Host unforgettable birthdays, school celebrations, and private events with
+                    curated packages, guest planning, optional extras, and guided booking.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <Link
+                    href={
+                      featuredPartyServiceId
+                        ? `/events/${featuredPartyServiceId}?privateEvent=1`
+                        : '/events'
+                    }
+                  >
+                    <Button type="button" className="h-11 px-6">
+                      Start private event booking
                     </Button>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-                    {filtered.map((svc) => (
-                      <EventCard key={svc.id} service={svc} slot={slotByServiceId.get(svc.id)} />
-                    ))}
-                  </div>
-                )}
+                  </Link>
+                  <Link href="/events">
+                    <Button type="button" variant="outline" className="h-11 px-6">
+                      Browse event options
+                    </Button>
+                  </Link>
+                </div>
               </div>
             </div>
+          </div>
+        </section>
+
+        <section className="bg-background pb-4">
+          <div className="mx-auto max-w-7xl space-y-8 px-4 sm:px-6 lg:px-8">
+            <PromoLinkGridSection
+              eyebrow="Take Out Party"
+              title="Take Out Party"
+              description="Pick up party-ready food, drinks, and essentials curated for your event."
+              items={TAKE_OUT_PARTY_ITEMS}
+              ctaLabel="View Take Out Party"
+              ctaHref="/events/take-out-party"
+            />
+
+            <PromoLinkGridSection
+              eyebrow="We Bring The Party To You"
+              title="We Bring The Party To You"
+              description="Off-site setup, entertainment, and party equipment brought directly to your venue."
+              items={WE_BRING_PARTY_ITEMS}
+              ctaLabel="Plan Off-Site Party"
+              ctaHref="/we-bring-the-party"
+            />
+          </div>
+        </section>
+
+        <section className="bg-background py-12" aria-live="polite" aria-label="Event results">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <p className="mb-6 text-sm text-muted-foreground">
+              <span className="font-semibold text-foreground">{filtered.length}</span>{' '}
+              {filtered.length === 1 ? 'event' : 'events'}
+            </p>
+            {filtered.length === 0 ? (
+              <div className="space-y-4 py-20 text-center">
+                <p className="text-2xl font-bold text-muted-foreground">No events found</p>
+                <Button type="button" onClick={handleClear}>
+                  View all events
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-10">
+                {groupedSections.map((section) =>
+                  section.items.length > 0 ? (
+                    <HorizontalScrollSection
+                      key={section.key}
+                      title={section.title}
+                      description={section.description}
+                    >
+                      {section.items.map((service) => (
+                        <ServiceScrollCard key={service.id} service={service} />
+                      ))}
+                    </HorizontalScrollSection>
+                  ) : null,
+                )}
+              </div>
+            )}
           </div>
         </section>
       </main>

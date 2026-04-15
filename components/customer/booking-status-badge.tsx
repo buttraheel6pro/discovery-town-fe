@@ -7,6 +7,7 @@ import type { SchedulingBookingStatus } from '@/lib/types'
 const statusStyles: Record<SchedulingBookingStatus, string> = {
   CONFIRMED: 'bg-green-100 text-green-700',
   PENDING: 'bg-amber-100 text-amber-700',
+  PENDING_APPROVAL: 'bg-orange-100 text-orange-800',
   CANCELLED: 'bg-red-100 text-red-700',
   COMPLETED: 'bg-slate-100 text-slate-700',
   NO_SHOW: 'bg-red-100 text-red-700',

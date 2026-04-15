@@ -87,6 +87,9 @@ export type LeadStage =
 
 export type CouponType = 'PERCENTAGE' | 'FIXED_AMOUNT'
 
+/** Checkout surface for coupon eligibility (ORDER maps to SHOP in `Coupon.applicableTo`). */
+export type CouponContext = 'BOOKING' | 'ORDER' | 'MEMBERSHIP'
+
 export type PricingModel = 'FLAT' | 'PER_HOUR' | 'PER_PERSON'
 
 export type TransactionType =
@@ -95,6 +98,7 @@ export type TransactionType =
   | 'CLASS_PACK'
   | 'SHOP'
   | 'REFUND'
+  | 'BALANCE_PAYMENT'
 
 // ============================================
 // CORE MODELS
@@ -627,6 +631,34 @@ export interface MembershipPlan {
   cancellationNoticeDays?: number
   createdAt: string
   updatedAt: string
+  /** When set, pairs monthly + annual SKUs for catalog display and toggles. */
+  planGroupId?: string
+  /** Mirror prices for UI when this row is monthly or annual only. */
+  monthlyPrice?: number
+  annualPrice?: number
+  stripePriceIdMonthly?: string
+  stripePriceIdAnnual?: string
+  allowFamilyMember?: boolean
+  isHouseholdOnly?: boolean
+  maxChildren?: number
+  /** Seasonal / marketing badge (e.g. winter pass). */
+  seasonalBadge?: string
+}
+
+/** Links a membership plan to a catalog add-on (admin + member perks). */
+export interface PlanAddOn {
+  id: string
+  planId: string
+  addOnId: string
+  isIncluded: boolean
+  discountPercent?: number
+}
+
+/** Links a membership plan to a coupon for subscriber-only use. */
+export interface PlanCoupon {
+  id: string
+  planId: string
+  couponId: string
 }
 
 export interface ContactSubscription {
@@ -644,6 +676,11 @@ export interface ContactSubscription {
   pauseStart?: string
   pauseEnd?: string
   renewalAt?: string
+  /** Child contact ids covered when plan.allowFamilyMember is true. */
+  familyMemberIds?: string[]
+  /** Promo code applied at enrollment (mock). */
+  couponCode?: string | null
+  actedByStaffId?: string | null
 }
 
 export interface CmCreditPackDefinition {
@@ -805,6 +842,10 @@ export interface ProductCategory {
   description?: string
   imageUrl?: string
   displayOrder: number
+  /** Business grouping key (e.g. shop, cafe&food, gifts, rentals). */
+  productType?: string
+  /** When set, this category is nested under a top-level category. */
+  parentId?: string | null
 }
 
 export interface Product {
@@ -948,6 +989,9 @@ export interface Product {
   availableOnline?: boolean
   availablePOS?: boolean
   galleryUrls?: string[]
+  /** Product is linked to the booking add-on catalog (irreversible after promotion). */
+  canBeAddOn?: boolean
+  linkedAddOnId?: string | null
 }
 
 export interface StockMovement {
@@ -968,6 +1012,7 @@ export interface Order {
   contactEmail?: string | null
   couponCode?: string | null
   couponDiscount?: number
+  actedByStaffId?: string | null
   paymentMethod?: PaymentMethod | null
   paymentReference?: string | null
   refundAmount?: number | null
@@ -1420,6 +1465,15 @@ export const SchedulingServiceTypeEnum = {
 export type SchedulingServiceType =
   (typeof SchedulingServiceTypeEnum)[keyof typeof SchedulingServiceTypeEnum]
 
+export type EventOccasion =
+  | 'BIRTHDAY'
+  | 'ACTIVITY_PARTY'
+  | 'SOCIAL_EVENT'
+  | 'ANNIVERSARY'
+  | 'CORPORATE'
+  | 'CHURCH_SCHOOL'
+  | 'OTHER'
+
 export const SchedulingSlotStatusEnum = {
   SCHEDULED: 'SCHEDULED',
   CANCELLED: 'CANCELLED',
@@ -1432,6 +1486,7 @@ export type SchedulingSlotStatus =
 
 export const SchedulingBookingStatusEnum = {
   PENDING: 'PENDING',
+  PENDING_APPROVAL: 'PENDING_APPROVAL',
   CONFIRMED: 'CONFIRMED',
   CANCELLED: 'CANCELLED',
   COMPLETED: 'COMPLETED',
@@ -1491,6 +1546,16 @@ export interface SchedulingServiceAddOn {
   price: number
   pricingType: AddOnPricingType
   isActive: boolean
+}
+
+/** Optional link from a category or service to a catalog add-on (admin-configured). */
+export interface CategoryAddOn {
+  id: string
+  /** Owner id: scheduling category id or service id. */
+  categoryId: string
+  addOnId: string
+  isOptional: boolean
+  isFree: boolean
 }
 
 export interface SchedulingService {
@@ -1982,6 +2047,9 @@ export interface SchedulingCategory {
   depositPercent?: number
   specialInstructionsEnabled?: boolean
   waitlistEnabled?: boolean
+  allowFamilyMember?: boolean
+  requireCheckInBeforeRebook?: boolean
+  linkedAddOns?: CategoryAddOn[]
 }
 
 export type EventVisibility = 'PUBLIC' | 'PRIVATE' | 'SINGLE_HOST'
@@ -1989,11 +2057,29 @@ export type EventVisibility = 'PUBLIC' | 'PRIVATE' | 'SINGLE_HOST'
 export interface SchedulingService {
   /** Public listing visibility for event-style services. */
   eventType?: EventVisibility
+  siblingPrice?: string
+  freeAdultCount?: number
+  additionalAdultPrice?: string
+  minSeats?: number
+  pricePerHour?: string
+  minChildSeats?: number
+  maxChildSeats?: number
+  minAdultSeats?: number
+  maxAdultSeats?: number
+  additionalChildPrice?: string
+  isPackageService?: boolean
+  linkedAddOns?: CategoryAddOn[]
 }
 
 export interface SchedulingBooking {
   /** Consumer-provided special instructions captured during booking. */
   specialInstructions?: string | null
+  /** Selected event package when booking a package-only service. */
+  eventPackageId?: string | null
+  /** Promo code applied at checkout (mock). */
+  couponCode?: string | null
+  actedByStaffId?: string | null
+  actedByStaffName?: string | null
 }
 
 export interface EventPackageAddOn {
@@ -2011,5 +2097,19 @@ export interface EventPackage {
   addOns: EventPackageAddOn[]
   isActive: boolean
   createdAt: string
+  depositAmount?: number
+  depositNonRefundable?: boolean
+  isWholeVenue?: boolean
+  requiresApproval?: boolean
+  minChildSeats?: number
+  maxChildSeats?: number
+  minAdultSeats?: number
+  maxAdultSeats?: number
+  additionalChildPrice?: number
+  additionalAdultPrice?: number
+  duration?: number
+  setupTime?: number
+  staffCount?: number
+  partyRooms?: number
 }
 

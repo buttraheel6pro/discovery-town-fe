@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useBookingForm } from '@/hooks/use-booking-form'
+import { BookingFlowCouponSection } from '@/components/customer/booking-flow-coupon-section'
 import { OpenBookingAvailabilitySection } from '@/components/customer/open-booking-availability-section'
 import { PackageSelector } from '@/components/customer/package-selector'
 import { useClients } from '@/lib/client-store'
@@ -65,6 +66,16 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
           (s.status === 'ACTIVE' || s.status === 'TRIALING'),
       ),
   )
+  const hasSubscriptionForCoupons = Boolean(
+    primaryContact &&
+      subscriptions.some(
+        (s) =>
+          s.contactId === primaryContact.id &&
+          (s.status === 'ACTIVE' ||
+            s.status === 'TRIALING' ||
+            s.status === 'PAUSED'),
+      ),
+  )
   const membersOnlyBlocked = service.category.membersOnly === true && !hasActiveMembership
 
   const today = new Date()
@@ -106,6 +117,24 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
     selectedDurationMinutes:
       durationOptions.length > 0 ? durationMinutes : undefined,
   })
+
+  const bookingPricingResetKey = useMemo(
+    () =>
+      [
+        selectedDate,
+        selectedWindow?.startAt ?? '',
+        String(durationMinutes),
+        selectedPackageId ?? '',
+        String(bookingForm.totalBeforeCoupon),
+      ].join('|'),
+    [
+      bookingForm.totalBeforeCoupon,
+      durationMinutes,
+      selectedDate,
+      selectedPackageId,
+      selectedWindow?.startAt,
+    ],
+  )
 
   const requiredWaiverDocs = useMemo(() => {
     if (!service.requiresWaiver) return []
@@ -399,6 +428,60 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
                     </div>
                   ) : null}
 
+                  {bookingForm.categoryIncludedAddOns.length > 0 ||
+                  bookingForm.categoryOptionalAddOns.length > 0 ? (
+                    <div className="space-y-2 rounded-lg border border-border p-3">
+                      <Label>Category add-ons</Label>
+                      {bookingForm.categoryIncludedAddOns.length > 0 ? (
+                        <div className="space-y-1.5">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                            Included
+                          </p>
+                          {bookingForm.categoryIncludedAddOns.map((addOn) => (
+                            <div
+                              key={addOn.id}
+                              className="flex items-center justify-between text-sm"
+                            >
+                              <span>{addOn.name}</span>
+                              <span className="font-semibold text-emerald-700">Included</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                      {bookingForm.categoryOptionalAddOns.length > 0 ? (
+                        <div className="space-y-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                            Optional
+                          </p>
+                          {bookingForm.categoryOptionalAddOns.map((addOn) => (
+                            <label
+                              key={addOn.id}
+                              className="flex items-center justify-between gap-3 text-sm"
+                            >
+                              <div className="flex items-center gap-2">
+                                <Checkbox
+                                  checked={bookingForm.selectedCategoryAddOnIds.includes(
+                                    addOn.id,
+                                  )}
+                                  onCheckedChange={(checked) =>
+                                    bookingForm.setCategoryAddOnSelected(
+                                      addOn.id,
+                                      Boolean(checked),
+                                    )
+                                  }
+                                />
+                                <span>{addOn.name}</span>
+                              </div>
+                              <span className="text-muted-foreground">
+                                {formatPrice(addOn.price)}
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
                   {bookingForm.needsParticipant ? (
                     <div className="space-y-2">
                       <Label>Participant</Label>
@@ -433,7 +516,8 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
                           />
                           {service.category.requiresAttendee ? (
                             <p className="text-xs text-muted-foreground">
-                              This event requires you to select a participant.
+                              The booked child must attend with a responsible adult (you or another
+                              adult on this booking).
                             </p>
                           ) : null}
                         </>
@@ -525,38 +609,22 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
                     </div>
                   ) : null}
 
-                  <Separator />
-
-                  <div className="space-y-1.5 text-sm">
-                    {bookingForm.isFreeInfant && bookingForm.freeInfantMonths != null ? (
-                      <p className="text-sm font-semibold text-foreground">
-                        Infant (under {bookingForm.freeInfantMonths} months): FREE
-                      </p>
-                    ) : null}
-
-                    {bookingForm.depositPercent != null &&
-                    bookingForm.depositDueToday != null &&
-                    bookingForm.depositDueOnArrival != null ? (
-                      <div className="space-y-1 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Due today (deposit)</span>
-                          <span className="font-semibold text-foreground">
-                            {formatPrice(bookingForm.depositDueToday)}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Due on arrival (balance)</span>
-                          <span className="font-semibold text-foreground">
-                            {formatPrice(bookingForm.depositDueOnArrival)}
-                          </span>
-                        </div>
-                      </div>
-                    ) : null}
-                    <div className="flex justify-between font-bold text-base">
-                      <span>Total</span>
-                      <span className="text-accent">{formatPrice(bookingForm.grandTotal)}</span>
-                    </div>
-                  </div>
+                  <BookingFlowCouponSection
+                    pricingResetKey={bookingPricingResetKey}
+                    totalBeforeCoupon={bookingForm.totalBeforeCoupon}
+                    grandTotal={bookingForm.grandTotal}
+                    checkoutCouponDiscount={bookingForm.checkoutCouponDiscount}
+                    setCoupon={bookingForm.setCoupon}
+                    appliedCouponCode={bookingForm.checkoutCouponCode}
+                    appliedCouponDiscount={bookingForm.checkoutCouponDiscount}
+                    hasActiveSubscription={hasSubscriptionForCoupons}
+                    contactId={primaryContact?.id}
+                    isFreeInfant={bookingForm.isFreeInfant}
+                    freeInfantMonths={bookingForm.freeInfantMonths}
+                    depositPercent={bookingForm.depositPercent}
+                    depositDueToday={bookingForm.depositDueToday}
+                    depositDueOnArrival={bookingForm.depositDueOnArrival}
+                  />
 
                   {membersOnlyBlocked ? (
                     <div className="space-y-2">

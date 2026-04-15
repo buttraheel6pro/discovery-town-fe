@@ -6,7 +6,10 @@ import { ArrowRight, PauseCircle, PlayCircle, XCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { MembershipPlanExtrasCompact } from '@/components/customer/membership-plan-extras-compact'
 import { SubscriptionStatusBadge } from '@/components/customer/subscription-status-badge'
+import { useMembershipPlanExtras } from '@/hooks/use-membership-plan-extras'
+import { cn } from '@/lib/utils'
 import type { ContactSubscription, MembershipPlan } from '@/lib/types'
 
 interface MembershipCardProps {
@@ -17,6 +20,13 @@ interface MembershipCardProps {
   readonly onCancel?: (subscriptionId: string) => void
   readonly onJoin?: () => void
   readonly joinDisabled?: boolean
+  /** Overrides `plan.price` when billing toggle or preview supplies a value. */
+  readonly displayPrice?: number
+  /** Overrides per-cycle label (e.g. "per month" / "per year"). */
+  readonly billingLabelOverride?: string
+  /** When set with `annualSavingsAmount > 0`, shows a green savings chip. */
+  readonly showAnnualSavings?: boolean
+  readonly annualSavingsAmount?: number
 }
 
 export function MembershipCard({
@@ -27,12 +37,20 @@ export function MembershipCard({
   onCancel,
   onJoin,
   joinDisabled = false,
+  displayPrice,
+  billingLabelOverride,
+  showAnnualSavings = false,
+  annualSavingsAmount,
 }: Readonly<MembershipCardProps>) {
+  const { addOnLines, couponLines } = useMembershipPlanExtras(plan.id)
   const isActive = subscription?.status === 'ACTIVE' || subscription?.status === 'TRIALING'
   const isPaused = subscription?.status === 'PAUSED'
 
+  const priceShown = displayPrice ?? plan.price
+
   const billingLabel =
-    plan.billingCycle === 'MONTHLY'
+    billingLabelOverride ??
+    (plan.billingCycle === 'MONTHLY'
       ? 'per month'
       : plan.billingCycle === 'ANNUAL'
         ? 'per year'
@@ -40,25 +58,61 @@ export function MembershipCard({
           ? 'per week'
           : plan.billingCycle === 'QUARTERLY'
             ? 'per quarter'
-            : ''
+            : '')
+
+  const savingsPositive =
+    showAnnualSavings &&
+    annualSavingsAmount != null &&
+    annualSavingsAmount > 0
+
+  const titleName = subscription
+    ? plan.name
+    : plan.name.replace(/\s+-\s+(Monthly|Annual)$/i, '').trim()
 
   return (
     <Card className="h-full flex flex-col">
       <CardHeader className="space-y-2">
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <CardTitle
             className="text-base font-semibold"
             style={{ fontFamily: 'var(--font-barlow)' }}
           >
-            {plan.name}
+            {titleName}
           </CardTitle>
-          <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
-            {plan.billingCycle.toLowerCase()}
-          </Badge>
+          <div className="flex flex-wrap items-center justify-end gap-1">
+            <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
+              {plan.billingCycle.toLowerCase()}
+            </Badge>
+            {plan.seasonalBadge ? (
+              <Badge className="border-sky-500/50 bg-sky-500/15 text-[10px] font-semibold text-sky-950 dark:text-sky-100">
+                {plan.seasonalBadge}
+              </Badge>
+            ) : null}
+            {plan.allowFamilyMember ? (
+              <Badge className="border-violet-500/50 bg-violet-500/15 text-[10px] font-semibold text-violet-950 dark:text-violet-100">
+                Requires family member
+              </Badge>
+            ) : null}
+            {plan.isHouseholdOnly ? (
+              <Badge className="border-amber-500/50 bg-amber-500/15 text-[10px] font-semibold text-amber-950 dark:text-amber-100">
+                Household children only
+              </Badge>
+            ) : null}
+          </div>
         </div>
-        <div className="flex items-baseline gap-1">
-          <span className="text-xl font-bold">£{plan.price}</span>
+        <div className="flex flex-wrap items-baseline gap-2">
+          <span className="text-xl font-bold">£{priceShown}</span>
           <span className="text-xs text-muted-foreground">{billingLabel}</span>
+          {savingsPositive ? (
+            <span
+              className={cn(
+                'rounded-full border px-2 py-0.5 text-[10px] font-semibold',
+                'border-emerald-500/50 bg-emerald-500/15 text-emerald-950 dark:text-emerald-100',
+              )}
+            >
+              Save £{annualSavingsAmount}/year
+            </span>
+          ) : null}
         </div>
         {subscription ? (
           <SubscriptionStatusBadge status={subscription.status} />
@@ -66,22 +120,20 @@ export function MembershipCard({
           <span className="text-xs text-muted-foreground">Not subscribed</span>
         )}
       </CardHeader>
-      <CardContent className="flex-1 flex flex-col gap-3">
-        {plan.description ? (
-          <p className="text-sm text-muted-foreground">{plan.description}</p>
-        ) : null}
-        {plan.benefits.length ? (
-          <ul className="mt-1 space-y-1 text-xs text-muted-foreground">
-            {plan.benefits.map((benefit) => (
-              <li key={benefit} className="flex items-start gap-1.5">
-                <span className="mt-1 h-1.5 w-1.5 rounded-full bg-accent" />
-                <span>{benefit}</span>
-              </li>
-            ))}
-          </ul>
+      <CardContent className="flex-1 flex flex-col gap-2">
+        <MembershipPlanExtrasCompact
+          description={plan.description}
+          benefits={plan.benefits}
+          addOnLines={addOnLines}
+          couponLines={couponLines}
+        />
+        {plan.maxChildren != null ? (
+          <p className="text-xs font-medium text-muted-foreground">
+            Covers up to {plan.maxChildren} {plan.maxChildren === 1 ? 'child' : 'children'}
+          </p>
         ) : null}
 
-        <div className="mt-4 flex flex-col gap-2">
+        <div className="mt-auto flex flex-col gap-2 pt-2">
           {subscription && isActive && onPause ? (
             <Button
               type="button"
@@ -137,4 +189,3 @@ export function MembershipCard({
     </Card>
   )
 }
-
