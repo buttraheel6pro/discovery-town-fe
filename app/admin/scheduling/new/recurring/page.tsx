@@ -2,11 +2,12 @@
 
 'use client'
 
+import { Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 
 import { SlotRecurringForm } from '@/components/admin/slot-recurring-form'
 
-export default function AdminSchedulingRecurringNewPage() {
+function AdminSchedulingRecurringNewPageInner() {
   const searchParams = useSearchParams()
   const initialServiceId = searchParams.get('serviceId')?.trim() ?? ''
   const rawReturnTo = searchParams.get('returnTo')?.trim() ?? '/admin/scheduling'
@@ -22,5 +23,13 @@ export default function AdminSchedulingRecurringNewPage() {
       </div>
       <SlotRecurringForm initialServiceId={initialServiceId} returnTo={returnTo} />
     </div>
+  )
+}
+
+export default function AdminSchedulingRecurringNewPage() {
+  return (
+    <Suspense>
+      <AdminSchedulingRecurringNewPageInner />
+    </Suspense>
   )
 }

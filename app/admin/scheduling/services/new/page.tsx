@@ -3,7 +3,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useMemo, useState } from 'react'
+import { Suspense, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 
 import { EventTypeSelector } from '@/components/admin/event-type-selector'
@@ -80,7 +80,7 @@ interface CreateDraft {
   readonly isActive: boolean
 }
 
-export default function AdminSchedulingServiceNewPage() {
+function AdminSchedulingServiceNewPageInner() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const { categories, addService } = useScheduling()
@@ -356,5 +356,13 @@ export default function AdminSchedulingServiceNewPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function AdminSchedulingServiceNewPage() {
+  return (
+    <Suspense>
+      <AdminSchedulingServiceNewPageInner />
+    </Suspense>
   )
 }

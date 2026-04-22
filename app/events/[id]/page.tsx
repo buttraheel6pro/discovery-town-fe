@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, use } from 'react'
+import { Suspense, useMemo, useState, use } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
@@ -883,7 +883,9 @@ export default function EventDetailPage({
     <>
       <CustomerNavbar />
       <main>
-        <EventDetailContent service={service} eventSlotBase={eventSlot} />
+        <Suspense>
+          <EventDetailContent service={service} eventSlotBase={eventSlot} />
+        </Suspense>
       </main>
       <CustomerFooter />
     </>

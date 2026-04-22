@@ -2,7 +2,7 @@
 
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 
@@ -42,7 +42,7 @@ function addMinutesToTime(time: string, minutesToAdd: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
 
-export default function AdminSchedulingNewPage() {
+function AdminSchedulingNewPageInner() {
   const searchParams = useSearchParams()
   const { addSlot, services } = useScheduling()
   const requestedServiceId = searchParams.get('serviceId')?.trim() ?? ''
@@ -419,3 +419,10 @@ export default function AdminSchedulingNewPage() {
   )
 }
 
+export default function AdminSchedulingNewPage() {
+  return (
+    <Suspense>
+      <AdminSchedulingNewPageInner />
+    </Suspense>
+  )
+}
