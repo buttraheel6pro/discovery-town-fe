@@ -7,15 +7,23 @@ import {
   addOns as seedAddOns,
   coupons as baseCoupons,
   orders as baseOrders,
-  productCategories as baseProductCategories,
-  products as baseProducts,
   shopCoupons,
   shopOrders,
-  shopProductCategories,
-  shopProducts,
   shopStockMovements,
   validateCouponCode,
 } from '@/lib/mock-data'
+import { useAppDispatch, useAppSelector } from '@/lib/redux/hooks'
+import {
+  addProduct as addProductAction,
+  addProductCategory as addProductCategoryAction,
+  deleteProduct as deleteProductAction,
+  deleteProductCategory as deleteProductCategoryAction,
+  reorderProductCategory as reorderProductCategoryAction,
+  selectInventoryProductCategories,
+  selectInventoryProducts,
+  updateProduct as updateProductAction,
+  updateProductCategory as updateProductCategoryAction,
+} from '@/lib/redux/slices/inventory-slice'
 import { plainTextFromHtml } from '@/lib/utils'
 import type {
   AddOn,
@@ -32,12 +40,6 @@ import type {
 const SHOP_CART_STORAGE_KEY = 'dt_cart'
 const POS_CART_STORAGE_KEY = 'dt_pos_cart'
 const PAYMENT_METHODS_STORAGE_KEY = 'dt_payment_methods'
-const GENERIC_PRODUCT_IMAGE_SRC = '/placeholder.jpg'
-
-function withFallbackImageUrl(p: Product): Product {
-  const imageUrl = p.imageUrl?.trim()
-  return { ...p, imageUrl: imageUrl && imageUrl.length > 0 ? imageUrl : GENERIC_PRODUCT_IMAGE_SRC }
-}
 
 function emptyCart(): CartState {
   return {
@@ -201,14 +203,9 @@ const InventoryContext = createContext<InventoryStore | null>(null)
 export function InventoryProvider({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  const [products, setProducts] = useState<Product[]>(() => [
-    ...baseProducts.map((p) => withFallbackImageUrl(p)),
-    ...shopProducts.map((p) => withFallbackImageUrl(p)),
-  ])
-  const [productCategories, setProductCategories] = useState<ProductCategory[]>(() => [
-    ...baseProductCategories.map((c) => ({ ...c })),
-    ...shopProductCategories.map((c) => ({ ...c })),
-  ])
+  const dispatch = useAppDispatch()
+  const products = useAppSelector(selectInventoryProducts)
+  const productCategories = useAppSelector(selectInventoryProductCategories)
   const [bookingAddOns, setBookingAddOns] = useState<AddOn[]>(() =>
     seedAddOns.map((a) => ({ ...a, applicableServiceTypes: [...a.applicableServiceTypes] })),
   )
@@ -252,18 +249,15 @@ export function InventoryProvider({
 
   const value = useMemo<InventoryStore>(() => {
     function addProduct(p: Product) {
-      setProducts((prev) => [p, ...prev])
+      dispatch(addProductAction(p))
     }
 
     function updateProduct(id: string, updates: Partial<Product>) {
-      const updatedAt = new Date().toISOString()
-      setProducts((prev) =>
-        prev.map((p) => (p.id === id ? { ...p, ...updates, updatedAt } : p)),
-      )
+      dispatch(updateProductAction({ id, updates }))
     }
 
     function deleteProduct(id: string) {
-      setProducts((prev) => prev.filter((p) => p.id !== id))
+      dispatch(deleteProductAction(id))
     }
 
     function addProductCategory(input: {
@@ -275,38 +269,30 @@ export function InventoryProvider({
       const id = `pcat-${Date.now()}`
       const slugBase = slugifyCategoryName(input.name)
       const slug = slugBase.length > 0 ? slugBase : id
-      let created!: ProductCategory
-      setProductCategories((prev) => {
-        const parentKey = input.parentId ?? null
-        const parentProductType =
-          parentKey != null
-            ? prev.find((c) => c.id === parentKey)?.productType
-            : null
-        const nextProductType =
-          input.productType?.trim().toLowerCase() ||
-          parentProductType ||
-          'shop'
-        const siblings = prev.filter((c) => (c.parentId ?? null) === parentKey)
-        const maxOrder = siblings.reduce((m, c) => Math.max(m, c.displayOrder), 0)
-        created = {
-          id,
-          tenantId: 'tenant-1',
-          name: input.name.trim(),
-          slug,
-          description: input.description?.trim() || undefined,
-          displayOrder: maxOrder + 1,
-          productType: nextProductType,
-          parentId: parentKey,
-        }
-        return [...prev, created]
-      })
+      const parentKey = input.parentId ?? null
+      const parentProductType =
+        parentKey != null
+          ? productCategories.find((category) => category.id === parentKey)?.productType
+          : null
+      const nextProductType = input.productType?.trim().toLowerCase() || parentProductType || 'shop'
+      const siblings = productCategories.filter((category) => (category.parentId ?? null) === parentKey)
+      const maxOrder = siblings.reduce((max, category) => Math.max(max, category.displayOrder), 0)
+      const created: ProductCategory = {
+        id,
+        tenantId: 'tenant-1',
+        name: input.name.trim(),
+        slug,
+        description: input.description?.trim() || undefined,
+        displayOrder: maxOrder + 1,
+        productType: nextProductType,
+        parentId: parentKey,
+      }
+      dispatch(addProductCategoryAction(created))
       return created
     }
 
     function updateProductCategory(id: string, patch: Partial<ProductCategory>) {
-      setProductCategories((prev) =>
-        prev.map((c) => (c.id === id ? { ...c, ...patch, id: c.id } : c)),
-      )
+      dispatch(updateProductCategoryAction({ id, patch }))
     }
 
     function deleteProductCategory(id: string): DeleteProductCategoryResult {
@@ -324,32 +310,12 @@ export function InventoryProvider({
           message: `This category has ${productCount} products. Move or delete them before removing the category.`,
         }
       }
-      setProductCategories((prev) => prev.filter((c) => c.id !== id))
+      dispatch(deleteProductCategoryAction(id))
       return { ok: true }
     }
 
     function reorderProductCategory(categoryId: string, direction: 'up' | 'down') {
-      setProductCategories((prev) => {
-        const cat = prev.find((c) => c.id === categoryId)
-        if (!cat) return prev
-        const parentKey = cat.parentId ?? null
-        const siblings = prev
-          .filter((c) => (c.parentId ?? null) === parentKey)
-          .slice()
-          .sort((a, b) => a.displayOrder - b.displayOrder)
-        const idx = siblings.findIndex((c) => c.id === categoryId)
-        const swapIdx = direction === 'up' ? idx - 1 : idx + 1
-        if (swapIdx < 0 || swapIdx >= siblings.length) return prev
-        const a = siblings[idx]
-        const b = siblings[swapIdx]
-        const orderA = b.displayOrder
-        const orderB = a.displayOrder
-        return prev.map((c) => {
-          if (c.id === a.id) return { ...c, displayOrder: orderA }
-          if (c.id === b.id) return { ...c, displayOrder: orderB }
-          return c
-        })
-      })
+      dispatch(reorderProductCategoryAction({ id: categoryId, direction }))
     }
 
     function promoteProductToAddOn(
@@ -389,13 +355,14 @@ export function InventoryProvider({
         const without = prev.filter((a) => a.id !== addOnId)
         return [...without, row]
       })
-      const updatedAt = new Date().toISOString()
-      setProducts((prev) =>
-        prev.map((p) =>
-          p.id === productId
-            ? { ...p, canBeAddOn: true, linkedAddOnId: addOnId, updatedAt }
-            : p,
-        ),
+      dispatch(
+        updateProductAction({
+          id: productId,
+          updates: {
+            canBeAddOn: true,
+            linkedAddOnId: addOnId,
+          },
+        }),
       )
       return { ok: true }
     }
@@ -407,20 +374,17 @@ export function InventoryProvider({
       notes?: string,
       referenceId?: string,
     ) {
-      const nowIso = new Date().toISOString()
-      setProducts((prev) =>
-        prev.map((p) => {
-          if (p.id !== productId) return p
-          const previousStock = p.stockCount
-          const newStock = Math.max(0, previousStock + quantity)
-          return { ...p, stockCount: newStock, updatedAt: nowIso }
-        }),
-      )
-
       const product = products.find((p) => p.id === productId)
       if (!product) return
+      const nowIso = new Date().toISOString()
       const previousStock = product.stockCount
       const newStock = Math.max(0, previousStock + quantity)
+      dispatch(
+        updateProductAction({
+          id: productId,
+          updates: { stockCount: newStock, updatedAt: nowIso },
+        }),
+      )
       const movement: StockMovement = {
         id: `sm-${Date.now()}`,
         tenantId: product.tenantId,

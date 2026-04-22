@@ -5,7 +5,6 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 
-import { SlotRecurringForm } from '@/components/admin/slot-recurring-form'
 import { BookingModeBadge } from '@/components/admin/booking-mode-badge'
 import { CapacityRing } from '@/components/admin/capacity-ring'
 import { PublishStatusBadge } from '@/components/admin/publish-status-badge'
@@ -40,7 +39,6 @@ const statusOptions: Array<SchedulingSlotStatus | 'ALL'> = [
 
 export default function AdminSchedulingPage() {
   const { slots, cancelSlot } = useScheduling()
-  const [recurringOpen, setRecurringOpen] = useState(false)
   const [q, setQ] = useState('')
   const [status, setStatus] = useState<SchedulingSlotStatus | 'ALL'>('ALL')
   const [selected, setSelected] = useState<Record<string, boolean>>({})
@@ -113,16 +111,15 @@ export default function AdminSchedulingPage() {
               <DropdownMenuItem asChild>
                 <Link href="/admin/scheduling/new">Single session</Link>
               </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={() => {
-                  setRecurringOpen(true)
-                }}
-              >
-                Recurring series
+              <DropdownMenuItem asChild>
+                <Link
+                  href={`/admin/scheduling/new/recurring?returnTo=${encodeURIComponent('/admin/scheduling')}`}
+                >
+                  Recurring series
+                </Link>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <SlotRecurringForm open={recurringOpen} onOpenChange={setRecurringOpen} />
         </div>
       </div>
 

@@ -11,38 +11,30 @@ import { PromoLinkGridSection } from '@/components/customer/promo-link-grid-sect
 import { ServiceScrollCard } from '@/components/customer/service-scroll-card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { hasAssignedConsumerSlot, isEventCatalogService } from '@/lib/scheduling-visibility'
 import { useScheduling } from '@/lib/scheduling-store'
-import type { Event, SchedulingServiceType } from '@/lib/types'
+import type { Event } from '@/lib/types'
 
 const statuses: Array<'All' | Event['status']> = ['All', 'PUBLISHED', 'DRAFT']
 
-const eventServiceTypes: SchedulingServiceType[] = ['PARTY_PACKAGE', 'WORKSHOP', 'CAMP']
-
-const LEGACY_EVENT_SERVICE_ID_PREFIXES = [
-  'svc-play-',
-  'svc-swim-',
-  'svc-class-',
-  'svc-party-',
-  'svc-camp-adventure',
-  'svc-ph-',
-  'event-',
-]
-
-const LEGACY_EVENT_SERVICE_IDS = new Set([
-  'svc-1',
-  'svc-2',
-  'svc-3',
-  'svc-4',
-  'svc-6',
-  'svc-preschool-1',
+const PLAY_CATEGORY_IDS = new Set<string>([
+  'cat-open-play',
+  'cat-private-play',
+  'cat-camps-play',
+  'cat-special-play-events',
+  'cat-parents-night',
+  'cat-field-trips',
+  'cat-we-bring-play',
 ])
 
-function isCurrentEventServiceId(serviceId: string): boolean {
-  if (LEGACY_EVENT_SERVICE_IDS.has(serviceId)) {
+function isEventSectionCategory(categoryId: string): boolean {
+  if (categoryId.startsWith('cat-gym-')) {
     return false
   }
-
-  return !LEGACY_EVENT_SERVICE_ID_PREFIXES.some((prefix) => serviceId.startsWith(prefix))
+  if (PLAY_CATEGORY_IDS.has(categoryId) || categoryId.startsWith('cat-play-')) {
+    return false
+  }
+  return true
 }
 
 const TAKE_OUT_PARTY_ITEMS = [
@@ -100,7 +92,7 @@ const WE_BRING_PARTY_ITEMS = [
 ] as const
 
 export default function EventsPage() {
-  const { services } = useScheduling()
+  const { categories, services, slots } = useScheduling()
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<'All' | Event['status']>('All')
 
@@ -112,13 +104,11 @@ export default function EventsPage() {
   const eventCatalog = useMemo(
     () =>
       services.filter(
-        (s) =>
-          s.isActive &&
-          isCurrentEventServiceId(s.id) &&
-          s.bookingMode === 'SCHEDULED' &&
-          eventServiceTypes.includes(s.serviceType),
+        (service) =>
+          isEventCatalogService(service) &&
+          hasAssignedConsumerSlot(service, slots),
       ),
-    [services],
+    [services, slots],
   )
   const featuredPartyServiceId = useMemo(
     () => eventCatalog.find((entry) => entry.serviceType === 'PARTY_PACKAGE')?.id ?? null,
@@ -146,29 +136,32 @@ export default function EventsPage() {
   }, [eventCatalog, search, status])
 
   const hasActiveFilters = Boolean(search) || status !== 'All'
-  const groupedSections = useMemo(
-    () => [
-      {
-        key: 'party',
-        title: 'Party Packages',
-        description: 'Birthday and celebration experiences designed for families.',
-        items: filtered.filter((service) => service.serviceType === 'PARTY_PACKAGE'),
-      },
-      {
-        key: 'workshops',
-        title: 'Workshops',
-        description: 'Skill-based sessions and speciality workshops.',
-        items: filtered.filter((service) => service.serviceType === 'WORKSHOP'),
-      },
-      {
-        key: 'camps',
-        title: 'Event Camps',
-        description: 'Camp-style event experiences and holiday programs.',
-        items: filtered.filter((service) => service.serviceType === 'CAMP'),
-      },
-    ],
-    [filtered],
-  )
+  const groupedSections = useMemo(() => {
+    const eventCategories = categories
+      .filter((category) => isEventSectionCategory(category.id))
+      .slice()
+      .sort((a, b) => a.displayOrder - b.displayOrder)
+
+    const sections = eventCategories.map((category) => ({
+      key: category.id,
+      title: category.name,
+      description: category.description ?? 'Recently added events available for booking.',
+      items: filtered.filter((service) => service.categoryId === category.id),
+    }))
+
+    const categoryIds = new Set(eventCategories.map((category) => category.id))
+    const uncategorizedItems = filtered.filter((service) => !categoryIds.has(service.categoryId))
+    if (uncategorizedItems.length > 0) {
+      sections.push({
+        key: 'other-events',
+        title: 'Other Events',
+        description: 'Recently added events that are available for booking.',
+        items: uncategorizedItems,
+      })
+    }
+
+    return sections
+  }, [categories, filtered])
 
   return (
     <>

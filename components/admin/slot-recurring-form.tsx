@@ -1,11 +1,13 @@
-/** Modal form to generate multiple sessions from a recurrence rule (mock store). */
+/** Recurring-session form used by the dedicated admin create page. */
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
-import { CrudModal } from '@/components/admin/crud-modal'
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
+import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -90,15 +92,21 @@ function buildOccurrenceDates(
 }
 
 export interface SlotRecurringFormProps {
-  readonly open: boolean
-  readonly onOpenChange: (open: boolean) => void
+  readonly showCancel?: boolean
+  readonly initialServiceId?: string
+  readonly returnTo?: string
 }
 
-export function SlotRecurringForm({ open, onOpenChange }: SlotRecurringFormProps) {
+export function SlotRecurringForm({
+  showCancel = true,
+  initialServiceId = '',
+  returnTo = '/admin/scheduling',
+}: SlotRecurringFormProps) {
+  const router = useRouter()
   const { toast } = useToast()
   const { services, addSlots } = useScheduling()
 
-  const [serviceId, setServiceId] = useState<string>(() => services[0]?.id ?? '')
+  const [serviceId, setServiceId] = useState<string>('')
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('WEEKLY')
   const [daysOfWeek, setDaysOfWeek] = useState<number[]>([1, 2, 3, 4, 5])
   const [rangeStart, setRangeStart] = useState<Date | undefined>(() => new Date())
@@ -120,6 +128,13 @@ export function SlotRecurringForm({ open, onOpenChange }: SlotRecurringFormProps
     () => services.find((s) => s.id === serviceId),
     [services, serviceId],
   )
+
+  useEffect(() => {
+    if (!initialServiceId) return
+    const exists = services.some((entry) => entry.id === initialServiceId)
+    if (!exists) return
+    setServiceId((current) => (current === initialServiceId ? current : initialServiceId))
+  }, [initialServiceId, services])
 
   useEffect(() => {
     const t = window.setTimeout(() => {
@@ -220,7 +235,7 @@ export function SlotRecurringForm({ open, onOpenChange }: SlotRecurringFormProps
         title: `${slots.length} sessions created`,
         description: `Added recurring ${LABELS.serviceSlots.toLowerCase()} for ${service.name}.`,
       })
-      onOpenChange(false)
+      router.push(returnTo)
     } finally {
       setSubmitting(false)
     }
@@ -230,32 +245,9 @@ export function SlotRecurringForm({ open, onOpenChange }: SlotRecurringFormProps
   const moreCount = Math.max(0, previewDates.length - previewShown.length)
 
   return (
-    <CrudModal
-      open={open}
-      onOpenChange={onOpenChange}
-      title="Recurring series"
-      description={`Create multiple ${LABELS.serviceSlots.toLowerCase()} from one rule.`}
-      variant="create"
-      size="lg"
-      footer={
-        <div className="flex w-full flex-wrap items-center justify-end gap-2">
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            className="bg-accent text-accent-foreground hover:bg-accent/90"
-            disabled={!canSubmit || submitting}
-            onClick={handleSubmit}
-          >
-            {submitting
-              ? `Creating ${previewDates.length} sessions…`
-              : `Create ${previewDates.length} sessions`}
-          </Button>
-        </div>
-      }
-    >
-      <div className="flex flex-col gap-4">
+    <Card>
+      <CardContent className="space-y-4 p-6">
+        <div className="flex flex-col gap-4">
           <div className="space-y-2">
             <Label>{LABELS.service}</Label>
             <Select value={serviceId} onValueChange={setServiceId}>
@@ -450,7 +442,27 @@ export function SlotRecurringForm({ open, onOpenChange }: SlotRecurringFormProps
               <p className="mt-2 text-xs font-medium text-muted-foreground">+{moreCount} more</p>
             ) : null}
           </div>
-      </div>
-    </CrudModal>
+        </div>
+        <div className="flex w-full flex-wrap items-center justify-end gap-2">
+          {showCancel ? (
+            <Link href={returnTo}>
+              <Button type="button" variant="outline">
+                Cancel
+              </Button>
+            </Link>
+          ) : null}
+          <Button
+            type="button"
+            className="bg-accent text-accent-foreground hover:bg-accent/90"
+            disabled={!canSubmit || submitting}
+            onClick={handleSubmit}
+          >
+            {submitting
+              ? `Creating ${previewDates.length} sessions…`
+              : `Create ${previewDates.length} sessions`}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   )
 }

@@ -2,8 +2,9 @@
 
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 
 import { BookingModeBadge } from '@/components/admin/booking-mode-badge'
 import { Button } from '@/components/ui/button'
@@ -13,12 +14,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { LABELS } from '@/lib/constants/ui-labels'
-import { locations, schedulingServices, staff } from '@/lib/mock-data'
+import { locations, staff } from '@/lib/mock-data'
 import { useScheduling } from '@/lib/scheduling-store'
 import { cn } from '@/lib/utils'
 import type { SchedulingService, SchedulingSlot } from '@/lib/types'
 
 type Step = 1 | 2 | 3 | 4
+const DEFAULT_START_TIME = '10:00'
 
 function createSlotId(): string {
   return `slot-${Math.random().toString(16).slice(2, 10)}`
@@ -41,12 +43,20 @@ function addMinutesToTime(time: string, minutesToAdd: number): string {
 }
 
 export default function AdminSchedulingNewPage() {
-  const { addSlot } = useScheduling()
+  const searchParams = useSearchParams()
+  const { addSlot, services } = useScheduling()
+  const requestedServiceId = searchParams.get('serviceId')?.trim() ?? ''
+  const defaultServiceId = useMemo(() => {
+    if (requestedServiceId && services.some((entry) => entry.id === requestedServiceId)) {
+      return requestedServiceId
+    }
+    return services[0]?.id ?? ''
+  }, [requestedServiceId, services])
 
   const [step, setStep] = useState<Step>(1)
-  const [serviceId, setServiceId] = useState<string>(schedulingServices[0]?.id ?? '')
+  const [serviceId, setServiceId] = useState<string>('')
   const [date, setDate] = useState<Date | undefined>(new Date())
-  const [time, setTime] = useState<string>('10:00')
+  const [time, setTime] = useState<string>(DEFAULT_START_TIME)
   const [endTime, setEndTime] = useState<string>('11:00')
   const [notes, setNotes] = useState<string>('')
   const [locationId, setLocationId] = useState<string>(locations[0]?.id ?? 'loc-1')
@@ -54,9 +64,22 @@ export default function AdminSchedulingNewPage() {
   const [capacityOverride, setCapacityOverride] = useState<string>('')
   const [priceOverride, setPriceOverride] = useState<string>('')
 
+  useEffect(() => {
+    if (!defaultServiceId) return
+    setServiceId((current) => (current === defaultServiceId ? current : defaultServiceId))
+  }, [defaultServiceId])
+
   const service = useMemo<SchedulingService | undefined>(() => {
-    return schedulingServices.find((s) => s.id === serviceId)
-  }, [serviceId])
+    return services.find((entry) => entry.id === serviceId)
+  }, [serviceId, services])
+
+  useEffect(() => {
+    if (!service) return
+    setEndTime(addMinutesToTime(DEFAULT_START_TIME, service.durationMinutes))
+    if (service.locationId) {
+      setLocationId(service.locationId)
+    }
+  }, [service])
 
   const isOpenMode = service?.bookingMode === 'OPEN'
 
@@ -140,9 +163,9 @@ export default function AdminSchedulingNewPage() {
                   <SelectValue placeholder={`Select an ${LABELS.service.toLowerCase()}`} />
                 </SelectTrigger>
                 <SelectContent>
-                  {schedulingServices.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name}
+                  {services.map((entry) => (
+                    <SelectItem key={entry.id} value={entry.id}>
+                      {entry.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

@@ -61,6 +61,82 @@ function countProductsInCategoryTree(
   return productCategoryIds.filter((cid) => reachable.has(cid)).length
 }
 
+interface CategoryRowActionsProps {
+  readonly moveUpLabel: string
+  readonly moveDownLabel: string
+  readonly editLabel: string
+  readonly deleteLabel: string
+  readonly onMoveUp: () => void
+  readonly onMoveDown: () => void
+  readonly onEdit: () => void
+  readonly onDelete: () => void
+  readonly disableMoveUp?: boolean
+  readonly disableMoveDown?: boolean
+  readonly disableDelete?: boolean
+}
+
+export function CategoryRowActions({
+  moveUpLabel,
+  moveDownLabel,
+  editLabel,
+  deleteLabel,
+  onMoveUp,
+  onMoveDown,
+  onEdit,
+  onDelete,
+  disableMoveUp = false,
+  disableMoveDown = false,
+  disableDelete = false,
+}: Readonly<CategoryRowActionsProps>) {
+  return (
+    <div className="flex shrink-0 items-center gap-0.5">
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8"
+        aria-label={moveUpLabel}
+        disabled={disableMoveUp}
+        onClick={onMoveUp}
+      >
+        <ArrowUp className="h-4 w-4" />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8"
+        aria-label={moveDownLabel}
+        disabled={disableMoveDown}
+        onClick={onMoveDown}
+      >
+        <ArrowDown className="h-4 w-4" />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8"
+        aria-label={editLabel}
+        onClick={onEdit}
+      >
+        <Pencil className="h-4 w-4" />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 text-destructive"
+        aria-label={deleteLabel}
+        disabled={disableDelete}
+        onClick={onDelete}
+      >
+        <Trash2 className="h-4 w-4" />
+      </Button>
+    </div>
+  )
+}
+
 export function ProductCategoryManager() {
   const { toast } = useToast()
   const {
@@ -180,10 +256,6 @@ export function ProductCategoryManager() {
             <CardTitle className="text-base">Top-level categories</CardTitle>
             <CardDescription>Shop departments (parent groups).</CardDescription>
           </div>
-          <Button type="button" size="sm" className="gap-1" onClick={() => openCreate(false)}>
-            <Plus className="h-4 w-4" />
-            New
-          </Button>
         </CardHeader>
         <CardContent className="space-y-2">
           {topLevel.length === 0 ? (
@@ -213,48 +285,6 @@ export function ProductCategoryManager() {
                       {c.productType ?? 'shop'}
                     </Badge>
                   </button>
-                  <div className="flex shrink-0 items-center gap-0.5">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      aria-label="Move up"
-                      onClick={() => reorderProductCategory(c.id, 'up')}
-                    >
-                      <ArrowUp className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      aria-label="Move down"
-                      onClick={() => reorderProductCategory(c.id, 'down')}
-                    >
-                      <ArrowDown className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      aria-label={`Edit ${c.name}`}
-                      onClick={() => openEdit(c)}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-destructive"
-                      aria-label={`Delete ${c.name}`}
-                      onClick={() => setDeleteTarget(c)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
                 </div>
               )
             })
@@ -305,48 +335,16 @@ export function ProductCategoryManager() {
                       {c.productType ?? 'shop'}
                     </Badge>
                   </div>
-                  <div className="flex shrink-0 items-center gap-0.5">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      aria-label="Move up"
-                      onClick={() => reorderProductCategory(c.id, 'up')}
-                    >
-                      <ArrowUp className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      aria-label="Move down"
-                      onClick={() => reorderProductCategory(c.id, 'down')}
-                    >
-                      <ArrowDown className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      aria-label={`Edit ${c.name}`}
-                      onClick={() => openEdit(c)}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-destructive"
-                      aria-label={`Delete ${c.name}`}
-                      onClick={() => setDeleteTarget(c)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
+                  <CategoryRowActions
+                    moveUpLabel="Move up"
+                    moveDownLabel="Move down"
+                    editLabel={`Edit ${c.name}`}
+                    deleteLabel={`Delete ${c.name}`}
+                    onMoveUp={() => reorderProductCategory(c.id, 'up')}
+                    onMoveDown={() => reorderProductCategory(c.id, 'down')}
+                    onEdit={() => openEdit(c)}
+                    onDelete={() => setDeleteTarget(c)}
+                  />
                 </div>
               )
             })

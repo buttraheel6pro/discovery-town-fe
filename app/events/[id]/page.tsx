@@ -186,8 +186,8 @@ function EventDetailContent({
   const isPartyPackageFlow = service.serviceType === 'PARTY_PACKAGE'
   const isPrivateEventJourney =
     isPartyPackageFlow && searchParams.get('privateEvent') === '1'
-  const privateRoomPackages = activePackages.slice(0, 3)
-  const wholeVenuePackages = activePackages.slice(3, 6)
+  const privateRoomPackages = activePackages.filter((entry) => !entry.isWholeVenue)
+  const wholeVenuePackages = activePackages.filter((entry) => entry.isWholeVenue)
   const privateSelectedPackage =
     activePackages.find((entry) => entry.id === privateSelectedPackageId) ?? null
   const agendaItems = service.agenda ?? []

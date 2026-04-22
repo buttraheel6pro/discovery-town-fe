@@ -20,40 +20,12 @@ import { CustomerFooter } from "@/components/customer/footer";
 import { FacilityCard } from "@/components/customer/facility-card";
 import { EventCard } from "@/components/customer/event-card";
 import { ClassCard } from "@/components/customer/class-card";
+import {
+  hasAssignedConsumerSlot,
+  isCurrentCatalogService,
+  isEventCatalogService,
+} from "@/lib/scheduling-visibility";
 import { useScheduling } from "@/lib/scheduling-store";
-import type { SchedulingServiceType } from "@/lib/types";
-
-const eventServiceTypes: SchedulingServiceType[] = [
-  "PARTY_PACKAGE",
-  "WORKSHOP",
-  "CAMP",
-];
-
-const LEGACY_SERVICE_ID_PREFIXES = [
-  "svc-play-",
-  "svc-swim-",
-  "svc-class-",
-  "svc-party-",
-  "svc-camp-adventure",
-  "svc-ph-",
-];
-
-const LEGACY_SERVICE_IDS = new Set([
-  "svc-1",
-  "svc-2",
-  "svc-3",
-  "svc-4",
-  "svc-6",
-  "svc-preschool-1",
-]);
-
-function isCurrentServiceId(serviceId: string): boolean {
-  if (LEGACY_SERVICE_IDS.has(serviceId)) {
-    return false;
-  }
-
-  return !LEGACY_SERVICE_ID_PREFIXES.some((prefix) => serviceId.startsWith(prefix));
-}
 
 const features = [
   {
@@ -116,18 +88,20 @@ export default function HomePage() {
     const facilitiesCount = services.filter(
       (service) =>
         service.isActive &&
-        isCurrentServiceId(service.id) &&
+        isCurrentCatalogService(service.id) &&
+        hasAssignedConsumerSlot(service, slots) &&
         (service.categoryId === "cat-open-play" || service.categoryId === "cat-private-play"),
     ).length;
     const classesCount = services.filter(
       (service) =>
         service.isActive &&
-        isCurrentServiceId(service.id) &&
+        isCurrentCatalogService(service.id) &&
+        hasAssignedConsumerSlot(service, slots) &&
         service.categoryId.startsWith("cat-gym-") &&
         service.categoryId !== "cat-gym-eyeclick",
     ).length;
     const activeEventsCount = services.filter(
-      (service) => service.isActive && eventServiceTypes.includes(service.serviceType),
+      (service) => isEventCatalogService(service) && hasAssignedConsumerSlot(service, slots),
     ).length;
     const upcomingSlotsCount = slots.filter((slot) => {
       const startAt = new Date(slot.startAt).getTime();
@@ -147,7 +121,8 @@ export default function HomePage() {
       .filter(
         (s) =>
           s.isActive &&
-          isCurrentServiceId(s.id) &&
+          isCurrentCatalogService(s.id) &&
+          hasAssignedConsumerSlot(s, slots) &&
           (s.categoryId === "cat-open-play" || s.categoryId === "cat-private-play"),
       )
       .sort((a, b) => a.name.localeCompare(b.name))
@@ -173,7 +148,8 @@ export default function HomePage() {
       .filter(
         (s) =>
           s.isActive &&
-          isCurrentServiceId(s.id) &&
+          isCurrentCatalogService(s.id) &&
+          hasAssignedConsumerSlot(s, slots) &&
           s.categoryId.startsWith("cat-gym-") &&
           s.categoryId !== "cat-gym-eyeclick",
       )
@@ -190,18 +166,14 @@ export default function HomePage() {
 
   const upcomingEvents = useMemo(() => {
     const catalog = services.filter(
-      (s) =>
-        s.isActive &&
-        isCurrentServiceId(s.id) &&
-        s.bookingMode === "SCHEDULED" &&
-        eventServiceTypes.includes(s.serviceType),
+      (service) => isEventCatalogService(service) && hasAssignedConsumerSlot(service, slots),
     );
     const published = catalog.filter(
       (s) => s.eventStatus === "PUBLISHED" || s.eventStatus === "Upcoming",
     );
     const list = published.length > 0 ? published : catalog;
     return list.slice(0, 3);
-  }, [services]);
+  }, [services, slots]);
 
   return (
     <>

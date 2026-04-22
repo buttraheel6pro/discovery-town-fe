@@ -5,6 +5,7 @@ import { CalendarProvider } from '@/lib/calendar-store'
 import { ClientProvider } from '@/lib/client-store'
 import { InventoryProvider } from '@/lib/inventory-store'
 import { LocationProvider } from '@/lib/location-store'
+import { AppStoreProvider } from '@/lib/redux/provider'
 import { ReportsProvider } from '@/lib/reports-store'
 import { SchedulingProvider } from '@/lib/scheduling-store'
 import './globals.css'
@@ -51,17 +52,19 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} ${barlow.variable}`}>
       <body className="font-sans antialiased">
-        <SchedulingProvider>
-          <InventoryProvider>
-            <ReportsProvider>
-              <LocationProvider>
-                <CalendarProvider>
-                  <ClientProvider>{children}</ClientProvider>
-                </CalendarProvider>
-              </LocationProvider>
-            </ReportsProvider>
-          </InventoryProvider>
-        </SchedulingProvider>
+        <AppStoreProvider>
+          <SchedulingProvider>
+            <InventoryProvider>
+              <ReportsProvider>
+                <LocationProvider>
+                  <CalendarProvider>
+                    <ClientProvider>{children}</ClientProvider>
+                  </CalendarProvider>
+                </LocationProvider>
+              </ReportsProvider>
+            </InventoryProvider>
+          </SchedulingProvider>
+        </AppStoreProvider>
         <Analytics />
       </body>
     </html>

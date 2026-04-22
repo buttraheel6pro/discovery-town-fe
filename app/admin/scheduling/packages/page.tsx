@@ -17,38 +17,12 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { isCurrentCatalogService } from '@/lib/scheduling-visibility'
 import { useScheduling } from '@/lib/scheduling-store'
 import { formatPrice } from '@/lib/utils'
 import type { EventPackage } from '@/lib/types'
 
 type Tier = EventPackage['tier']
-
-const LEGACY_EVENT_SERVICE_ID_PREFIXES = [
-  'svc-play-',
-  'svc-swim-',
-  'svc-class-',
-  'svc-party-',
-  'svc-camp-adventure',
-  'svc-ph-',
-  'event-',
-]
-
-const LEGACY_EVENT_SERVICE_IDS = new Set([
-  'svc-1',
-  'svc-2',
-  'svc-3',
-  'svc-4',
-  'svc-6',
-  'svc-preschool-1',
-])
-
-function isCurrentServiceId(serviceId: string): boolean {
-  if (LEGACY_EVENT_SERVICE_IDS.has(serviceId)) {
-    return false
-  }
-
-  return !LEGACY_EVENT_SERVICE_ID_PREFIXES.some((prefix) => serviceId.startsWith(prefix))
-}
 
 function parseFloatOrNull(value: string): number | null {
   const trimmed = value.trim()
@@ -72,13 +46,14 @@ export default function AdminSchedulingPackagesPage() {
   const [serviceId, setServiceId] = useState<string>('ALL')
 
   const assignableServices = useMemo(() => {
-    return services.filter((service) => isCurrentServiceId(service.id))
+    return services.filter((service) => isCurrentCatalogService(service.id))
   }, [services])
 
   const filtered = useMemo(() => {
     const query = q.trim().toLowerCase()
     return packages.filter((p) => {
-      const isAlignedPackage = p.serviceId === 'unassigned' || isCurrentServiceId(p.serviceId)
+      const isAlignedPackage =
+        p.serviceId === 'unassigned' || isCurrentCatalogService(p.serviceId)
       if (!isAlignedPackage) return false
       if (serviceId !== 'ALL') {
         if (serviceId === 'unassigned' && p.serviceId !== 'unassigned') return false

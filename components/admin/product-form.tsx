@@ -134,6 +134,41 @@ export function ProductForm({
     return categories.slice().sort((a, b) => a.displayOrder - b.displayOrder)
   }, [categories])
 
+  const categoryById = useMemo(() => {
+    return new Map(orderedCategories.map((category) => [category.id, category]))
+  }, [orderedCategories])
+
+  const topCategories = useMemo(() => {
+    return orderedCategories.filter((category) => category.parentId == null || category.parentId === '')
+  }, [orderedCategories])
+
+  const selectedCategory = categoryById.get(value.categoryId) ?? null
+  const selectedTopCategoryId = useMemo(() => {
+    if (selectedCategory?.parentId) {
+      return selectedCategory.parentId
+    }
+    if (selectedCategory) {
+      return selectedCategory.id
+    }
+    return topCategories[0]?.id ?? ''
+  }, [selectedCategory, topCategories])
+
+  const subCategories = useMemo(() => {
+    if (!selectedTopCategoryId) {
+      return []
+    }
+    return orderedCategories.filter((category) => category.parentId === selectedTopCategoryId)
+  }, [orderedCategories, selectedTopCategoryId])
+
+  const selectedSubCategoryId = useMemo(() => {
+    const selectedSubCategory =
+      selectedCategory?.parentId === selectedTopCategoryId ? selectedCategory.id : null
+    if (selectedSubCategory) {
+      return selectedSubCategory
+    }
+    return subCategories[0]?.id ?? ''
+  }, [selectedCategory, selectedTopCategoryId, subCategories])
+
   async function onPickFile(file: File | null) {
     if (!file) return
     setUploading(true)
@@ -183,23 +218,57 @@ export function ProductForm({
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <div className="space-y-2">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="min-w-0 space-y-2">
           <Label htmlFor="prod-category">Category</Label>
-          <Select value={value.categoryId} onValueChange={(v) => set('categoryId', v)} disabled={disabled}>
-            <SelectTrigger id="prod-category">
-              <SelectValue placeholder="Select category" />
+          <Select
+            value={selectedTopCategoryId}
+            onValueChange={(nextTopCategoryId) => {
+              const nextSubCategories = orderedCategories.filter(
+                (category) => category.parentId === nextTopCategoryId,
+              )
+              const nextCategoryId = nextSubCategories[0]?.id ?? nextTopCategoryId
+              set('categoryId', nextCategoryId)
+            }}
+            disabled={disabled}
+          >
+            <SelectTrigger id="prod-category" className="w-full min-w-0">
+              <SelectValue placeholder="Select category" className="truncate" />
             </SelectTrigger>
             <SelectContent>
-              {orderedCategories.map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  {c.name}
+              {topCategories.map((category) => (
+                <SelectItem key={category.id} value={category.id}>
+                  {category.name}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
-        <div className="space-y-2">
+        <div className="min-w-0 space-y-2">
+          <Label htmlFor="prod-subcategory">Sub-category</Label>
+          <Select
+            value={selectedSubCategoryId}
+            onValueChange={(nextSubCategoryId) => set('categoryId', nextSubCategoryId)}
+            disabled={disabled || subCategories.length === 0}
+          >
+            <SelectTrigger id="prod-subcategory" className="w-full min-w-0">
+              <SelectValue
+                placeholder={
+                  subCategories.length > 0 ? 'Select sub-category' : 'No sub-categories'
+                }
+                className="truncate"
+              />
+            </SelectTrigger>
+            <SelectContent>
+              {subCategories.map((category) => (
+                <SelectItem key={category.id} value={category.id}>
+                  {category.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="min-w-0 space-y-2">
           <Label htmlFor="prod-image">Image</Label>
           <div className="flex items-center gap-2">
             <Input

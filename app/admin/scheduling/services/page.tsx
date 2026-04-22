@@ -2,10 +2,11 @@
 
 'use client'
 
+import Link from 'next/link'
 import Image from 'next/image'
 import { useEffect, useMemo, useState } from 'react'
 
-import { Baby, ChevronsUpDown, CreditCard, Lock } from 'lucide-react'
+import { Baby, ChevronsUpDown, CreditCard, GripVertical, Lock, MoreHorizontal, Plus } from 'lucide-react'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import {
@@ -33,7 +34,13 @@ import {
 } from '@/components/ui/accordion'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -61,13 +68,12 @@ import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useClients } from '@/lib/client-store'
 import {
-  buildScheduledWindowSlot,
-  isoInDaysAtTime,
   newAdminEntityId,
 } from '@/lib/scheduling-admin-builders'
 import { LABELS } from '@/lib/constants/ui-labels'
 import { locations, samplePreschoolAddOns } from '@/lib/mock-data'
 import { useInventory } from '@/lib/inventory-store'
+import { isCurrentCatalogService } from '@/lib/scheduling-visibility'
 import { useScheduling } from '@/lib/scheduling-store'
 import { bookingAddOnToSchedulingAddOn, cn, formatPrice, getAgeRangeLabel } from '@/lib/utils'
 import type {
@@ -123,6 +129,7 @@ type CreateDraft = EditDraft & {
 }
 
 type CategoryDraft = {
+  parentTopLevelId: SchedulingTopLevelId
   name: string
   icon: string
   displayOrder: string
@@ -140,6 +147,61 @@ type CategoryDraft = {
 }
 
 const allServiceTypes = Object.values(SchedulingServiceTypeEnum)
+const SCHEDULING_TOP_LEVEL_ORDER = ['GYM', 'PLAY', 'EVENT'] as const
+type SchedulingTopLevelId = (typeof SCHEDULING_TOP_LEVEL_ORDER)[number]
+
+const PLAY_CATEGORY_IDS = new Set<string>([
+  'cat-open-play',
+  'cat-private-play',
+  'cat-camps-play',
+  'cat-special-play-events',
+  'cat-parents-night',
+  'cat-field-trips',
+  'cat-we-bring-play',
+])
+
+function getSchedulingTopLevelId(categoryId: string): SchedulingTopLevelId {
+  if (categoryId.startsWith('cat-gym-')) {
+    return 'GYM'
+  }
+  if (PLAY_CATEGORY_IDS.has(categoryId) || categoryId.startsWith('cat-play-')) {
+    return 'PLAY'
+  }
+  return 'EVENT'
+}
+
+function isConsumerAlignedCategoryId(categoryId: string): boolean {
+  if (CONSUMER_ALIGNED_CATEGORY_IDS.has(categoryId)) {
+    return true
+  }
+  return (
+    categoryId.startsWith('cat-gym-') ||
+    categoryId.startsWith('cat-play-') ||
+    categoryId.startsWith('cat-event-')
+  )
+}
+
+function slugifyCategoryName(input: string): string {
+  return input
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
+}
+
+function getSchedulingTopLevelLabel(topLevelId: SchedulingTopLevelId): string {
+  switch (topLevelId) {
+    case 'GYM':
+      return 'Gym'
+    case 'PLAY':
+      return 'Play'
+    case 'EVENT':
+      return 'Event'
+    default:
+      return 'Event'
+  }
+}
+
 const CONSUMER_ALIGNED_CATEGORY_IDS = new Set<string>([
   'cat-open-play',
   'cat-private-play',
@@ -161,42 +223,16 @@ const CONSUMER_ALIGNED_CATEGORY_IDS = new Set<string>([
   'cat-5',
 ])
 
-const LEGACY_EVENT_SERVICE_ID_PREFIXES = [
-  'svc-play-',
-  'svc-swim-',
-  'svc-class-',
-  'svc-party-',
-  'svc-camp-adventure',
-  'svc-ph-',
-  'event-',
-]
-
-const LEGACY_EVENT_SERVICE_IDS = new Set([
-  'svc-1',
-  'svc-2',
-  'svc-3',
-  'svc-4',
-  'svc-6',
-  'svc-preschool-1',
-])
-
-function isCurrentServiceId(serviceId: string): boolean {
-  if (LEGACY_EVENT_SERVICE_IDS.has(serviceId)) {
-    return false
-  }
-
-  return !LEGACY_EVENT_SERVICE_ID_PREFIXES.some((prefix) => serviceId.startsWith(prefix))
-}
-
 export default function AdminSchedulingServicesPage() {
   const { documents } = useClients()
   const { bookingAddOns } = useInventory()
   const {
     categories,
     addCategory,
+    removeCategory,
+    updateCategory,
     services,
     addService,
-    addSlot,
     updateService,
     packages,
     addPackage,
@@ -209,7 +245,7 @@ export default function AdminSchedulingServicesPage() {
   } = useScheduling()
   const sortedCategories = useMemo<SchedulingCategory[]>(() => {
     return categories
-      .filter((category) => CONSUMER_ALIGNED_CATEGORY_IDS.has(category.id))
+      .filter((category) => isConsumerAlignedCategoryId(category.id))
       .slice()
       .sort((a, b) => a.displayOrder - b.displayOrder)
   }, [categories])
@@ -217,14 +253,20 @@ export default function AdminSchedulingServicesPage() {
   const alignedServices = useMemo<SchedulingService[]>(() => {
     return services.filter(
       (service) =>
-        CONSUMER_ALIGNED_CATEGORY_IDS.has(service.categoryId) && isCurrentServiceId(service.id),
+        isConsumerAlignedCategoryId(service.categoryId) &&
+        isCurrentCatalogService(service.id),
     )
   }, [services])
 
   const [categoryId, setCategoryId] = useState<string>(sortedCategories[0]?.id ?? '')
+  const [serviceCategoryFilterId, setServiceCategoryFilterId] = useState<string | 'ALL'>('ALL')
   const [selected, setSelected] = useState<SchedulingService | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [categoryOpen, setCategoryOpen] = useState(false)
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null)
+  const [deleteCategoryId, setDeleteCategoryId] = useState<string | null>(null)
+  const [draggingCategoryId, setDraggingCategoryId] = useState<string | null>(null)
+  const [dragOverCategoryId, setDragOverCategoryId] = useState<string | null>(null)
   const [packageOpen, setPackageOpen] = useState(false)
   const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null)
   const [packageName, setPackageName] = useState('')
@@ -318,6 +360,7 @@ export default function AdminSchedulingServicesPage() {
   })
 
   const [categoryDraft, setCategoryDraft] = useState<CategoryDraft>({
+    parentTopLevelId: 'GYM',
     name: '',
     icon: '',
     displayOrder: String((sortedCategories[sortedCategories.length - 1]?.displayOrder ?? 0) + 1),
@@ -343,9 +386,46 @@ export default function AdminSchedulingServicesPage() {
     }
   }, [categoryId, sortedCategories])
 
+  useEffect(() => {
+    if (serviceCategoryFilterId === 'ALL') return
+    const exists = sortedCategories.some((category) => category.id === serviceCategoryFilterId)
+    if (!exists) {
+      setServiceCategoryFilterId('ALL')
+    }
+  }, [serviceCategoryFilterId, sortedCategories])
+
   const filtered = useMemo(() => {
-    return alignedServices.filter((service) => service.categoryId === categoryId)
-  }, [alignedServices, categoryId])
+    return alignedServices.filter((service) => {
+      if (serviceCategoryFilterId !== 'ALL' && service.categoryId !== serviceCategoryFilterId) {
+        return false
+      }
+      return true
+    })
+  }, [alignedServices, serviceCategoryFilterId])
+
+  const categoriesByTopLevel = useMemo<Record<SchedulingTopLevelId, SchedulingCategory[]>>(() => {
+    const grouped: Record<SchedulingTopLevelId, SchedulingCategory[]> = {
+      GYM: [],
+      PLAY: [],
+      EVENT: [],
+    }
+    for (const category of sortedCategories) {
+      grouped[getSchedulingTopLevelId(category.id)].push(category)
+    }
+    return grouped
+  }, [sortedCategories])
+
+  const totalServicesByTopLevel = useMemo<Record<SchedulingTopLevelId, number>>(() => {
+    const counts: Record<SchedulingTopLevelId, number> = {
+      GYM: 0,
+      PLAY: 0,
+      EVENT: 0,
+    }
+    for (const service of alignedServices) {
+      counts[getSchedulingTopLevelId(service.categoryId)] += 1
+    }
+    return counts
+  }, [alignedServices])
 
   useEffect(() => {
     if (!selected) return
@@ -435,6 +515,24 @@ export default function AdminSchedulingServicesPage() {
   const selectedCategory = useMemo(() => {
     return sortedCategories.find((c) => c.id === categoryId) ?? sortedCategories[0] ?? null
   }, [sortedCategories, categoryId])
+  const catalogTitle = useMemo(() => {
+    if (serviceCategoryFilterId === 'ALL') {
+      return 'Catalog'
+    }
+    return (
+      sortedCategories.find((category) => category.id === serviceCategoryFilterId)?.name ??
+      'Catalog'
+    )
+  }, [serviceCategoryFilterId, sortedCategories])
+  const catalogCountLabel = useMemo(() => {
+    if (serviceCategoryFilterId !== 'ALL') {
+      return `${filtered.length} services`
+    }
+    const topLevelCount = SCHEDULING_TOP_LEVEL_ORDER.filter(
+      (topLevelId) => categoriesByTopLevel[topLevelId].length > 0,
+    ).length
+    return `${topLevelCount}/${alignedServices.length} services`
+  }, [serviceCategoryFilterId, filtered.length, categoriesByTopLevel, alignedServices.length])
 
   const selectedLive = useMemo(() => {
     if (!selected) return null
@@ -474,7 +572,7 @@ export default function AdminSchedulingServicesPage() {
     ) {
       return
     }
-    updateService(selected.id, {
+    const servicePatch: Partial<SchedulingService> = {
       locationId: editDraft.locationId.trim() || null,
       name: editDraft.name.trim(),
       description: editDraft.description.trim() || null,
@@ -505,7 +603,8 @@ export default function AdminSchedulingServicesPage() {
       maxAdultSeats: maxAdultSeats ?? undefined,
       additionalChildPrice: editDraft.additionalChildPrice.trim() || undefined,
       isPackageService: editDraft.isPackageService,
-    })
+    }
+    updateService(selected.id, servicePatch)
     setSelected(null)
   }
 
@@ -782,18 +881,6 @@ export default function AdminSchedulingServicesPage() {
       pendingServiceAddOnLinks: createDraft.pendingServiceAddOnLinks.slice(),
     })
     addService(created)
-    if (createDraft.bookingMode === 'SCHEDULED') {
-      const startAt = isoInDaysAtTime(3, 10)
-      const endAt = isoInDaysAtTime(3, 10 + Math.max(1, Math.ceil(durationMinutes / 60)))
-      addSlot(
-        buildScheduledWindowSlot({
-          id: newAdminEntityId('slot'),
-          service: created,
-          startAt,
-          endAt,
-        }),
-      )
-    }
     setCreateOpen(false)
     setCreateDraft({
       categoryId: categoryId,
@@ -833,9 +920,15 @@ export default function AdminSchedulingServicesPage() {
     })
   }
 
-  function openNewCategory() {
-    const nextOrder = (sortedCategories[sortedCategories.length - 1]?.displayOrder ?? 0) + 1
+  function openNewCategory(topLevelId: SchedulingTopLevelId) {
+    const siblings = categoriesByTopLevel[topLevelId]
+    const nextOrder =
+      (siblings[siblings.length - 1]?.displayOrder ??
+        sortedCategories[sortedCategories.length - 1]?.displayOrder ??
+        0) + 1
+    setEditingCategoryId(null)
     setCategoryDraft({
+      parentTopLevelId: topLevelId,
       name: '',
       icon: '',
       displayOrder: String(nextOrder),
@@ -854,7 +947,82 @@ export default function AdminSchedulingServicesPage() {
     setCategoryOpen(true)
   }
 
-  function persistCategoryCreate() {
+  function openEditCategory(category: SchedulingCategory) {
+    setEditingCategoryId(category.id)
+    setCategoryDraft({
+      parentTopLevelId: getSchedulingTopLevelId(category.id),
+      name: category.name,
+      icon: category.icon ?? '',
+      displayOrder: String(category.displayOrder),
+      isActive: category.isActive,
+      description: category.description ?? '',
+      requiresAttendee: category.requiresAttendee ?? false,
+      membersOnly: category.membersOnly ?? false,
+      freeInfantMonths:
+        category.freeInfantMonths != null ? String(category.freeInfantMonths) : '',
+      depositPercent: category.depositPercent != null ? String(category.depositPercent) : '',
+      specialInstructionsEnabled: category.specialInstructionsEnabled ?? false,
+      waitlistEnabled: category.waitlistEnabled ?? true,
+      allowFamilyMember: category.allowFamilyMember ?? false,
+      requireCheckInBeforeRebook: category.requireCheckInBeforeRebook ?? false,
+      pendingAddOnLinks: (category.linkedAddOns ?? []).map((link) => ({
+        addOnId: link.addOnId,
+        isFree: link.isFree,
+      })),
+    })
+    setCategoryOpen(true)
+  }
+
+  function reorderCategoriesByDrag(
+    topLevelId: SchedulingTopLevelId,
+    sourceCategoryId: string,
+    targetCategoryId: string,
+  ) {
+    if (sourceCategoryId === targetCategoryId) return
+    const siblings = categoriesByTopLevel[topLevelId]
+    const sourceIndex = siblings.findIndex((category) => category.id === sourceCategoryId)
+    const targetIndex = siblings.findIndex((category) => category.id === targetCategoryId)
+    if (sourceIndex < 0 || targetIndex < 0) return
+
+    const reordered = siblings.slice()
+    const [moved] = reordered.splice(sourceIndex, 1)
+    if (!moved) return
+    reordered.splice(targetIndex, 0, moved)
+
+    const orderedDisplaySlots = siblings
+      .map((category) => category.displayOrder)
+      .slice()
+      .sort((a, b) => a - b)
+
+    reordered.forEach((category, index) => {
+      const nextDisplayOrder = orderedDisplaySlots[index] ?? index + 1
+      if (category.displayOrder !== nextDisplayOrder) {
+        updateCategory(category.id, { displayOrder: nextDisplayOrder })
+      }
+    })
+  }
+
+  function confirmDeleteCategory() {
+    if (!deleteCategoryId) return
+    const assignedServiceCount = countByCategory.get(deleteCategoryId) ?? 0
+    if (assignedServiceCount > 0) {
+      setDeleteCategoryId(null)
+      return
+    }
+    removeCategory(deleteCategoryId)
+    if (categoryId === deleteCategoryId) {
+      const deletedTopLevelId = getSchedulingTopLevelId(deleteCategoryId)
+      const fallbackCategory = categoriesByTopLevel[deletedTopLevelId].find(
+        (entry) => entry.id !== deleteCategoryId,
+      )
+      if (fallbackCategory) {
+        setCategoryId(fallbackCategory.id)
+      }
+    }
+    setDeleteCategoryId(null)
+  }
+
+  function persistCategory() {
     const displayOrder = parseInt(categoryDraft.displayOrder, 10)
     if (!categoryDraft.name.trim() || !Number.isFinite(displayOrder)) return
 
@@ -866,8 +1034,100 @@ export default function AdminSchedulingServicesPage() {
       categoryDraft.depositPercent.trim().length > 0
         ? Number.parseFloat(categoryDraft.depositPercent.trim())
         : undefined
+    const categoryPrefixByTopLevel: Record<SchedulingTopLevelId, string> = {
+      GYM: 'cat-gym-',
+      PLAY: 'cat-play-',
+      EVENT: 'cat-event-',
+    }
 
-    const catId = newAdminEntityId('cat')
+    if (editingCategoryId) {
+      const existingTopLevel = getSchedulingTopLevelId(editingCategoryId)
+      const isMovingTopLevel = existingTopLevel !== categoryDraft.parentTopLevelId
+      const normalizedPatch = {
+        name: categoryDraft.name.trim(),
+        icon: categoryDraft.icon.trim() || null,
+        displayOrder,
+        isActive: categoryDraft.isActive,
+        description: categoryDraft.description.trim() || undefined,
+        requiresAttendee: categoryDraft.requiresAttendee,
+        membersOnly: categoryDraft.membersOnly,
+        freeInfantMonths: Number.isFinite(freeInfantMonths ?? Number.NaN)
+          ? freeInfantMonths
+          : undefined,
+        depositPercent: Number.isFinite(depositPercent ?? Number.NaN)
+          ? depositPercent
+          : undefined,
+        specialInstructionsEnabled: categoryDraft.specialInstructionsEnabled,
+        waitlistEnabled: categoryDraft.waitlistEnabled,
+        allowFamilyMember: categoryDraft.allowFamilyMember,
+        requireCheckInBeforeRebook: categoryDraft.requireCheckInBeforeRebook,
+      }
+
+      if (!isMovingTopLevel) {
+        const linkedAddOns = categoryDraft.pendingAddOnLinks.map((l) => ({
+          id: newAdminEntityId('cao'),
+          categoryId: editingCategoryId,
+          addOnId: l.addOnId,
+          isOptional: true,
+          isFree: l.isFree,
+        }))
+        updateCategory(editingCategoryId, {
+          ...normalizedPatch,
+          linkedAddOns,
+        })
+      } else {
+        const categorySlug =
+          slugifyCategoryName(categoryDraft.name) || newAdminEntityId('cat').slice(4)
+        const idBase = `${categoryPrefixByTopLevel[categoryDraft.parentTopLevelId]}${categorySlug}`
+        const nextCategoryId = categories.some(
+          (category) => category.id !== editingCategoryId && category.id === idBase,
+        )
+          ? `${idBase}-${newAdminEntityId('cat').slice(4)}`
+          : idBase
+
+        const movedLinkedAddOns = categoryDraft.pendingAddOnLinks.map((l) => ({
+          id: newAdminEntityId('cao'),
+          categoryId: nextCategoryId,
+          addOnId: l.addOnId,
+          isOptional: true,
+          isFree: l.isFree,
+        }))
+        addCategory({
+          id: nextCategoryId,
+          ...normalizedPatch,
+          linkedAddOns: movedLinkedAddOns,
+        })
+
+        services
+          .filter((service) => service.categoryId === editingCategoryId)
+          .forEach((service) => {
+            updateService(service.id, { categoryId: nextCategoryId })
+          })
+
+        removeCategory(editingCategoryId)
+
+        if (categoryId === editingCategoryId) {
+          setCategoryId(nextCategoryId)
+        }
+        if (serviceCategoryFilterId === editingCategoryId) {
+          setServiceCategoryFilterId(nextCategoryId)
+        }
+        setCreateDraft((draft) =>
+          draft.categoryId === editingCategoryId
+            ? { ...draft, categoryId: nextCategoryId }
+            : draft,
+        )
+      }
+      setCategoryOpen(false)
+      setEditingCategoryId(null)
+      return
+    }
+
+    const categorySlug = slugifyCategoryName(categoryDraft.name) || newAdminEntityId('cat').slice(4)
+    const idBase = `${categoryPrefixByTopLevel[categoryDraft.parentTopLevelId]}${categorySlug}`
+    const catId = categories.some((category) => category.id === idBase)
+      ? `${idBase}-${newAdminEntityId('cat').slice(4)}`
+      : idBase
     const linkedAddOns = categoryDraft.pendingAddOnLinks.map((l) => ({
       id: newAdminEntityId('cao'),
       categoryId: catId,
@@ -907,230 +1167,322 @@ export default function AdminSchedulingServicesPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-1">
-          <CardContent className="pt-6 space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-bold text-foreground">{LABELS.serviceCategory}</p>
-              <Button variant="outline" size="sm" onClick={openNewCategory}>
-                New {LABELS.serviceCategory}
-              </Button>
-            </div>
-
-            <div className="space-y-1">
-              {sortedCategories.map((c) => {
-                const active = c.id === categoryId
-                const count = countByCategory.get(c.id) ?? 0
-                const linkedAddOns = c.linkedAddOns ?? []
-                const visibleLinkedAddOns = linkedAddOns.slice(0, 3)
-                const hiddenLinkedAddOnCount = Math.max(
-                  0,
-                  linkedAddOns.length - visibleLinkedAddOns.length,
-                )
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => setCategoryId(c.id)}
-                    className={cn(
-                      'w-full text-left px-3 py-2 rounded-lg border text-sm font-semibold transition-colors',
-                      active
-                        ? 'bg-sidebar-accent text-sidebar-accent-foreground border-border'
-                        : 'bg-card text-foreground border-border hover:bg-secondary',
-                    )}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span
-                        className={cn(
-                          active
-                            ? 'text-white'
-                            : c.isActive
-                              ? 'text-foreground'
-                              : 'text-muted-foreground',
-                        )}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+            <Card className="lg:col-span-3">
+              <CardHeader>
+                <CardTitle className="text-base">{LABELS.serviceCategory}</CardTitle>
+                <CardDescription>Browse by top-level groups and category sections.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setServiceCategoryFilterId('ALL')}
+                  className={cn(
+                    'w-full rounded-lg border px-3 py-2 text-left text-sm font-semibold transition-colors',
+                    serviceCategoryFilterId === 'ALL'
+                      ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                      : 'bg-card hover:bg-secondary',
+                  )}
+                >
+                  All
+                  <span className="float-right text-xs text-muted-foreground">
+                    {alignedServices.length}
+                  </span>
+                </button>
+                <Accordion type="multiple" className="w-full space-y-2">
+                  {SCHEDULING_TOP_LEVEL_ORDER.map((topLevelId) => {
+                    const rows = categoriesByTopLevel[topLevelId]
+                    if (rows.length === 0) return null
+                    return (
+                      <AccordionItem
+                        key={topLevelId}
+                        value={topLevelId}
+                        className="overflow-hidden rounded-lg border border-border bg-muted/20 px-3"
                       >
-                        {c.name}
-                      </span>
-                      <span
-                        className={cn(
-                          'text-xs',
-                          active ? 'text-white/80' : 'text-muted-foreground',
-                        )}
+                        <AccordionTrigger
+                          className="py-3 text-sm font-semibold text-foreground hover:no-underline"
+                        >
+                          <span className="flex items-center gap-2">
+                            <Badge variant="secondary" className="text-[10px] uppercase tracking-wide">
+                              Type
+                            </Badge>
+                            <span>{getSchedulingTopLevelLabel(topLevelId)}</span>
+                            <Badge variant="outline" className="text-[10px]">
+                              {totalServicesByTopLevel[topLevelId]}
+                            </Badge>
+                          </span>
+                        </AccordionTrigger>
+                        <AccordionContent className="space-y-2 pb-3">
+                          <div className="flex justify-end">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-7 gap-1 text-xs"
+                              onClick={() => openNewCategory(topLevelId)}
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                              New sub-category
+                            </Button>
+                          </div>
+                          {rows.map((category) => {
+                            const isActiveCategory = category.id === serviceCategoryFilterId
+                            const serviceCount = countByCategory.get(category.id) ?? 0
+                            return (
+                              <div
+                                key={category.id}
+                                draggable
+                                onDragStart={() => {
+                                  setDraggingCategoryId(category.id)
+                                  setDragOverCategoryId(category.id)
+                                }}
+                                onDragEnter={(event) => {
+                                  event.preventDefault()
+                                  setDragOverCategoryId(category.id)
+                                }}
+                                onDragOver={(event) => {
+                                  event.preventDefault()
+                                  if (dragOverCategoryId !== category.id) {
+                                    setDragOverCategoryId(category.id)
+                                  }
+                                }}
+                                onDrop={(event) => {
+                                  event.preventDefault()
+                                  if (!draggingCategoryId) return
+                                  if (
+                                    getSchedulingTopLevelId(draggingCategoryId) !== topLevelId ||
+                                    getSchedulingTopLevelId(category.id) !== topLevelId
+                                  ) {
+                                    return
+                                  }
+                                  reorderCategoriesByDrag(topLevelId, draggingCategoryId, category.id)
+                                  setDraggingCategoryId(null)
+                                  setDragOverCategoryId(null)
+                                }}
+                                onDragEnd={() => {
+                                  setDraggingCategoryId(null)
+                                  setDragOverCategoryId(null)
+                                }}
+                                className={cn(
+                                  'flex items-center gap-2 rounded-md px-2 py-2 transition-colors',
+                                  dragOverCategoryId === category.id &&
+                                    draggingCategoryId !== category.id &&
+                                    'bg-accent/10',
+                                  isActiveCategory
+                                    ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                                    : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
+                                )}
+                              >
+                                <span
+                                  className="cursor-grab text-muted-foreground/90"
+                                  aria-label={`Drag ${category.name}`}
+                                >
+                                  <GripVertical className="h-4 w-4" />
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setCategoryId(category.id)
+                                    setServiceCategoryFilterId(category.id)
+                                  }}
+                                  className="min-w-0 flex-1 text-left text-sm font-medium"
+                                >
+                                  <span className="truncate">{category.name}</span>
+                                </button>
+                                <Badge variant="outline" className="h-5 text-[10px]">
+                                  {serviceCount}
+                                </Badge>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7"
+                                      aria-label={`${category.name} actions`}
+                                    >
+                                      <MoreHorizontal className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onSelect={() => openEditCategory(category)}>
+                                      Edit
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      variant="destructive"
+                                      disabled={serviceCount > 0}
+                                      onSelect={() => setDeleteCategoryId(category.id)}
+                                    >
+                                      Delete
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                            )
+                          })}
+                        </AccordionContent>
+                      </AccordionItem>
+                    )
+                  })}
+                </Accordion>
+              </CardContent>
+            </Card>
+
+            <Card className="lg:col-span-9">
+              <CardHeader className="pb-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <CardTitle className="text-base">{catalogTitle}</CardTitle>
+                    <CardDescription>{catalogCountLabel}</CardDescription>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button asChild variant="secondary">
+                      <Link
+                        href={`/admin/scheduling/new/recurring?returnTo=${encodeURIComponent('/admin/scheduling/services')}`}
                       >
-                        {count}
-                      </span>
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {c.membersOnly ? (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Badge variant="secondary" className="gap-1 text-[10px] font-semibold">
-                              <Lock className="h-3 w-3" aria-hidden />
-                              Members
-                            </Badge>
-                          </TooltipTrigger>
-                          <TooltipContent>Only customers with an active membership can book.</TooltipContent>
-                        </Tooltip>
-                      ) : null}
-                      {c.depositPercent != null ? (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Badge variant="secondary" className="gap-1 text-[10px] font-semibold">
-                              <CreditCard className="h-3 w-3" aria-hidden />
-                              Deposit {c.depositPercent}%
-                            </Badge>
-                          </TooltipTrigger>
-                          <TooltipContent>Deposit required: {c.depositPercent}%</TooltipContent>
-                        </Tooltip>
-                      ) : null}
-                      {c.freeInfantMonths != null ? (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Badge variant="secondary" className="gap-1 text-[10px] font-semibold">
-                              <Baby className="h-3 w-3" aria-hidden />
-                              Free infants
-                            </Badge>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            Under {c.freeInfantMonths} months is free.
-                          </TooltipContent>
-                        </Tooltip>
-                      ) : null}
-                      {c.allowFamilyMember ? (
-                        <Badge
-                          variant="secondary"
-                          className="border-amber-500/50 bg-amber-500/15 text-[10px] font-semibold text-amber-950 dark:text-amber-100"
-                        >
-                          Same household only
-                        </Badge>
-                      ) : null}
-                      {c.requireCheckInBeforeRebook ? (
-                        <Badge
-                          variant="secondary"
-                          className="border-blue-500/50 bg-blue-500/15 text-[10px] font-semibold text-blue-950 dark:text-blue-100"
-                        >
-                          Check-in gate
-                        </Badge>
-                      ) : null}
-                      {visibleLinkedAddOns.map((link) => {
-                        const linkedAddOn = addOnCatalog.find((entry) => entry.id === link.addOnId)
-                        return (
-                          <Badge
-                            key={link.id}
-                            variant="secondary"
-                            className={
-                              link.isFree
-                                ? 'border-emerald-500/50 bg-emerald-500/15 text-[10px] font-semibold text-emerald-900 dark:text-emerald-100'
-                                : 'text-[10px] font-semibold'
-                            }
-                          >
-                            {linkedAddOn?.name ?? link.addOnId}
-                            {!link.isFree ? ` · ${formatPrice(linkedAddOn?.price ?? 0)}` : ''}
-                          </Badge>
-                        )
-                      })}
-                      {hiddenLinkedAddOnCount > 0 ? (
-                        <Badge variant="outline" className="text-[10px] font-semibold">
-                          +{hiddenLinkedAddOnCount} more
-                        </Badge>
-                      ) : null}
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-          </CardContent>
-        </Card>
-
-        <div className="lg:col-span-2 space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-sm font-bold text-foreground">{LABELS.services}</p>
-            <Button
-              className="bg-accent text-accent-foreground hover:bg-accent/90"
-              onClick={() => {
-                setCreateDraft((d) => ({ ...d, categoryId }))
-                setCreateOpen(true)
-              }}
-            >
-              {LABELS.createService}
-            </Button>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {filtered.map((s) => (
-              <Card key={s.id} className="overflow-hidden">
-                <CardContent className="p-0">
-                  <div className="relative h-32 bg-secondary">
-                    {s.imageUrl ? (
-                      <Image
-                        src={s.imageUrl}
-                        alt={s.name}
-                        fill
-                        className="object-cover"
-                        sizes="(max-width: 768px) 100vw, 50vw"
-                      />
-                    ) : null}
+                        Create slot
+                      </Link>
+                    </Button>
+                    <Button
+                      asChild
+                      className="bg-accent text-accent-foreground hover:bg-accent/90"
+                    >
+                      <Link
+                        href={`/admin/scheduling/services/new?categoryId=${encodeURIComponent(categoryId)}&returnTo=${encodeURIComponent('/admin/scheduling/services')}`}
+                      >
+                        {LABELS.createService}
+                      </Link>
+                    </Button>
                   </div>
-                  <div className="p-4 space-y-2">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="font-bold text-sm text-foreground truncate">{s.name}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
-                          {s.description ?? '—'}
-                        </p>
-                      </div>
-                      <Button variant="outline" size="sm" onClick={() => setSelected(s)}>
-                        Edit
-                      </Button>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <ServiceTypeBadge serviceType={s.serviceType} />
-                      <EventTypeBadge eventType={s.eventType} />
-                      <BookingModeBadge mode={s.bookingMode} />
-                      <span className="text-xs font-semibold text-muted-foreground">
-                        {formatPrice(s.basePrice)}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {getAgeRangeLabel(s.ageMin, s.ageMax)}
-                      </span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {filtered.map((service) => (
+                    <Card key={service.id} className="overflow-hidden">
+                      <CardContent className="p-0">
+                        <div className="relative h-32 bg-secondary">
+                          {service.imageUrl ? (
+                            <Image
+                              src={service.imageUrl}
+                              alt={service.name}
+                              fill
+                              className="object-cover"
+                              sizes="(max-width: 768px) 100vw, 50vw"
+                            />
+                          ) : null}
+                        </div>
+                        <div className="space-y-2 p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-bold text-foreground">
+                                {service.name}
+                              </p>
+                              <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                                {service.description ?? '—'}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button asChild variant="secondary" size="sm">
+                                <Link
+                                  href={`/admin/scheduling/new/recurring?serviceId=${encodeURIComponent(service.id)}&returnTo=${encodeURIComponent('/admin/scheduling/services')}`}
+                                >
+                                  Create slot
+                                </Link>
+                              </Button>
+                              <Button variant="outline" size="sm" onClick={() => setSelected(service)}>
+                                Edit
+                              </Button>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <ServiceTypeBadge serviceType={service.serviceType} />
+                            <EventTypeBadge eventType={service.eventType} />
+                            <BookingModeBadge mode={service.bookingMode} />
+                            <span className="text-xs font-semibold text-muted-foreground">
+                              {formatPrice(service.basePrice)}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {getAgeRangeLabel(service.ageMin, service.ageMax)}
+                            </span>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
 
-            {filtered.length === 0 ? (
-              <Card className="sm:col-span-2">
-                <CardContent className="pt-10 pb-10 text-center text-muted-foreground">
-                  No {LABELS.services.toLowerCase()} in this {LABELS.serviceCategory.toLowerCase()}.
-                </CardContent>
-              </Card>
-            ) : null}
-          </div>
+                  {filtered.length === 0 ? (
+                    <Card className="sm:col-span-2">
+                      <CardContent className="pb-10 pt-10 text-center text-muted-foreground">
+                        No matching {LABELS.services.toLowerCase()} for this category.
+                      </CardContent>
+                    </Card>
+                  ) : null}
+                </div>
 
-          <CategoryAddOnManager categoryId={categoryId} />
-        </div>
+                {serviceCategoryFilterId !== 'ALL' ? (
+                  <CategoryAddOnManager categoryId={categoryId} />
+                ) : null}
+              </CardContent>
+            </Card>
       </div>
 
       <CrudModal
         open={categoryOpen}
-        onOpenChange={setCategoryOpen}
-        title={`New ${LABELS.serviceCategory}`}
-        description={`${LABELS.serviceCategory} group ${LABELS.services.toLowerCase()} in the catalog.`}
+        onOpenChange={(open) => {
+          setCategoryOpen(open)
+          if (!open) {
+            setEditingCategoryId(null)
+          }
+        }}
+        title={editingCategoryId ? `Edit ${LABELS.serviceCategory}` : `New ${LABELS.serviceCategory}`}
+        description={
+          editingCategoryId
+            ? `Update ${LABELS.serviceCategory.toLowerCase()} details and rules.`
+            : `${LABELS.serviceCategory} group ${LABELS.services.toLowerCase()} in the catalog.`
+        }
         size="sm"
-        variant="create"
+        variant={editingCategoryId ? 'edit' : 'create'}
         footer={
           <>
             <Button type="button" variant="outline" onClick={() => setCategoryOpen(false)}>
               Cancel
             </Button>
-            <Button type="button" onClick={persistCategoryCreate}>
-              Create {LABELS.serviceCategory.toLowerCase()}
+            <Button type="button" onClick={persistCategory}>
+              {editingCategoryId
+                ? `Save ${LABELS.serviceCategory.toLowerCase()}`
+                : `Create ${LABELS.serviceCategory.toLowerCase()}`}
             </Button>
           </>
         }
       >
         <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="cat-parent-top">Parent category</Label>
+            <Select
+              value={categoryDraft.parentTopLevelId}
+              onValueChange={(value) =>
+                setCategoryDraft((draft) => ({
+                  ...draft,
+                  parentTopLevelId: value as SchedulingTopLevelId,
+                }))
+              }
+            >
+              <SelectTrigger id="cat-parent-top">
+                <SelectValue placeholder="Select parent category" />
+              </SelectTrigger>
+              <SelectContent>
+                {SCHEDULING_TOP_LEVEL_ORDER.map((topLevelId) => (
+                  <SelectItem key={topLevelId} value={topLevelId}>
+                    {getSchedulingTopLevelLabel(topLevelId)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Choose Gym, Play, or Event. Changing this while editing moves the sub-category.
+            </p>
+          </div>
           <div className="space-y-2">
             <Label htmlFor="cat-name">Name</Label>
             <Input
@@ -2750,6 +3102,33 @@ export default function AdminSchedulingServicesPage() {
           </div>
         </div>
       </CrudModal>
+
+      <AlertDialog
+        open={deleteCategoryId !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteCategoryId(null)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete category?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteCategoryId
+                ? `This will permanently remove “${
+                    sortedCategories.find((category) => category.id === deleteCategoryId)?.name ??
+                    'this category'
+                  }”.`
+                : 'This will permanently remove the selected category.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteCategory}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={packageDisableConfirmOpen} onOpenChange={setPackageDisableConfirmOpen}>
         <AlertDialogContent>

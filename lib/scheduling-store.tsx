@@ -1,31 +1,51 @@
-/** Scheduling store — local in-memory state for slots, bookings, and waitlist. */
+/** Scheduling store facade backed by centralized Redux state. */
 'use client'
 
-import React, { createContext, useContext, useMemo, useState } from 'react'
+import React, { createContext, useContext, useMemo } from 'react'
 
 import { newAdminEntityId } from '@/lib/scheduling-admin-builders'
+import { useAppDispatch, useAppSelector } from '@/lib/redux/hooks'
 import {
-  schedulingBookings as initialBookings,
-  eventPackagesMock as initialPackages,
-  schedulingCategories as initialCategories,
-  schedulingServices as initialServices,
-  schedulingSlots as initialSlots,
-  schedulingWaitlistEntries as initialWaitlist,
-} from '@/lib/mock-data'
+  addBooking as addBookingAction,
+  addCategory as addCategoryAction,
+  addPackage as addPackageAction,
+  addService as addServiceAction,
+  addSlot as addSlotAction,
+  addSlots as addSlotsAction,
+  addToWaitlist as addToWaitlistAction,
+  cancelBooking as cancelBookingAction,
+  cancelSlot as cancelSlotAction,
+  changeBookingStatus as changeBookingStatusAction,
+  checkInBooking as checkInBookingAction,
+  duplicatePackage as duplicatePackageAction,
+  linkSchedulingAddOn as linkSchedulingAddOnAction,
+  promoteWaitlist as promoteWaitlistAction,
+  removeCategory as removeCategoryAction,
+  removeFromWaitlist as removeFromWaitlistAction,
+  removePackage as removePackageAction,
+  removeService as removeServiceAction,
+  selectSchedulingBookings,
+  selectSchedulingCategories,
+  selectSchedulingPackages,
+  selectSchedulingServices,
+  selectSchedulingSlots,
+  selectSchedulingWaitlist,
+  setSchedulingAddOnFree as setSchedulingAddOnFreeAction,
+  setSlotActive as setSlotActiveAction,
+  unlinkSchedulingAddOn as unlinkSchedulingAddOnAction,
+  updateCategory as updateCategoryAction,
+  updatePackage as updatePackageAction,
+  updateService as updateServiceAction,
+  type SchedulingAddOnParent,
+} from '@/lib/redux/slices/scheduling-slice'
 import type {
-  CategoryAddOn,
   EventPackage,
   SchedulingBooking,
   SchedulingCategory,
   SchedulingService,
   SchedulingSlot,
   SchedulingWaitlistEntry,
-  WaitlistStatus,
 } from '@/lib/types'
-
-export type SchedulingAddOnParent = 'category' | 'service'
-const INQUIRY_ACTION_STAFF_ID = 'staff-1'
-const INQUIRY_ACTION_STAFF_NAME = 'Sarah Mitchell'
 
 interface SchedulingStore {
   categories: SchedulingCategory[]
@@ -35,6 +55,7 @@ interface SchedulingStore {
   waitlist: SchedulingWaitlistEntry[]
   packages: EventPackage[]
   addCategory: (category: SchedulingCategory) => void
+  removeCategory: (categoryId: string) => void
   updateCategory: (categoryId: string, patch: Partial<SchedulingCategory>) => void
   addBooking: (booking: SchedulingBooking) => void
   cancelBooking: (bookingId: string, reason: string) => void
@@ -77,208 +98,98 @@ interface SchedulingStore {
 }
 
 const SchedulingContext = createContext<SchedulingStore | null>(null)
+const INQUIRY_ACTION_STAFF_ID = 'staff-1'
+const INQUIRY_ACTION_STAFF_NAME = 'Sarah Mitchell'
 
 export function SchedulingProvider({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  const [categories, setCategories] = useState<SchedulingCategory[]>(() =>
-    initialCategories.map((c) => ({
-      ...c,
-      linkedAddOns: c.linkedAddOns?.map((l) => ({ ...l })),
-    })),
-  )
-  const [services, setServices] = useState<SchedulingService[]>(() =>
-    initialServices.map((s) => ({
-      ...s,
-      linkedAddOns: s.linkedAddOns?.map((l) => ({ ...l })),
-    })),
-  )
-  const [slots, setSlots] = useState<SchedulingSlot[]>(() =>
-    initialSlots.map((sl) => ({ ...sl, service: { ...sl.service } })),
-  )
-  const [bookings, setBookings] = useState<SchedulingBooking[]>(() =>
-    initialBookings.map((b) => ({
-      ...b,
-      service: { ...b.service },
-      serviceSlot: b.serviceSlot ? { ...b.serviceSlot, service: { ...b.serviceSlot.service } } : null,
-    })),
-  )
-  const [waitlist, setWaitlist] = useState<SchedulingWaitlistEntry[]>(
-    initialWaitlist,
-  )
-  const [packages, setPackages] = useState<EventPackage[]>(() =>
-    initialPackages.map((p) => ({ ...p, addOns: p.addOns.slice(), features: p.features.slice() })),
-  )
+  const dispatch = useAppDispatch()
+  const categories = useAppSelector(selectSchedulingCategories)
+  const services = useAppSelector(selectSchedulingServices)
+  const slots = useAppSelector(selectSchedulingSlots)
+  const bookings = useAppSelector(selectSchedulingBookings)
+  const waitlist = useAppSelector(selectSchedulingWaitlist)
+  const packages = useAppSelector(selectSchedulingPackages)
 
   const value = useMemo<SchedulingStore>(() => {
-    function createPackageId(): string {
-      return `pkg-${Math.random().toString(16).slice(2, 10)}`
+    function addBooking(booking: SchedulingBooking) {
+      dispatch(addBookingAction(booking))
     }
 
-    function addBooking(booking: SchedulingBooking) {
-      setBookings((prev) => [booking, ...prev])
+    function cancelBooking(bookingId: string, reason: string) {
+      dispatch(cancelBookingAction({ bookingId, reason }))
+    }
 
-      if (!booking.serviceSlotId) return
-
-      setSlots((prev) =>
-        prev.map((slot) => {
-          if (slot.id !== booking.serviceSlotId) return slot
-
-          const bookedCount = slot.bookedCount + Math.max(1, booking.guestCount)
-          const isFull = bookedCount >= slot.effectiveCapacity
-          const status = isFull ? 'FULL' : slot.status
-
-          return { ...slot, bookedCount, status }
+    function approveBooking(bookingId: string) {
+      dispatch(
+        changeBookingStatusAction({
+          bookingId,
+          actedByStaffId: INQUIRY_ACTION_STAFF_ID,
+          actedByStaffName: INQUIRY_ACTION_STAFF_NAME,
+          status: 'CONFIRMED',
         }),
       )
     }
 
-    function cancelBooking(bookingId: string, reason: string) {
-      const cancelledAt = new Date().toISOString()
-
-      setBookings((prev) =>
-        prev.map((b) =>
-          b.id === bookingId
-            ? {
-                ...b,
-                status: 'CANCELLED',
-                cancelledAt,
-                cancellationReason: reason,
-              }
-            : b,
-        ),
-      )
-    }
-
-    function approveBooking(bookingId: string) {
-      setBookings((prev) =>
-        prev.map((b) =>
-          b.id === bookingId
-            ? {
-                ...b,
-                status: 'CONFIRMED',
-                cancellationReason: null,
-                cancelledAt: null,
-                actedByStaffId: INQUIRY_ACTION_STAFF_ID,
-                actedByStaffName: INQUIRY_ACTION_STAFF_NAME,
-              }
-            : b,
-        ),
-      )
-    }
-
     function declineBooking(bookingId: string, reason: string) {
-      const cancelledAt = new Date().toISOString()
-      setBookings((prev) =>
-        prev.map((b) =>
-          b.id === bookingId
-            ? {
-                ...b,
-                status: 'CANCELLED',
-                cancellationReason: reason,
-                cancelledAt,
-                actedByStaffId: INQUIRY_ACTION_STAFF_ID,
-                actedByStaffName: INQUIRY_ACTION_STAFF_NAME,
-              }
-            : b,
-        ),
+      dispatch(
+        changeBookingStatusAction({
+          bookingId,
+          actedByStaffId: INQUIRY_ACTION_STAFF_ID,
+          actedByStaffName: INQUIRY_ACTION_STAFF_NAME,
+          status: 'CANCELLED',
+          reason,
+        }),
       )
     }
 
     function cancelSlot(slotId: string, reason: string) {
-      setSlots((prev) =>
-        prev.map((s) =>
-          s.id === slotId ? { ...s, status: 'CANCELLED', notes: reason } : s,
-        ),
-      )
+      dispatch(cancelSlotAction({ slotId, reason }))
     }
 
     function publishSlot(slotId: string) {
-      setSlots((prev) =>
-        prev.map((s) => (s.id === slotId ? { ...s, isActive: true } : s)),
-      )
+      dispatch(setSlotActiveAction({ slotId, isActive: true }))
     }
 
     function draftSlot(slotId: string) {
-      setSlots((prev) =>
-        prev.map((s) => (s.id === slotId ? { ...s, isActive: false } : s)),
-      )
+      dispatch(setSlotActiveAction({ slotId, isActive: false }))
     }
 
     function checkIn(bookingId: string) {
-      const checkedInAt = new Date().toISOString()
-      let slotIdForBooking: string | null = null
-
-      setBookings((prev) => {
-        const target = prev.find((b) => b.id === bookingId) ?? null
-        if (!target) return prev
-        if (target.checkedInAt) return prev
-        slotIdForBooking = target.serviceSlotId
-        return prev.map((b) => (b.id === bookingId ? { ...b, checkedInAt } : b))
-      })
-
-      if (!slotIdForBooking) return
-
-      setSlots((prev) =>
-        prev.map((s) =>
-          s.id === slotIdForBooking
-            ? { ...s, checkInCount: (s.checkInCount ?? 0) + 1 }
-            : s,
-        ),
-      )
+      dispatch(checkInBookingAction(bookingId))
     }
 
     function addToWaitlist(entry: SchedulingWaitlistEntry) {
-      setWaitlist((prev) => [...prev, entry])
+      dispatch(addToWaitlistAction(entry))
     }
 
     function removeFromWaitlist(entryId: string) {
-      setWaitlist((prev) => prev.filter((e) => e.id !== entryId))
+      dispatch(removeFromWaitlistAction(entryId))
     }
 
     function promoteWaitlist(slotId: string) {
-      setWaitlist((prev) => {
-        const firstWaiting = prev
-          .filter((e) => e.serviceSlotId === slotId && e.status === 'WAITING')
-          .sort((a, b) => a.position - b.position)[0]
-
-        if (!firstWaiting) return prev
-
-        const status: WaitlistStatus = 'NOTIFIED'
-        const notifiedAt = new Date().toISOString()
-
-        return prev.map((e) =>
-          e.id === firstWaiting.id ? { ...e, status, notifiedAt } : e,
-        )
-      })
+      dispatch(promoteWaitlistAction(slotId))
     }
 
     function addSlot(slot: SchedulingSlot) {
-      const normalized: SchedulingSlot = {
-        ...slot,
-        isActive: slot.isActive ?? true,
-        checkInCount: slot.checkInCount ?? 0,
-      }
-      setSlots((prev) => [normalized, ...prev])
+      dispatch(addSlotAction(slot))
     }
 
     function addSlots(nextSlots: SchedulingSlot[]) {
-      const normalized = nextSlots.map((slot) => ({
-        ...slot,
-        isActive: slot.isActive ?? true,
-        checkInCount: slot.checkInCount ?? 0,
-      }))
-      setSlots((prev) => [...normalized, ...prev])
+      dispatch(addSlotsAction(nextSlots))
     }
 
     function addCategory(category: SchedulingCategory) {
-      setCategories((prev) => [...prev, { ...category }])
+      dispatch(addCategoryAction(category))
+    }
+
+    function removeCategory(categoryId: string) {
+      dispatch(removeCategoryAction(categoryId))
     }
 
     function updateCategory(categoryId: string, patch: Partial<SchedulingCategory>) {
-      setCategories((prev) =>
-        prev.map((c) => (c.id === categoryId ? { ...c, ...patch } : c)),
-      )
+      dispatch(updateCategoryAction({ categoryId, patch }))
     }
 
     function linkSchedulingAddOn(
@@ -287,48 +198,13 @@ export function SchedulingProvider({
       addOnId: string,
       isFree: boolean,
     ) {
-      const link: CategoryAddOn = {
-        id: newAdminEntityId('cao'),
-        categoryId: parentId,
-        addOnId,
-        isOptional: true,
-        isFree,
-      }
-      if (parent === 'service') {
-        setServices((prev) =>
-          prev.map((s) => {
-            if (s.id !== parentId) return s
-            const links = s.linkedAddOns ?? []
-            if (links.some((l) => l.addOnId === addOnId)) return s
-            return { ...s, linkedAddOns: [...links, link] }
-          }),
-        )
-        setSlots((prev) =>
-          prev.map((slot) =>
-            slot.serviceId === parentId
-              ? {
-                  ...slot,
-                  service: {
-                    ...slot.service,
-                    linkedAddOns: [
-                      ...(slot.service.linkedAddOns ?? []),
-                      ...(slot.service.linkedAddOns?.some((l) => l.addOnId === addOnId)
-                        ? []
-                        : [link]),
-                    ],
-                  },
-                }
-              : slot,
-          ),
-        )
-        return
-      }
-      setCategories((prev) =>
-        prev.map((c) => {
-          if (c.id !== parentId) return c
-          const links = c.linkedAddOns ?? []
-          if (links.some((l) => l.addOnId === addOnId)) return c
-          return { ...c, linkedAddOns: [...links, link] }
+      dispatch(
+        linkSchedulingAddOnAction({
+          parent,
+          parentId,
+          addOnId,
+          isFree,
+          linkId: newAdminEntityId('cao'),
         }),
       )
     }
@@ -338,44 +214,7 @@ export function SchedulingProvider({
       parentId: string,
       addOnId: string,
     ) {
-      if (parent === 'service') {
-        setServices((prev) =>
-          prev.map((s) =>
-            s.id === parentId
-              ? {
-                  ...s,
-                  linkedAddOns: (s.linkedAddOns ?? []).filter((l) => l.addOnId !== addOnId),
-                }
-              : s,
-          ),
-        )
-        setSlots((prev) =>
-          prev.map((slot) =>
-            slot.serviceId === parentId
-              ? {
-                  ...slot,
-                  service: {
-                    ...slot.service,
-                    linkedAddOns: (slot.service.linkedAddOns ?? []).filter(
-                      (l) => l.addOnId !== addOnId,
-                    ),
-                  },
-                }
-              : slot,
-          ),
-        )
-        return
-      }
-      setCategories((prev) =>
-        prev.map((c) =>
-          c.id === parentId
-            ? {
-                ...c,
-                linkedAddOns: (c.linkedAddOns ?? []).filter((l) => l.addOnId !== addOnId),
-              }
-            : c,
-        ),
-      )
+      dispatch(unlinkSchedulingAddOnAction({ parent, parentId, addOnId }))
     }
 
     function setSchedulingAddOnFree(
@@ -384,48 +223,7 @@ export function SchedulingProvider({
       addOnId: string,
       isFree: boolean,
     ) {
-      if (parent === 'service') {
-        setServices((prev) =>
-          prev.map((s) =>
-            s.id === parentId
-              ? {
-                  ...s,
-                  linkedAddOns: (s.linkedAddOns ?? []).map((l) =>
-                    l.addOnId === addOnId ? { ...l, isFree } : l,
-                  ),
-                }
-              : s,
-          ),
-        )
-        setSlots((prev) =>
-          prev.map((slot) =>
-            slot.serviceId === parentId
-              ? {
-                  ...slot,
-                  service: {
-                    ...slot.service,
-                    linkedAddOns: (slot.service.linkedAddOns ?? []).map((l) =>
-                      l.addOnId === addOnId ? { ...l, isFree } : l,
-                    ),
-                  },
-                }
-              : slot,
-          ),
-        )
-        return
-      }
-      setCategories((prev) =>
-        prev.map((c) =>
-          c.id === parentId
-            ? {
-                ...c,
-                linkedAddOns: (c.linkedAddOns ?? []).map((l) =>
-                  l.addOnId === addOnId ? { ...l, isFree } : l,
-                ),
-              }
-            : c,
-        ),
-      )
+      dispatch(setSchedulingAddOnFreeAction({ parent, parentId, addOnId, isFree }))
     }
 
     function canDetachPackage(serviceId: string, packageId: string): boolean {
@@ -439,63 +237,37 @@ export function SchedulingProvider({
     }
 
     function addService(service: SchedulingService) {
-      setServices((prev) => [service, ...prev])
+      dispatch(addServiceAction(service))
     }
 
     function updateService(serviceId: string, patch: Partial<SchedulingService>) {
-      setServices((prev) =>
-        prev.map((s) => (s.id === serviceId ? { ...s, ...patch } : s)),
-      )
-      setSlots((prev) =>
-        prev.map((slot) =>
-          slot.serviceId === serviceId
-            ? { ...slot, service: { ...slot.service, ...patch } }
-            : slot,
-        ),
-      )
-      setBookings((prev) =>
-        prev.map((b) =>
-          b.serviceId === serviceId
-            ? { ...b, service: { ...b.service, ...patch } }
-            : b,
-        ),
-      )
+      dispatch(updateServiceAction({ serviceId, patch }))
     }
 
     function removeService(serviceId: string) {
-      setServices((prev) => prev.filter((s) => s.id !== serviceId))
-      setSlots((prev) => prev.filter((s) => s.serviceId !== serviceId))
+      dispatch(removeServiceAction(serviceId))
     }
 
     function addPackage(pkg: EventPackage) {
-      setPackages((prev) => [pkg, ...prev])
+      dispatch(addPackageAction(pkg))
     }
 
     function updatePackage(packageId: string, patch: Partial<EventPackage>) {
-      setPackages((prev) =>
-        prev.map((p) => (p.id === packageId ? { ...p, ...patch } : p)),
-      )
+      dispatch(updatePackageAction({ packageId, patch }))
     }
 
     function removePackage(packageId: string) {
-      setPackages((prev) => prev.filter((p) => p.id !== packageId))
+      dispatch(removePackageAction(packageId))
     }
 
     function duplicatePackage(packageId: string) {
-      const nowIso = new Date().toISOString()
-      setPackages((prev) => {
-        const src = prev.find((p) => p.id === packageId) ?? null
-        if (!src) return prev
-        const copy: EventPackage = {
-          ...src,
-          id: createPackageId(),
-          name: `${src.name} (Copy)`,
-          createdAt: nowIso,
-          features: src.features.slice(),
-          addOns: src.addOns.slice(),
-        }
-        return [copy, ...prev]
-      })
+      dispatch(
+        duplicatePackageAction({
+          packageId,
+          copyId: `pkg-${Math.random().toString(16).slice(2, 10)}`,
+          nowIso: new Date().toISOString(),
+        }),
+      )
     }
 
     return {
@@ -506,6 +278,7 @@ export function SchedulingProvider({
       waitlist,
       packages,
       addCategory,
+      removeCategory,
       updateCategory,
       addBooking,
       cancelBooking,
@@ -532,7 +305,7 @@ export function SchedulingProvider({
       removePackage,
       duplicatePackage,
     }
-  }, [categories, services, slots, bookings, waitlist, packages])
+  }, [bookings, categories, dispatch, packages, services, slots, waitlist])
 
   return (
     <SchedulingContext.Provider value={value}>

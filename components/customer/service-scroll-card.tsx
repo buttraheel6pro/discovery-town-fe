@@ -1,9 +1,13 @@
 /** Compact reusable service listing card for horizontal rails. */
+'use client'
+
+import { useMemo } from 'react'
 import { Clock3, MapPin, Users } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ListingCard } from '@/components/customer/listing-card'
+import { useScheduling } from '@/lib/scheduling-store'
 import type { SchedulingService } from '@/lib/types'
 
 interface ServiceScrollCardProps {
@@ -49,6 +53,12 @@ function getCtaLabel(service: SchedulingService): string {
 }
 
 export function ServiceScrollCard({ service }: Readonly<ServiceScrollCardProps>) {
+  const { packages } = useScheduling()
+  const activePackageCount = useMemo(
+    () => packages.filter((pkg) => pkg.serviceId === service.id && pkg.isActive).length,
+    [packages, service.id],
+  )
+
   return (
     <div className="w-[280px] shrink-0 snap-start sm:w-[300px]">
       <ListingCard
@@ -57,9 +67,16 @@ export function ServiceScrollCard({ service }: Readonly<ServiceScrollCardProps>)
         description={service.description ?? ''}
         imageUrl={service.imageUrl ?? undefined}
         topLeft={
-          <Badge className="bg-accent text-accent-foreground text-[10px] font-semibold">
-            {service.category.name}
-          </Badge>
+          <div className="flex items-center gap-1.5">
+            <Badge className="bg-accent text-accent-foreground text-[10px] font-semibold">
+              {service.category.name}
+            </Badge>
+            {activePackageCount > 0 ? (
+              <Badge variant="secondary" className="text-[10px] font-semibold">
+                {activePackageCount} package{activePackageCount === 1 ? '' : 's'}
+              </Badge>
+            ) : null}
+          </div>
         }
         bottomRight={
           <span className="rounded-md bg-black/70 px-2.5 py-1 text-sm font-bold text-white">

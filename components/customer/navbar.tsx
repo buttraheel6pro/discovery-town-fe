@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useMemo, useState } from 'react'
-import { ChevronDown, Menu, Search, ShoppingCart, User, X, Zap } from 'lucide-react'
+import { Menu, Search, ShoppingCart, User, X, Zap } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -14,11 +14,6 @@ interface NavbarLinkItem {
   readonly label: string
   readonly href: string
   readonly description?: string
-}
-
-interface NavbarDropdownItem {
-  readonly label: string
-  readonly items: readonly NavbarLinkItem[]
 }
 
 const PRODUCT_TYPE_LABELS: Record<string, string> = {
@@ -34,50 +29,6 @@ function toStoreSlug(productType: string): string {
 
 function isActivePath(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`)
-}
-
-function NavbarDropdown({
-  label,
-  items,
-  pathname,
-  onItemClick,
-}: Readonly<NavbarDropdownItem & { pathname: string; onItemClick?: () => void }>) {
-  const isActive = items.some((item) => isActivePath(pathname, item.href))
-
-  return (
-    <div className="group relative">
-      <button
-        type="button"
-        className={cn(
-          'inline-flex items-center gap-1 rounded-md px-4 py-2 text-sm font-medium transition-colors',
-          isActive
-            ? 'bg-accent/10 text-accent'
-            : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
-        )}
-      >
-        {label}
-        <ChevronDown className="h-4 w-4 transition-transform group-hover:rotate-180" />
-      </button>
-      <div className="invisible absolute left-0 top-full z-50 mt-2 w-72 rounded-xl border border-border bg-card p-2 opacity-0 shadow-lg transition-all group-hover:visible group-hover:opacity-100">
-        {items.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            onClick={onItemClick}
-            className={cn(
-              'block rounded-lg px-3 py-2.5 transition-colors',
-              isActivePath(pathname, item.href)
-                ? 'bg-accent/10 text-accent'
-                : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
-            )}
-          >
-            <p className="text-sm font-semibold">{item.label}</p>
-            {item.description ? <p className="text-xs text-muted-foreground">{item.description}</p> : null}
-          </Link>
-        ))}
-      </div>
-    </div>
-  )
 }
 
 export function CustomerNavbar() {
@@ -104,10 +55,7 @@ export function CustomerNavbar() {
     { label: 'Events', href: '/events', description: 'Discover events and private venue booking.' },
   ]
 
-  const desktopLinks: NavbarLinkItem[] = [
-    { label: 'Membership', href: '/membership' },
-    { label: 'Class Packs', href: '/class-packs' },
-  ]
+  const allTopLevelLinks: NavbarLinkItem[] = [...discoverItems, ...storeItems]
   const cartCount = cart.items.reduce((sum, item) => sum + item.quantity, 0)
 
   return (
@@ -131,9 +79,7 @@ export function CustomerNavbar() {
           </Link>
 
           <div className="hidden md:flex items-center gap-1">
-            <NavbarDropdown label="Discover" items={discoverItems} pathname={pathname} />
-            <NavbarDropdown label="Store" items={storeItems} pathname={pathname} />
-            {desktopLinks.map((link) => (
+            {allTopLevelLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
@@ -204,41 +150,7 @@ export function CustomerNavbar() {
 
         {mobileOpen && (
           <div className="space-y-1 border-t border-border py-4 md:hidden">
-            <details className="rounded-md border border-border">
-              <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-foreground">
-                Discover
-              </summary>
-              <div className="border-t border-border p-2">
-                {discoverItems.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className="block rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-secondary hover:text-foreground"
-                    onClick={() => setMobileOpen(false)}
-                  >
-                    {item.label}
-                  </Link>
-                ))}
-              </div>
-            </details>
-            <details className="rounded-md border border-border">
-              <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-foreground">
-                Store
-              </summary>
-              <div className="border-t border-border p-2">
-                {storeItems.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className="block rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-secondary hover:text-foreground"
-                    onClick={() => setMobileOpen(false)}
-                  >
-                    {item.label}
-                  </Link>
-                ))}
-              </div>
-            </details>
-            {desktopLinks.map((link) => (
+            {allTopLevelLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
