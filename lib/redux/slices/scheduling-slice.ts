@@ -12,6 +12,7 @@ import {
 import type { RootState } from '@/lib/redux/store'
 import type {
   CategoryAddOn,
+  CategoryAddOnChargeFrequency,
   EventPackage,
   SchedulingBooking,
   SchedulingCategory,
@@ -60,7 +61,11 @@ interface LinkSchedulingAddOnPayload {
   parent: SchedulingAddOnParent
   parentId: string
   addOnId: string
+  addOnName?: string
   isFree: boolean
+  quantity?: number
+  unitPrice?: number
+  chargeFrequency?: CategoryAddOnChargeFrequency
   linkId: string
 }
 
@@ -272,13 +277,18 @@ const schedulingSlice = createSlice({
       state.slots = [...slots, ...state.slots]
     },
     linkSchedulingAddOn(state, action: PayloadAction<LinkSchedulingAddOnPayload>) {
-      const { parent, parentId, addOnId, isFree, linkId } = action.payload
+      const { parent, parentId, addOnId, addOnName, isFree, quantity, unitPrice, chargeFrequency, linkId } =
+        action.payload
       const link: CategoryAddOn = {
         id: linkId,
         categoryId: parentId,
         addOnId,
+        addOnName,
         isOptional: true,
         isFree,
+        quantity,
+        unitPrice,
+        chargeFrequency,
       }
 
       if (parent === 'service') {

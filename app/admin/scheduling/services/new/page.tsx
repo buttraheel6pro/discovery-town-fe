@@ -3,10 +3,14 @@
 'use client'
 
 import Link from 'next/link'
-import { Suspense, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 
+import { CrudModal } from '@/components/admin/crud-modal'
 import { EventTypeSelector } from '@/components/admin/event-type-selector'
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -14,18 +18,22 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { useClients } from '@/lib/client-store'
 import { LABELS } from '@/lib/constants/ui-labels'
-import { locations } from '@/lib/mock-data'
+import { locations, samplePreschoolAddOns } from '@/lib/mock-data'
+import { useInventory } from '@/lib/inventory-store'
 import { newAdminEntityId } from '@/lib/scheduling-admin-builders'
 import { useScheduling } from '@/lib/scheduling-store'
+import { bookingAddOnToSchedulingAddOn, formatPrice } from '@/lib/utils'
 import type {
+  CategoryAddOnChargeFrequency,
   EventVisibility,
   SchedulingBookingMode,
   SchedulingCategory,
   SchedulingService,
   SchedulingServiceType,
 } from '@/lib/types'
-import { SchedulingServiceTypeEnum } from '@/lib/types'
+import { CATEGORY_ADD_ON_CHARGE_FREQUENCIES, SchedulingServiceTypeEnum } from '@/lib/types'
 
 const CONSUMER_ALIGNED_CATEGORY_IDS = new Set<string>([
   'cat-open-play',
@@ -66,6 +74,61 @@ function parseOptionalFloat(value: string): number | null {
   return Number.isFinite(n) ? n : null
 }
 
+function parseOptionalInt(value: string): number | null {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const n = Number.parseInt(trimmed, 10)
+  return Number.isFinite(n) ? n : null
+}
+
+function draftFromService(service: SchedulingService): CreateDraft {
+  return {
+    categoryId: service.categoryId,
+    serviceType: service.serviceType,
+    bookingMode: service.bookingMode,
+    eventType: service.eventType,
+    locationId: service.locationId ?? locations[0]?.id ?? 'loc-1',
+    name: service.name,
+    description: service.description ?? '',
+    subscriptionPrice: service.subscriptionPrice != null ? String(service.subscriptionPrice) : '',
+    requiresWaiver: Boolean(service.requiresWaiver),
+    requiredDocumentIds: service.requiredDocumentIds ?? [],
+    ageMin: service.ageMin != null ? String(service.ageMin) : '',
+    ageMax: service.ageMax != null ? String(service.ageMax) : '',
+    basePrice: String(service.basePrice),
+    capacity: String(service.capacity),
+    durationMinutes: String(service.durationMinutes),
+    minDurationMinutes: service.minDurationMinutes != null ? String(service.minDurationMinutes) : '',
+    maxDurationMinutes: service.maxDurationMinutes != null ? String(service.maxDurationMinutes) : '',
+    slotIncrementMinutes:
+      service.slotIncrementMinutes != null ? String(service.slotIncrementMinutes) : '',
+    maxConcurrent: service.maxConcurrent != null ? String(service.maxConcurrent) : '',
+    minAdvanceHours: service.minAdvanceHours != null ? String(service.minAdvanceHours) : '',
+    maxAdvanceHours: service.maxAdvanceHours != null ? String(service.maxAdvanceHours) : '',
+    siblingPrice: service.siblingPrice ?? '',
+    freeAdultCount:
+      service.freeAdultCount != null ? String(service.freeAdultCount) : '2',
+    additionalAdultPrice: service.additionalAdultPrice ?? '',
+    minSeats: service.minSeats != null ? String(service.minSeats) : '1',
+    pricePerHour: service.pricePerHour ?? '',
+    minChildSeats: service.minChildSeats != null ? String(service.minChildSeats) : '',
+    maxChildSeats: service.maxChildSeats != null ? String(service.maxChildSeats) : '',
+    minAdultSeats: service.minAdultSeats != null ? String(service.minAdultSeats) : '',
+    maxAdultSeats: service.maxAdultSeats != null ? String(service.maxAdultSeats) : '',
+    additionalChildPrice: service.additionalChildPrice ?? '',
+    isPackageService: Boolean(service.isPackageService),
+    pendingServiceAddOnLinks: (service.linkedAddOns ?? []).map((row) => ({
+      addOnId: row.addOnId,
+      addOnName: row.addOnName,
+      isFree: row.isFree,
+      quantity: String(row.quantity ?? 1),
+      unitPrice: String(row.unitPrice ?? 0),
+      chargeFrequency: row.chargeFrequency ?? 'ONE_TIME',
+    })),
+    isActive: service.isActive,
+  }
+}
+
 interface CreateDraft {
   readonly categoryId: string
   readonly serviceType: SchedulingServiceType
@@ -74,19 +137,59 @@ interface CreateDraft {
   readonly locationId: string
   readonly name: string
   readonly description: string
+  readonly subscriptionPrice: string
+  readonly requiresWaiver: boolean
+  readonly requiredDocumentIds: string[]
+  readonly ageMin: string
+  readonly ageMax: string
   readonly basePrice: string
   readonly capacity: string
   readonly durationMinutes: string
+  readonly minDurationMinutes: string
+  readonly maxDurationMinutes: string
+  readonly slotIncrementMinutes: string
+  readonly maxConcurrent: string
+  readonly minAdvanceHours: string
+  readonly maxAdvanceHours: string
+  readonly siblingPrice: string
+  readonly freeAdultCount: string
+  readonly additionalAdultPrice: string
+  readonly minSeats: string
+  readonly pricePerHour: string
+  readonly minChildSeats: string
+  readonly maxChildSeats: string
+  readonly minAdultSeats: string
+  readonly maxAdultSeats: string
+  readonly additionalChildPrice: string
+  readonly isPackageService: boolean
+  readonly pendingServiceAddOnLinks: {
+    addOnId: string
+    addOnName?: string
+    isFree: boolean
+    quantity: string
+    unitPrice: string
+    chargeFrequency: CategoryAddOnChargeFrequency
+  }[]
   readonly isActive: boolean
 }
 
 function AdminSchedulingServiceNewPageInner() {
   const searchParams = useSearchParams()
   const router = useRouter()
-  const { categories, addService } = useScheduling()
+  const { documents } = useClients()
+  const { bookingAddOns } = useInventory()
+  const { categories, services, addService, updateService } = useScheduling()
   const requestedCategoryId = searchParams.get('categoryId')?.trim() ?? ''
+  const requestedServiceId = searchParams.get('serviceId')?.trim() ?? ''
   const rawReturnTo = searchParams.get('returnTo')?.trim() ?? '/admin/scheduling/services'
   const returnTo = rawReturnTo.startsWith('/admin/') ? rawReturnTo : '/admin/scheduling/services'
+  const editingService = useMemo(() => {
+    if (!requestedServiceId) {
+      return null
+    }
+    return services.find((entry) => entry.id === requestedServiceId) ?? null
+  }, [requestedServiceId, services])
+  const isEditing = Boolean(editingService)
 
   const sortedCategories = useMemo(() => {
     return categories
@@ -110,20 +213,132 @@ function AdminSchedulingServiceNewPageInner() {
     locationId: locations[0]?.id ?? 'loc-1',
     name: '',
     description: '',
+    subscriptionPrice: '',
+    requiresWaiver: false,
+    requiredDocumentIds: [],
+    ageMin: '',
+    ageMax: '',
     basePrice: '',
     capacity: '',
     durationMinutes: '60',
+    minDurationMinutes: '',
+    maxDurationMinutes: '',
+    slotIncrementMinutes: '',
+    maxConcurrent: '',
+    minAdvanceHours: '',
+    maxAdvanceHours: '',
+    siblingPrice: '',
+    freeAdultCount: '2',
+    additionalAdultPrice: '',
+    minSeats: '1',
+    pricePerHour: '',
+    minChildSeats: '',
+    maxChildSeats: '',
+    minAdultSeats: '',
+    maxAdultSeats: '',
+    additionalChildPrice: '',
+    isPackageService: false,
+    pendingServiceAddOnLinks: [],
     isActive: true,
   })
+  useEffect(() => {
+    if (!editingService) {
+      return
+    }
+    setDraft(draftFromService(editingService))
+  }, [editingService])
+  const [newAddOnId, setNewAddOnId] = useState<string>('')
+  const [addOnModalOpen, setAddOnModalOpen] = useState(false)
+  const [pendingAddOnQuantity, setPendingAddOnQuantity] = useState('1')
+  const [pendingAddOnUnitPrice, setPendingAddOnUnitPrice] = useState('')
+  const [pendingAddOnChargeFrequency, setPendingAddOnChargeFrequency] =
+    useState<CategoryAddOnChargeFrequency>('ONE_TIME')
+  const waiverDocs = useMemo(
+    () => documents.filter((document) => document.type === 'WAIVER'),
+    [documents],
+  )
+  const addOnCatalog = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof bookingAddOnToSchedulingAddOn>>()
+    for (const addOn of bookingAddOns) {
+      map.set(addOn.id, bookingAddOnToSchedulingAddOn(addOn))
+    }
+    for (const addOn of samplePreschoolAddOns) {
+      map.set(addOn.id, addOn)
+    }
+    return Array.from(map.values())
+  }, [bookingAddOns])
+  const selectedAddOnForModal = useMemo(() => {
+    if (!newAddOnId) {
+      return null
+    }
+    return addOnCatalog.find((entry) => entry.id === newAddOnId) ?? null
+  }, [addOnCatalog, newAddOnId])
 
   const selectedCategory = useMemo<SchedulingCategory | null>(() => {
     return sortedCategories.find((entry) => entry.id === draft.categoryId) ?? null
   }, [draft.categoryId, sortedCategories])
 
-  function handleCreate() {
+  function openAddOnModal(): void {
+    if (!newAddOnId) {
+      return
+    }
+    const selectedAddOn = addOnCatalog.find((entry) => entry.id === newAddOnId)
+    setPendingAddOnQuantity('1')
+    setPendingAddOnUnitPrice(
+      selectedAddOn ? String(Number(selectedAddOn.price.toFixed(2))) : '',
+    )
+    setPendingAddOnChargeFrequency('ONE_TIME')
+    setAddOnModalOpen(true)
+  }
+
+  function confirmAddOnLink(): void {
+    if (!newAddOnId) {
+      return
+    }
+    const parsedQuantity = Number.parseInt(pendingAddOnQuantity, 10)
+    const parsedUnitPrice = Number.parseFloat(pendingAddOnUnitPrice)
+    if (!Number.isFinite(parsedQuantity) || parsedQuantity < 1 || !Number.isFinite(parsedUnitPrice)) {
+      return
+    }
+    setDraft((prev) => ({
+      ...prev,
+      pendingServiceAddOnLinks: [
+        ...prev.pendingServiceAddOnLinks,
+        {
+          addOnId: newAddOnId,
+          addOnName: selectedAddOnForModal?.name ?? undefined,
+          isFree: false,
+          quantity: String(parsedQuantity),
+          unitPrice: Number(parsedUnitPrice).toFixed(2),
+          chargeFrequency: pendingAddOnChargeFrequency,
+        },
+      ],
+    }))
+    setAddOnModalOpen(false)
+    setNewAddOnId('')
+  }
+
+  function handleSubmit() {
     const basePrice = Number.parseFloat(draft.basePrice)
     const capacity = Number.parseInt(draft.capacity, 10)
     const durationMinutes = Number.parseInt(draft.durationMinutes, 10)
+    const subscriptionPrice = parseOptionalFloat(draft.subscriptionPrice)
+    const ageMin = parseOptionalInt(draft.ageMin)
+    const ageMax = parseOptionalInt(draft.ageMax)
+    const minDurationMinutes = parseOptionalInt(draft.minDurationMinutes)
+    const maxDurationMinutes = parseOptionalInt(draft.maxDurationMinutes)
+    const slotIncrementMinutes = parseOptionalInt(draft.slotIncrementMinutes)
+    const maxConcurrent = parseOptionalInt(draft.maxConcurrent)
+    const minAdvanceHours = parseOptionalInt(draft.minAdvanceHours)
+    const maxAdvanceHours = parseOptionalInt(draft.maxAdvanceHours)
+    const freeAdultParsed = parseOptionalInt(draft.freeAdultCount)
+    const freeAdultCount = freeAdultParsed != null && freeAdultParsed >= 0 ? freeAdultParsed : 2
+    const minSeatsParsed = parseOptionalInt(draft.minSeats)
+    const minSeats = minSeatsParsed != null && minSeatsParsed >= 1 ? minSeatsParsed : 1
+    const minChildSeats = parseOptionalInt(draft.minChildSeats)
+    const maxChildSeats = parseOptionalInt(draft.maxChildSeats)
+    const minAdultSeats = parseOptionalInt(draft.minAdultSeats)
+    const maxAdultSeats = parseOptionalInt(draft.maxAdultSeats)
     if (
       !selectedCategory ||
       !draft.name.trim() ||
@@ -134,9 +349,65 @@ function AdminSchedulingServiceNewPageInner() {
       return
     }
 
-    const subscriptionPrice = parseOptionalFloat('')
+    if (isEditing && editingService) {
+      updateService(editingService.id, {
+        locationId: draft.locationId.trim() || null,
+        categoryId: selectedCategory.id,
+        category: { ...selectedCategory },
+        serviceType: draft.serviceType,
+        bookingMode: draft.bookingMode,
+        eventType: draft.eventType,
+        name: draft.name.trim(),
+        description: draft.description.trim() || '—',
+        durationMinutes,
+        capacity,
+        basePrice,
+        subscriptionPrice,
+        requiresWaiver: draft.requiresWaiver,
+        requiredDocumentIds: draft.requiresWaiver ? draft.requiredDocumentIds.slice() : [],
+        ageMin,
+        ageMax,
+        isActive: draft.isActive,
+        minDurationMinutes:
+          draft.bookingMode === 'OPEN' ? (minDurationMinutes ?? 60) : minDurationMinutes,
+        maxDurationMinutes:
+          draft.bookingMode === 'OPEN' ? (maxDurationMinutes ?? 240) : maxDurationMinutes,
+        slotIncrementMinutes:
+          draft.bookingMode === 'OPEN' ? (slotIncrementMinutes ?? 60) : slotIncrementMinutes,
+        maxConcurrent: draft.bookingMode === 'OPEN' ? (maxConcurrent ?? 3) : maxConcurrent,
+        minAdvanceHours: minAdvanceHours ?? 0,
+        maxAdvanceHours: maxAdvanceHours ?? 168,
+        pricingModel: draft.bookingMode === 'OPEN' ? 'per_hour' : 'flat',
+        siblingPrice: draft.siblingPrice.trim() || undefined,
+        freeAdultCount,
+        additionalAdultPrice: draft.additionalAdultPrice.trim() || undefined,
+        minSeats,
+        pricePerHour: draft.pricePerHour.trim() || undefined,
+        minChildSeats: minChildSeats ?? undefined,
+        maxChildSeats: maxChildSeats ?? undefined,
+        minAdultSeats: minAdultSeats ?? undefined,
+        maxAdultSeats: maxAdultSeats ?? undefined,
+        additionalChildPrice: draft.additionalChildPrice.trim() || undefined,
+        isPackageService: draft.isPackageService,
+        linkedAddOns: draft.pendingServiceAddOnLinks.map((row, index) => ({
+          id: editingService.linkedAddOns?.[index]?.id ?? newAdminEntityId('cao'),
+          categoryId: editingService.id,
+          addOnId: row.addOnId,
+          addOnName: row.addOnName,
+          isOptional: true,
+          isFree: row.isFree,
+          quantity: Number.parseInt(row.quantity, 10),
+          unitPrice: Number.parseFloat(row.unitPrice),
+          chargeFrequency: row.chargeFrequency,
+        })),
+      })
+      router.push(returnTo)
+      return
+    }
+
+    const createdServiceId = newAdminEntityId('svc')
     const created: SchedulingService = {
-      id: newAdminEntityId('svc'),
+      id: createdServiceId,
       locationId: draft.locationId.trim() || null,
       categoryId: selectedCategory.id,
       category: { ...selectedCategory },
@@ -149,51 +420,74 @@ function AdminSchedulingServiceNewPageInner() {
       capacity,
       basePrice,
       subscriptionPrice,
-      requiresWaiver: false,
-      requiredDocumentIds: [],
-      ageMin: null,
-      ageMax: null,
+      requiresWaiver: draft.requiresWaiver,
+      requiredDocumentIds: draft.requiresWaiver ? draft.requiredDocumentIds.slice() : [],
+      ageMin,
+      ageMax,
       isActive: draft.isActive,
-      minDurationMinutes: draft.bookingMode === 'OPEN' ? 60 : null,
-      maxDurationMinutes: draft.bookingMode === 'OPEN' ? 240 : null,
-      slotIncrementMinutes: draft.bookingMode === 'OPEN' ? 60 : null,
-      maxConcurrent: draft.bookingMode === 'OPEN' ? 3 : null,
-      minAdvanceHours: 0,
-      maxAdvanceHours: 168,
+      minDurationMinutes: draft.bookingMode === 'OPEN' ? (minDurationMinutes ?? 60) : minDurationMinutes,
+      maxDurationMinutes: draft.bookingMode === 'OPEN' ? (maxDurationMinutes ?? 240) : maxDurationMinutes,
+      slotIncrementMinutes:
+        draft.bookingMode === 'OPEN' ? (slotIncrementMinutes ?? 60) : slotIncrementMinutes,
+      maxConcurrent: draft.bookingMode === 'OPEN' ? (maxConcurrent ?? 3) : maxConcurrent,
+      minAdvanceHours: minAdvanceHours ?? 0,
+      maxAdvanceHours: maxAdvanceHours ?? 168,
       pricingModel: draft.bookingMode === 'OPEN' ? 'per_hour' : 'flat',
       imageUrl: '/images/hero-sports.jpg',
       tags: [],
       addOns: [],
-      siblingPrice: undefined,
-      freeAdultCount: 2,
-      additionalAdultPrice: undefined,
-      minSeats: 1,
-      pricePerHour: undefined,
-      minChildSeats: undefined,
-      maxChildSeats: undefined,
-      minAdultSeats: undefined,
-      maxAdultSeats: undefined,
-      additionalChildPrice: undefined,
-      isPackageService: false,
-      linkedAddOns: [],
+      siblingPrice: draft.siblingPrice.trim() || undefined,
+      freeAdultCount,
+      additionalAdultPrice: draft.additionalAdultPrice.trim() || undefined,
+      minSeats,
+      pricePerHour: draft.pricePerHour.trim() || undefined,
+      minChildSeats: minChildSeats ?? undefined,
+      maxChildSeats: maxChildSeats ?? undefined,
+      minAdultSeats: minAdultSeats ?? undefined,
+      maxAdultSeats: maxAdultSeats ?? undefined,
+      additionalChildPrice: draft.additionalChildPrice.trim() || undefined,
+      isPackageService: draft.isPackageService,
+      linkedAddOns: draft.pendingServiceAddOnLinks.map((row) => ({
+        id: newAdminEntityId('cao'),
+        categoryId: createdServiceId,
+        addOnId: row.addOnId,
+        addOnName: row.addOnName,
+        isOptional: true,
+        isFree: row.isFree,
+        quantity: Number.parseInt(row.quantity, 10),
+        unitPrice: Number.parseFloat(row.unitPrice),
+        chargeFrequency: row.chargeFrequency,
+      })),
     }
     addService(created)
-    router.push(returnTo)
+    const redirectParams = new URLSearchParams({
+      serviceId: createdServiceId,
+      returnTo,
+    })
+    router.push(`/admin/scheduling/new/recurring?${redirectParams.toString()}`)
   }
 
   return (
     <div className="max-w-5xl space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-foreground">New event</h1>
+        <h1 className="text-3xl font-bold text-foreground">
+          {isEditing ? 'Edit event' : 'New event'}
+        </h1>
         <p className="mt-2 text-muted-foreground">
-          Add a catalog event for the selected event category.
+          {isEditing
+            ? 'Update this catalog event using the same form fields.'
+            : 'Add a catalog event for the selected event category.'}
         </p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">{LABELS.createService}</CardTitle>
-          <CardDescription>Create and publish a new service entry.</CardDescription>
+          <CardTitle className="text-base">{isEditing ? 'Edit Event' : LABELS.createService}</CardTitle>
+          <CardDescription>
+            {isEditing
+              ? 'Edit and save this service entry.'
+              : 'Create and publish a new service entry.'}
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -325,6 +619,339 @@ function AdminSchedulingServiceNewPageInner() {
             </div>
           </div>
 
+          <Accordion type="single" collapsible className="rounded-lg border border-border px-3">
+            <AccordionItem value="pricing-seat-rules">
+              <AccordionTrigger className="text-sm font-semibold">
+                Pricing &amp; seat rules
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="grid grid-cols-1 gap-3 pb-2 sm:grid-cols-2">
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label>Sibling price (per additional family child)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={draft.siblingPrice}
+                      onChange={(event) =>
+                        setDraft((prev) => ({ ...prev, siblingPrice: event.target.value }))
+                      }
+                      placeholder="e.g. 10.00 — leave blank to charge base price for all children"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Free adults per family</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={draft.freeAdultCount}
+                      onChange={(event) =>
+                        setDraft((prev) => ({ ...prev, freeAdultCount: event.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Price per extra adult (beyond free count)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={draft.additionalAdultPrice}
+                      onChange={(event) =>
+                        setDraft((prev) => ({ ...prev, additionalAdultPrice: event.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Minimum participants</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={draft.minSeats}
+                      onChange={(event) =>
+                        setDraft((prev) => ({ ...prev, minSeats: event.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label>Hourly rate (duration-based billing)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={draft.pricePerHour}
+                      onChange={(event) =>
+                        setDraft((prev) => ({ ...prev, pricePerHour: event.target.value }))
+                      }
+                      placeholder="e.g. 75.00 — overrides per-participant pricing"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Min children</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={draft.minChildSeats}
+                      onChange={(event) =>
+                        setDraft((prev) => ({ ...prev, minChildSeats: event.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Max children</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={draft.maxChildSeats}
+                      onChange={(event) =>
+                        setDraft((prev) => ({ ...prev, maxChildSeats: event.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Min adults</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={draft.minAdultSeats}
+                      onChange={(event) =>
+                        setDraft((prev) => ({ ...prev, minAdultSeats: event.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Max adults</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={draft.maxAdultSeats}
+                      onChange={(event) =>
+                        setDraft((prev) => ({ ...prev, maxAdultSeats: event.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label>Price per extra child (beyond max child seats)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={draft.additionalChildPrice}
+                      onChange={(event) =>
+                        setDraft((prev) => ({ ...prev, additionalChildPrice: event.target.value }))
+                      }
+                    />
+                  </div>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+
+          <div className="flex items-start justify-between gap-4 rounded-lg border border-border bg-card px-3 py-2">
+            <div className="space-y-1">
+              <Label>Package-only service</Label>
+              <p className="text-xs text-muted-foreground">
+                When enabled, customers must select an event package to book.
+              </p>
+            </div>
+            <Switch
+              checked={draft.isPackageService}
+              onCheckedChange={(value) => setDraft((prev) => ({ ...prev, isPackageService: value }))}
+            />
+          </div>
+          {draft.isPackageService ? (
+            <Alert className="border-amber-500/50 bg-amber-500/10">
+              <AlertTitle className="text-amber-950 dark:text-amber-100">Package-only</AlertTitle>
+              <AlertDescription className="text-amber-900/90 dark:text-amber-50/90">
+                After creating this {LABELS.service.toLowerCase()}, open it to link or create packages.
+              </AlertDescription>
+            </Alert>
+          ) : null}
+
+          <Accordion type="single" collapsible className="rounded-lg border border-border px-3">
+            <AccordionItem value="linked-addons">
+              <AccordionTrigger className="text-sm font-semibold">
+                Linked add-ons (optional)
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-3 pb-2">
+                  {draft.pendingServiceAddOnLinks.map((row) => {
+                    const addOn = addOnCatalog.find((entry) => entry.id === row.addOnId)
+                    return (
+                      <div
+                        key={row.addOnId}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2"
+                      >
+                        <span className="text-sm font-semibold text-foreground">
+                          {addOn?.name ?? row.addOnName ?? row.addOnId}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2">
+                            <Label className="text-xs">Free</Label>
+                            <Switch
+                              checked={row.isFree}
+                              onCheckedChange={(value) =>
+                                setDraft((prev) => ({
+                                  ...prev,
+                                  pendingServiceAddOnLinks: prev.pendingServiceAddOnLinks.map((entry) =>
+                                    entry.addOnId === row.addOnId ? { ...entry, isFree: value } : entry,
+                                  ),
+                                }))
+                              }
+                            />
+                          </div>
+                          {!row.isFree && addOn ? (
+                            <Badge variant="secondary">{formatPrice(addOn.price)}</Badge>
+                          ) : null}
+                          <Badge variant="outline">{`Qty ${row.quantity}`}</Badge>
+                          <Badge variant="outline">{`£${row.unitPrice}`}</Badge>
+                          <Badge variant="outline">
+                            {
+                              CATEGORY_ADD_ON_CHARGE_FREQUENCIES.find(
+                                (option) => option.value === row.chargeFrequency,
+                              )?.label
+                            }
+                          </Badge>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="text-destructive"
+                            onClick={() =>
+                              setDraft((prev) => ({
+                                ...prev,
+                                pendingServiceAddOnLinks: prev.pendingServiceAddOnLinks.filter(
+                                  (entry) => entry.addOnId !== row.addOnId,
+                                ),
+                              }))
+                            }
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      </div>
+                    )
+                  })}
+
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Select value={newAddOnId} onValueChange={setNewAddOnId}>
+                      <SelectTrigger className="flex-1">
+                        <SelectValue placeholder="Link add-on" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {addOnCatalog
+                          .filter(
+                            (addOn) =>
+                              !draft.pendingServiceAddOnLinks.some(
+                                (entry) => entry.addOnId === addOn.id,
+                              ),
+                          )
+                          .map((addOn) => (
+                            <SelectItem key={addOn.id} value={addOn.id}>
+                              {addOn.name}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={openAddOnModal}
+                      disabled={!newAddOnId}
+                    >
+                      Add
+                    </Button>
+                  </div>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Subscription price (optional)</Label>
+              <Input
+                type="number"
+                value={draft.subscriptionPrice}
+                onChange={(event) =>
+                  setDraft((prev) => ({ ...prev, subscriptionPrice: event.target.value }))
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Requires waiver</Label>
+              <div className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2">
+                <span className="text-sm text-muted-foreground">Require waiver at checkout</span>
+                <Switch
+                  checked={draft.requiresWaiver}
+                  onCheckedChange={(value) =>
+                    setDraft((prev) => ({
+                      ...prev,
+                      requiresWaiver: value,
+                      requiredDocumentIds: value ? prev.requiredDocumentIds : [],
+                    }))
+                  }
+                />
+              </div>
+            </div>
+          </div>
+
+          {draft.requiresWaiver ? (
+            <div className="space-y-2">
+              <Label>Required waivers</Label>
+              {waiverDocs.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  No waiver documents exist yet. Create them in Admin → Waivers.
+                </p>
+              ) : (
+                <div className="space-y-2 rounded-lg border border-border bg-card p-3">
+                  {waiverDocs.map((document) => {
+                    const checked = draft.requiredDocumentIds.includes(document.id)
+                    return (
+                      <label key={document.id} className="flex items-start gap-2">
+                        <input
+                          type="checkbox"
+                          className="mt-1"
+                          checked={checked}
+                          onChange={(event) => {
+                            const nextChecked = event.target.checked
+                            setDraft((prev) => ({
+                              ...prev,
+                              requiredDocumentIds: nextChecked
+                                ? Array.from(new Set([...prev.requiredDocumentIds, document.id]))
+                                : prev.requiredDocumentIds.filter((id) => id !== document.id),
+                            }))
+                          }}
+                        />
+                        <span className="min-w-0">
+                          <span className="text-sm font-semibold text-foreground">{document.title}</span>
+                          <span className="block text-xs text-muted-foreground">v{document.version}</span>
+                        </span>
+                      </label>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Min age (optional)</Label>
+              <Input
+                type="number"
+                min={0}
+                value={draft.ageMin}
+                onChange={(event) => setDraft((prev) => ({ ...prev, ageMin: event.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Max age (optional)</Label>
+              <Input
+                type="number"
+                min={0}
+                value={draft.ageMax}
+                onChange={(event) => setDraft((prev) => ({ ...prev, ageMax: event.target.value }))}
+              />
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>Duration (minutes)</Label>
@@ -336,25 +963,167 @@ function AdminSchedulingServiceNewPageInner() {
                 }
               />
             </div>
-            <div className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2">
-              <span className="text-sm font-semibold text-foreground">Active</span>
-              <Switch
-                checked={draft.isActive}
-                onCheckedChange={(value) => setDraft((prev) => ({ ...prev, isActive: value }))}
-              />
-            </div>
+          </div>
+
+          <Accordion type="single" collapsible defaultValue="booking-rules">
+            <AccordionItem value="booking-rules">
+              <AccordionTrigger>Booking rules</AccordionTrigger>
+              <AccordionContent>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 pb-2">
+                  <div className="space-y-2">
+                    <Label>Min duration (mins)</Label>
+                    <Input
+                      type="number"
+                      value={draft.minDurationMinutes}
+                      onChange={(event) =>
+                        setDraft((prev) => ({ ...prev, minDurationMinutes: event.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Max duration (mins)</Label>
+                    <Input
+                      type="number"
+                      value={draft.maxDurationMinutes}
+                      onChange={(event) =>
+                        setDraft((prev) => ({ ...prev, maxDurationMinutes: event.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Slot increment (mins)</Label>
+                    <Input
+                      type="number"
+                      value={draft.slotIncrementMinutes}
+                      onChange={(event) =>
+                        setDraft((prev) => ({ ...prev, slotIncrementMinutes: event.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Max concurrent</Label>
+                    <Input
+                      type="number"
+                      value={draft.maxConcurrent}
+                      onChange={(event) =>
+                        setDraft((prev) => ({ ...prev, maxConcurrent: event.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Min advance (hours)</Label>
+                    <Input
+                      type="number"
+                      value={draft.minAdvanceHours}
+                      onChange={(event) =>
+                        setDraft((prev) => ({ ...prev, minAdvanceHours: event.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Max advance (hours)</Label>
+                    <Input
+                      type="number"
+                      value={draft.maxAdvanceHours}
+                      onChange={(event) =>
+                        setDraft((prev) => ({ ...prev, maxAdvanceHours: event.target.value }))
+                      }
+                    />
+                  </div>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+
+          <div className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2">
+            <span className="text-sm font-semibold text-foreground">Active</span>
+            <Switch
+              checked={draft.isActive}
+              onCheckedChange={(value) => setDraft((prev) => ({ ...prev, isActive: value }))}
+            />
           </div>
 
           <div className="flex items-center justify-end gap-2">
             <Button asChild type="button" variant="outline">
               <Link href={returnTo}>Cancel</Link>
             </Button>
-            <Button type="button" className="bg-accent text-accent-foreground" onClick={handleCreate}>
-              Create event
+            <Button type="button" className="bg-accent text-accent-foreground" onClick={handleSubmit}>
+              {isEditing ? 'Save changes' : 'Create event'}
             </Button>
           </div>
         </CardContent>
       </Card>
+
+      <CrudModal
+        open={addOnModalOpen}
+        onOpenChange={setAddOnModalOpen}
+        title="Link add-on"
+        description={
+          selectedAddOnForModal
+            ? `Configure how "${selectedAddOnForModal.name}" is priced for this event.`
+            : 'Configure how this add-on is priced for this event.'
+        }
+        size="sm"
+        variant="create"
+        footer={
+          <>
+            <Button type="button" variant="outline" onClick={() => setAddOnModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={confirmAddOnLink}>
+              Add
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Add-on</Label>
+            <div className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-sm font-medium">
+              {selectedAddOnForModal?.name ?? 'Select an add-on first'}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="link-addon-quantity">Quantity</Label>
+            <Input
+              id="link-addon-quantity"
+              type="number"
+              min={1}
+              value={pendingAddOnQuantity}
+              onChange={(event) => setPendingAddOnQuantity(event.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="link-addon-price">Price</Label>
+            <Input
+              id="link-addon-price"
+              type="number"
+              min={0}
+              step="0.01"
+              value={pendingAddOnUnitPrice}
+              onChange={(event) => setPendingAddOnUnitPrice(event.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Charge frequency</Label>
+            <Select
+              value={pendingAddOnChargeFrequency}
+              onValueChange={(value) => setPendingAddOnChargeFrequency(value as CategoryAddOnChargeFrequency)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {CATEGORY_ADD_ON_CHARGE_FREQUENCIES.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </CrudModal>
     </div>
   )
 }

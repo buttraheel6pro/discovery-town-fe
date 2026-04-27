@@ -305,8 +305,12 @@ export interface AddOn {
   description?: string
   pricingType: 'FLAT' | 'PER_PERSON'
   price: number
+  memberPrice?: number | null
+  referenceType?: 'ALL' | 'PRODUCT'
+  inventoryProductId?: string | null
   applicableServiceTypes: ServiceType[]
   isActive: boolean
+  deletedAt?: string | null
 }
 
 export interface BookingAddOn {
@@ -1549,13 +1553,36 @@ export interface SchedulingServiceAddOn {
 }
 
 /** Optional link from a category or service to a catalog add-on (admin-configured). */
+export type CategoryAddOnChargeFrequency =
+  | 'ONE_TIME'
+  | 'PER_DAY'
+  | 'PER_WEEK'
+  | 'PER_MONTH'
+  | 'PER_SEASON'
+
+export const CATEGORY_ADD_ON_CHARGE_FREQUENCIES = [
+  { value: 'ONE_TIME', label: 'One time' },
+  { value: 'PER_DAY', label: 'Per day' },
+  { value: 'PER_WEEK', label: 'Per week' },
+  { value: 'PER_MONTH', label: 'Per month' },
+  { value: 'PER_SEASON', label: 'Per season' },
+] as const satisfies ReadonlyArray<{
+  value: CategoryAddOnChargeFrequency
+  label: string
+}>
+
+/** Optional link from a category or service to a catalog add-on (admin-configured). */
 export interface CategoryAddOn {
   id: string
   /** Owner id: scheduling category id or service id. */
   categoryId: string
   addOnId: string
+  addOnName?: string
   isOptional: boolean
   isFree: boolean
+  quantity?: number
+  unitPrice?: number
+  chargeFrequency?: CategoryAddOnChargeFrequency
 }
 
 export interface SchedulingService {

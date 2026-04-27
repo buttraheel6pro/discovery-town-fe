@@ -39,6 +39,7 @@ import {
   type SchedulingAddOnParent,
 } from '@/lib/redux/slices/scheduling-slice'
 import type {
+  CategoryAddOnChargeFrequency,
   EventPackage,
   SchedulingBooking,
   SchedulingCategory,
@@ -74,7 +75,13 @@ interface SchedulingStore {
     parent: SchedulingAddOnParent,
     parentId: string,
     addOnId: string,
+    addOnName: string | undefined,
     isFree: boolean,
+    config?: {
+      quantity?: number
+      unitPrice?: number
+      chargeFrequency?: CategoryAddOnChargeFrequency
+    },
   ) => void
   unlinkSchedulingAddOn: (
     parent: SchedulingAddOnParent,
@@ -196,14 +203,24 @@ export function SchedulingProvider({
       parent: SchedulingAddOnParent,
       parentId: string,
       addOnId: string,
+      addOnName: string | undefined,
       isFree: boolean,
+      config?: {
+        quantity?: number
+        unitPrice?: number
+        chargeFrequency?: CategoryAddOnChargeFrequency
+      },
     ) {
       dispatch(
         linkSchedulingAddOnAction({
           parent,
           parentId,
           addOnId,
+          addOnName,
           isFree,
+          quantity: config?.quantity,
+          unitPrice: config?.unitPrice,
+          chargeFrequency: config?.chargeFrequency,
           linkId: newAdminEntityId('cao'),
         }),
       )

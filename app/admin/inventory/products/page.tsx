@@ -76,6 +76,7 @@ export default function AdminInventoryProductsPage() {
     addProduct,
     updateProduct,
     promoteProductToAddOn,
+    delinkBookingAddOnFromProduct,
     addProductCategory,
     updateProductCategory,
     deleteProductCategory,
@@ -290,15 +291,21 @@ export default function AdminInventoryProductsPage() {
     }
     return categoryById.get(categoryId)?.name ?? 'Catalog'
   }, [categoryId, categoryById])
+
+  const topLevelCategoryCount = useMemo(() => {
+    return categories.filter((category) => category.parentId == null || category.parentId === '').length
+  }, [categories])
+
   const catalogCountLabel = useMemo(() => {
     if (categoryId) {
       return `${filtered.length} products`
     }
-    const topLevelCategoryCount = categories.filter(
-      (category) => category.parentId == null || category.parentId === '',
-    ).length
     return `${topLevelCategoryCount}/${countableProducts.length} products`
-  }, [categoryId, filtered.length, categories, countableProducts.length])
+  }, [categoryId, filtered.length, topLevelCategoryCount, countableProducts.length])
+
+  const allCountLabel = useMemo(() => {
+    return `${topLevelCategoryCount}/${countableProducts.length}`
+  }, [topLevelCategoryCount, countableProducts.length])
 
   function promoteFromRow(product: Product) {
     if (product.linkedAddOnId) return
@@ -308,6 +315,12 @@ export default function AdminInventoryProductsPage() {
       return
     }
     toast({ title: 'Linked as add-on', description: `${product.name} is now available as add-on.` })
+  }
+
+  function delinkFromRow(product: Product) {
+    if (!product.linkedAddOnId) return
+    delinkBookingAddOnFromProduct(product.linkedAddOnId)
+    toast({ title: 'Add-on de-linked', description: `${product.name} is no longer linked as add-on.` })
   }
 
   function openSubCategoryCreate(parentId: string) {
@@ -428,7 +441,15 @@ export default function AdminInventoryProductsPage() {
               }`}
             >
               All
-              <span className="float-right text-xs text-muted-foreground">{countableProducts.length}</span>
+              <span
+                className={`float-right text-xs ${
+                  categoryId === null
+                    ? 'text-sidebar-accent-foreground/95'
+                    : 'text-muted-foreground'
+                }`}
+              >
+                {allCountLabel}
+              </span>
             </button>
             <Accordion type="multiple" className="w-full space-y-2">
               {productTypeTree.map((group) => {
@@ -555,7 +576,14 @@ export default function AdminInventoryProductsPage() {
                                       >
                                         <span className="block truncate">{sub.name}</span>
                                       </button>
-                                      <Badge variant="outline" className="h-5 shrink-0 text-[10px]">
+                                      <Badge
+                                        variant="outline"
+                                        className={`h-5 shrink-0 text-[10px] ${
+                                          active
+                                            ? 'border-sidebar-accent-foreground/30 bg-sidebar-accent/40 text-sidebar-accent-foreground'
+                                            : ''
+                                        }`}
+                                      >
                                         {subCount}
                                       </Badge>
                                       <DropdownMenu>
@@ -690,6 +718,11 @@ export default function AdminInventoryProductsPage() {
                         <Button variant="outline" size="sm" onClick={() => openEdit(p)}>
                           Edit
                         </Button>
+                        {p.linkedAddOnId ? (
+                          <Button variant="outline" size="sm" onClick={() => delinkFromRow(p)}>
+                            De-link
+                          </Button>
+                        ) : null}
                         <Button
                           variant="outline"
                           size="sm"

@@ -4,7 +4,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
 
 import {
-  addOns as seedAddOns,
   coupons as baseCoupons,
   orders as baseOrders,
   shopCoupons,
@@ -14,13 +13,17 @@ import {
 } from '@/lib/mock-data'
 import { useAppDispatch, useAppSelector } from '@/lib/redux/hooks'
 import {
+  addBookingAddOn as addBookingAddOnAction,
   addProduct as addProductAction,
   addProductCategory as addProductCategoryAction,
+  deleteBookingAddOn as deleteBookingAddOnAction,
   deleteProduct as deleteProductAction,
   deleteProductCategory as deleteProductCategoryAction,
   reorderProductCategory as reorderProductCategoryAction,
+  selectInventoryBookingAddOns,
   selectInventoryProductCategories,
   selectInventoryProducts,
+  updateBookingAddOn as updateBookingAddOnAction,
   updateProduct as updateProductAction,
   updateProductCategory as updateProductCategoryAction,
 } from '@/lib/redux/slices/inventory-slice'
@@ -127,6 +130,19 @@ interface InventoryStore {
   addProduct: (p: Product) => void
   updateProduct: (id: string, updates: Partial<Product>) => void
   deleteProduct: (id: string) => void
+  createBookingAddOn: (input: {
+    name: string
+    description?: string
+    pricingType: AddOn['pricingType']
+    price: number
+    memberPrice?: number | null
+    isActive: boolean
+    referenceType?: AddOn['referenceType']
+    inventoryProductId?: string | null
+  }) => AddOn
+  updateBookingAddOn: (id: string, updates: Partial<AddOn>) => void
+  deleteBookingAddOn: (id: string) => void
+  delinkBookingAddOnFromProduct: (id: string) => void
 
   addProductCategory: (input: {
     name: string
@@ -206,9 +222,7 @@ export function InventoryProvider({
   const dispatch = useAppDispatch()
   const products = useAppSelector(selectInventoryProducts)
   const productCategories = useAppSelector(selectInventoryProductCategories)
-  const [bookingAddOns, setBookingAddOns] = useState<AddOn[]>(() =>
-    seedAddOns.map((a) => ({ ...a, applicableServiceTypes: [...a.applicableServiceTypes] })),
-  )
+  const bookingAddOns = useAppSelector(selectInventoryBookingAddOns)
   const [stockMovements, setStockMovements] = useState<StockMovement[]>(() =>
     shopStockMovements.map((m) => ({ ...m })),
   )
@@ -257,7 +271,96 @@ export function InventoryProvider({
     }
 
     function deleteProduct(id: string) {
+      const linkedAddOnId = products.find((product) => product.id === id)?.linkedAddOnId ?? null
       dispatch(deleteProductAction(id))
+      if (linkedAddOnId) {
+        dispatch(
+          updateBookingAddOnAction({
+            id: linkedAddOnId,
+            updates: {
+              inventoryProductId: null,
+              referenceType: 'ALL',
+            },
+          }),
+        )
+      }
+    }
+
+    function createBookingAddOn(input: {
+      name: string
+      description?: string
+      pricingType: AddOn['pricingType']
+      price: number
+      memberPrice?: number | null
+      isActive: boolean
+      referenceType?: AddOn['referenceType']
+      inventoryProductId?: string | null
+    }): AddOn {
+      const created: AddOn = {
+        id: `addon-admin-${Date.now()}`,
+        tenantId: 'tenant-1',
+        name: input.name.trim(),
+        description: input.description?.trim() || undefined,
+        pricingType: input.pricingType,
+        price: input.price,
+        memberPrice: input.memberPrice ?? null,
+        referenceType: input.referenceType ?? 'ALL',
+        inventoryProductId: input.inventoryProductId ?? null,
+        applicableServiceTypes: [
+          'CLASS',
+          'PLAY_AREA',
+          'PARTY',
+          'COURT',
+          'SWIMMING',
+          'WORKSHOP',
+          'CAMP',
+          'COACHING',
+        ],
+        isActive: input.isActive,
+        deletedAt: null,
+      }
+      dispatch(addBookingAddOnAction(created))
+      return created
+    }
+
+    function updateBookingAddOn(id: string, updates: Partial<AddOn>) {
+      dispatch(updateBookingAddOnAction({ id, updates }))
+    }
+
+    function delinkBookingAddOnFromProduct(id: string) {
+      const linkedProductIds = products
+        .filter((product) => product.linkedAddOnId === id)
+        .map((product) => product.id)
+      for (const productId of linkedProductIds) {
+        dispatch(
+          updateProductAction({
+            id: productId,
+            updates: {
+              linkedAddOnId: null,
+              canBeAddOn: false,
+            },
+          }),
+        )
+      }
+      dispatch(deleteBookingAddOnAction(id))
+    }
+
+    function deleteBookingAddOn(id: string) {
+      const linkedProductIds = products
+        .filter((product) => product.linkedAddOnId === id)
+        .map((product) => product.id)
+      for (const productId of linkedProductIds) {
+        dispatch(
+          updateProductAction({
+            id: productId,
+            updates: {
+              linkedAddOnId: null,
+              canBeAddOn: false,
+            },
+          }),
+        )
+      }
+      dispatch(deleteBookingAddOnAction(id))
     }
 
     function addProductCategory(input: {
@@ -339,6 +442,9 @@ export function InventoryProvider({
         description: desc,
         pricingType: 'FLAT',
         price,
+        memberPrice: product.memberPrice ?? null,
+        referenceType: 'PRODUCT',
+        inventoryProductId: product.id,
         applicableServiceTypes: [
           'CLASS',
           'PLAY_AREA',
@@ -351,10 +457,7 @@ export function InventoryProvider({
         ],
         isActive: product.isActive,
       }
-      setBookingAddOns((prev) => {
-        const without = prev.filter((a) => a.id !== addOnId)
-        return [...without, row]
-      })
+      dispatch(addBookingAddOnAction(row))
       dispatch(
         updateProductAction({
           id: productId,
@@ -677,6 +780,10 @@ export function InventoryProvider({
       addProduct,
       updateProduct,
       deleteProduct,
+      createBookingAddOn,
+      updateBookingAddOn,
+      deleteBookingAddOn,
+      delinkBookingAddOnFromProduct,
       addProductCategory,
       updateProductCategory,
       deleteProductCategory,

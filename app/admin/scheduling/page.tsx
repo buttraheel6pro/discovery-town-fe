@@ -10,7 +10,6 @@ import { CapacityRing } from '@/components/admin/capacity-ring'
 import { PublishStatusBadge } from '@/components/admin/publish-status-badge'
 import { SlotStatusBadge } from '@/components/admin/slot-status-badge'
 import { ServiceTypeBadge } from '@/components/customer/service-type-badge'
-import { ChevronDown } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -100,26 +99,11 @@ export default function AdminSchedulingPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button className="bg-accent text-accent-foreground hover:bg-accent/90">
-                {LABELS.createSlot}
-                <ChevronDown className="ml-2 h-4 w-4" aria-hidden />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem asChild>
-                <Link href="/admin/scheduling/new">Single session</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link
-                  href={`/admin/scheduling/new/recurring?returnTo=${encodeURIComponent('/admin/scheduling')}`}
-                >
-                  Recurring series
-                </Link>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Button asChild className="bg-accent text-accent-foreground hover:bg-accent/90">
+            <Link href={`/admin/scheduling/new/recurring?returnTo=${encodeURIComponent('/admin/scheduling')}`}>
+              Recurring series
+            </Link>
+          </Button>
         </div>
       </div>
 

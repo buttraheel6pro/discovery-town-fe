@@ -4,6 +4,7 @@
 
 import Link from 'next/link'
 import Image from 'next/image'
+import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 
 import { Baby, ChevronsUpDown, CreditCard, GripVertical, Lock, MoreHorizontal, Plus } from 'lucide-react'
@@ -85,7 +86,11 @@ import type {
   SchedulingServiceAddOn,
   SchedulingServiceType,
 } from '@/lib/types'
-import { SchedulingServiceTypeEnum } from '@/lib/types'
+import {
+  CATEGORY_ADD_ON_CHARGE_FREQUENCIES,
+  SchedulingServiceTypeEnum,
+  type CategoryAddOnChargeFrequency,
+} from '@/lib/types'
 
 type EditDraft = {
   locationId: string
@@ -125,7 +130,14 @@ type CreateDraft = EditDraft & {
   serviceType: SchedulingServiceType
   bookingMode: SchedulingBookingMode
   eventType: EventVisibility
-  pendingServiceAddOnLinks: { addOnId: string; isFree: boolean }[]
+  pendingServiceAddOnLinks: {
+    addOnId: string
+    addOnName?: string
+    isFree: boolean
+    quantity: string
+    unitPrice: string
+    chargeFrequency: CategoryAddOnChargeFrequency
+  }[]
 }
 
 type CategoryDraft = {
@@ -143,7 +155,14 @@ type CategoryDraft = {
   waitlistEnabled: boolean
   allowFamilyMember: boolean
   requireCheckInBeforeRebook: boolean
-  pendingAddOnLinks: { addOnId: string; isFree: boolean }[]
+  pendingAddOnLinks: {
+    addOnId: string
+    addOnName?: string
+    isFree: boolean
+    quantity: string
+    unitPrice: string
+    chargeFrequency: CategoryAddOnChargeFrequency
+  }[]
 }
 
 const allServiceTypes = Object.values(SchedulingServiceTypeEnum)
@@ -224,6 +243,7 @@ const CONSUMER_ALIGNED_CATEGORY_IDS = new Set<string>([
 ])
 
 export default function AdminSchedulingServicesPage() {
+  const router = useRouter()
   const { documents } = useClients()
   const { bookingAddOns } = useInventory()
   const {
@@ -290,6 +310,17 @@ export default function AdminSchedulingServicesPage() {
   const [categoryAddOnOpen, setCategoryAddOnOpen] = useState(false)
   const [createAddOnOpen, setCreateAddOnOpen] = useState(false)
   const [editAddOnOpen, setEditAddOnOpen] = useState(false)
+  const [linkAddOnModalOpen, setLinkAddOnModalOpen] = useState(false)
+  const [linkAddOnTarget, setLinkAddOnTarget] = useState<'category' | 'create' | 'edit' | null>(null)
+  const [categoryPendingAddOnId, setCategoryPendingAddOnId] = useState('')
+  const [createPendingAddOnId, setCreatePendingAddOnId] = useState('')
+  const [editPendingAddOnId, setEditPendingAddOnId] = useState('')
+  const [linkAddOnId, setLinkAddOnId] = useState('')
+  const [linkAddOnName, setLinkAddOnName] = useState('')
+  const [linkAddOnUnitPrice, setLinkAddOnUnitPrice] = useState('')
+  const [linkAddOnQuantity, setLinkAddOnQuantity] = useState('1')
+  const [linkAddOnChargeFrequency, setLinkAddOnChargeFrequency] =
+    useState<CategoryAddOnChargeFrequency>('ONE_TIME')
   const [editDraft, setEditDraft] = useState<EditDraft>({
     locationId: locations[0]?.id ?? 'loc-1',
     name: '',
@@ -486,6 +517,102 @@ export default function AdminSchedulingServicesPage() {
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name))
   }, [bookingAddOns, alignedServices])
 
+  const selectedLinkAddOn = useMemo(() => {
+    if (!linkAddOnId) return null
+    return addOnCatalog.find((entry) => entry.id === linkAddOnId) ?? null
+  }, [addOnCatalog, linkAddOnId])
+
+  function beginLinkAddOnFlow(
+    target: 'category' | 'create' | 'edit',
+    addOn: SchedulingServiceAddOn,
+  ): void {
+    if (target === 'category') {
+      setCategoryAddOnOpen(false)
+    } else if (target === 'create') {
+      setCreateAddOnOpen(false)
+    } else {
+      setEditAddOnOpen(false)
+    }
+    setLinkAddOnTarget(target)
+    setLinkAddOnId(addOn.id)
+    setLinkAddOnName(addOn.name)
+    setLinkAddOnQuantity('1')
+    setLinkAddOnUnitPrice(String(Number(addOn.price.toFixed(2))))
+    setLinkAddOnChargeFrequency('ONE_TIME')
+    setLinkAddOnModalOpen(true)
+  }
+
+  function openLinkModalForTarget(target: 'category' | 'create' | 'edit'): void {
+    const addOnId =
+      target === 'category'
+        ? categoryPendingAddOnId
+        : target === 'create'
+          ? createPendingAddOnId
+          : editPendingAddOnId
+    if (!addOnId) return
+    const addOn = addOnCatalog.find((entry) => entry.id === addOnId)
+    if (!addOn) return
+    beginLinkAddOnFlow(target, addOn)
+  }
+
+  function confirmLinkAddOnFlow(): void {
+    if (!linkAddOnTarget || !linkAddOnId) return
+    const quantity = Number.parseInt(linkAddOnQuantity, 10)
+    const unitPrice = Number.parseFloat(linkAddOnUnitPrice)
+    if (!Number.isFinite(quantity) || quantity < 1 || !Number.isFinite(unitPrice)) {
+      return
+    }
+
+    if (linkAddOnTarget === 'category') {
+      setCategoryDraft((draft) => ({
+        ...draft,
+        pendingAddOnLinks: [
+          ...draft.pendingAddOnLinks,
+          {
+            addOnId: linkAddOnId,
+            addOnName: linkAddOnName || selectedLinkAddOn?.name,
+            isFree: false,
+            quantity: String(quantity),
+            unitPrice: Number(unitPrice).toFixed(2),
+            chargeFrequency: linkAddOnChargeFrequency,
+          },
+        ],
+      }))
+      setCategoryAddOnOpen(false)
+      setCategoryPendingAddOnId('')
+    } else if (linkAddOnTarget === 'create') {
+      setCreateDraft((draft) => ({
+        ...draft,
+        pendingServiceAddOnLinks: [
+          ...draft.pendingServiceAddOnLinks,
+          {
+            addOnId: linkAddOnId,
+            addOnName: linkAddOnName || selectedLinkAddOn?.name,
+            isFree: false,
+            quantity: String(quantity),
+            unitPrice: Number(unitPrice).toFixed(2),
+            chargeFrequency: linkAddOnChargeFrequency,
+          },
+        ],
+      }))
+      setCreateAddOnOpen(false)
+      setCreatePendingAddOnId('')
+    } else if (linkAddOnTarget === 'edit' && selected) {
+      linkSchedulingAddOn('service', selected.id, linkAddOnId, linkAddOnName, false, {
+        quantity,
+        unitPrice,
+        chargeFrequency: linkAddOnChargeFrequency,
+      })
+      setEditAddOnOpen(false)
+      setEditPendingAddOnId('')
+    }
+
+    setLinkAddOnModalOpen(false)
+    setLinkAddOnTarget(null)
+    setLinkAddOnId('')
+    setLinkAddOnName('')
+  }
+
   const waiverDocs = useMemo(() => {
     return documents.filter((d) => d.documentType === 'WAIVER')
   }, [documents])
@@ -524,15 +651,23 @@ export default function AdminSchedulingServicesPage() {
       'Catalog'
     )
   }, [serviceCategoryFilterId, sortedCategories])
+
+  const topLevelCount = useMemo(() => {
+    return SCHEDULING_TOP_LEVEL_ORDER.filter(
+      (topLevelId) => categoriesByTopLevel[topLevelId].length > 0,
+    ).length
+  }, [categoriesByTopLevel])
+
   const catalogCountLabel = useMemo(() => {
     if (serviceCategoryFilterId !== 'ALL') {
       return `${filtered.length} services`
     }
-    const topLevelCount = SCHEDULING_TOP_LEVEL_ORDER.filter(
-      (topLevelId) => categoriesByTopLevel[topLevelId].length > 0,
-    ).length
     return `${topLevelCount}/${alignedServices.length} services`
-  }, [serviceCategoryFilterId, filtered.length, categoriesByTopLevel, alignedServices.length])
+  }, [serviceCategoryFilterId, filtered.length, topLevelCount, alignedServices.length])
+
+  const allCountLabel = useMemo(() => {
+    return `${topLevelCount}/${alignedServices.length}`
+  }, [topLevelCount, alignedServices.length])
 
   const selectedLive = useMemo(() => {
     if (!selected) return null
@@ -736,15 +871,26 @@ export default function AdminSchedulingServicesPage() {
     maxAdultSeats?: number
     additionalChildPrice?: string
     isPackageService: boolean
-    pendingServiceAddOnLinks: { addOnId: string; isFree: boolean }[]
+    pendingServiceAddOnLinks: {
+      addOnId: string
+      addOnName?: string
+      isFree: boolean
+      quantity: string
+      unitPrice: string
+      chargeFrequency: CategoryAddOnChargeFrequency
+    }[]
   }): SchedulingService {
     const pricingModel = input.bookingMode === 'OPEN' ? 'per_hour' : 'flat'
     const linkedAddOns = input.pendingServiceAddOnLinks.map((l) => ({
       id: newAdminEntityId('cao'),
       categoryId: input.id,
       addOnId: l.addOnId,
+      addOnName: l.addOnName,
       isOptional: true,
       isFree: l.isFree,
+      quantity: Number.parseInt(l.quantity, 10),
+      unitPrice: Number.parseFloat(l.unitPrice),
+      chargeFrequency: l.chargeFrequency,
     }))
     return {
       id: input.id,
@@ -918,33 +1064,19 @@ export default function AdminSchedulingServicesPage() {
       isPackageService: false,
       pendingServiceAddOnLinks: [],
     })
+    const redirectParams = new URLSearchParams({
+      serviceId: id,
+      returnTo: '/admin/scheduling/services',
+    })
+    router.push(`/admin/scheduling/new/recurring?${redirectParams.toString()}`)
   }
 
   function openNewCategory(topLevelId: SchedulingTopLevelId) {
-    const siblings = categoriesByTopLevel[topLevelId]
-    const nextOrder =
-      (siblings[siblings.length - 1]?.displayOrder ??
-        sortedCategories[sortedCategories.length - 1]?.displayOrder ??
-        0) + 1
-    setEditingCategoryId(null)
-    setCategoryDraft({
-      parentTopLevelId: topLevelId,
-      name: '',
-      icon: '',
-      displayOrder: String(nextOrder),
-      isActive: true,
-      description: '',
-      requiresAttendee: false,
-      membersOnly: false,
-      freeInfantMonths: '',
-      depositPercent: '',
-      specialInstructionsEnabled: false,
-      waitlistEnabled: true,
-      allowFamilyMember: false,
-      requireCheckInBeforeRebook: false,
-      pendingAddOnLinks: [],
+    const query = new URLSearchParams({
+      topLevelId,
+      returnTo: '/admin/scheduling/services',
     })
-    setCategoryOpen(true)
+    router.push(`/admin/scheduling/services/categories/new?${query.toString()}`)
   }
 
   function openEditCategory(category: SchedulingCategory) {
@@ -967,7 +1099,11 @@ export default function AdminSchedulingServicesPage() {
       requireCheckInBeforeRebook: category.requireCheckInBeforeRebook ?? false,
       pendingAddOnLinks: (category.linkedAddOns ?? []).map((link) => ({
         addOnId: link.addOnId,
+        addOnName: link.addOnName,
         isFree: link.isFree,
+        quantity: String(link.quantity ?? 1),
+        unitPrice: link.unitPrice != null ? String(link.unitPrice) : '0',
+        chargeFrequency: link.chargeFrequency ?? 'ONE_TIME',
       })),
     })
     setCategoryOpen(true)
@@ -1068,8 +1204,12 @@ export default function AdminSchedulingServicesPage() {
           id: newAdminEntityId('cao'),
           categoryId: editingCategoryId,
           addOnId: l.addOnId,
+          addOnName: l.addOnName,
           isOptional: true,
           isFree: l.isFree,
+          quantity: Number.parseInt(l.quantity, 10),
+          unitPrice: Number.parseFloat(l.unitPrice),
+          chargeFrequency: l.chargeFrequency,
         }))
         updateCategory(editingCategoryId, {
           ...normalizedPatch,
@@ -1089,8 +1229,12 @@ export default function AdminSchedulingServicesPage() {
           id: newAdminEntityId('cao'),
           categoryId: nextCategoryId,
           addOnId: l.addOnId,
+          addOnName: l.addOnName,
           isOptional: true,
           isFree: l.isFree,
+          quantity: Number.parseInt(l.quantity, 10),
+          unitPrice: Number.parseFloat(l.unitPrice),
+          chargeFrequency: l.chargeFrequency,
         }))
         addCategory({
           id: nextCategoryId,
@@ -1132,8 +1276,12 @@ export default function AdminSchedulingServicesPage() {
       id: newAdminEntityId('cao'),
       categoryId: catId,
       addOnId: l.addOnId,
+      addOnName: l.addOnName,
       isOptional: true,
       isFree: l.isFree,
+      quantity: Number.parseInt(l.quantity, 10),
+      unitPrice: Number.parseFloat(l.unitPrice),
+      chargeFrequency: l.chargeFrequency,
     }))
     const created: SchedulingCategory = {
       id: catId,
@@ -1185,8 +1333,15 @@ export default function AdminSchedulingServicesPage() {
                   )}
                 >
                   All
-                  <span className="float-right text-xs text-muted-foreground">
-                    {alignedServices.length}
+                  <span
+                    className={cn(
+                      'float-right text-xs',
+                      serviceCategoryFilterId === 'ALL'
+                        ? 'text-sidebar-accent-foreground/95'
+                        : 'text-muted-foreground',
+                    )}
+                  >
+                    {allCountLabel}
                   </span>
                 </button>
                 <Accordion type="multiple" className="w-full space-y-2">
@@ -1289,7 +1444,15 @@ export default function AdminSchedulingServicesPage() {
                                 >
                                   <span className="truncate">{category.name}</span>
                                 </button>
-                                <Badge variant="outline" className="h-5 text-[10px]">
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    'h-5 text-[10px]',
+                                    isActiveCategory
+                                      ? 'border-sidebar-accent-foreground/30 bg-sidebar-accent/40 text-sidebar-accent-foreground'
+                                      : '',
+                                  )}
+                                >
                                   {serviceCount}
                                 </Badge>
                                 <DropdownMenu>
@@ -1390,8 +1553,12 @@ export default function AdminSchedulingServicesPage() {
                                   Create slot
                                 </Link>
                               </Button>
-                              <Button variant="outline" size="sm" onClick={() => setSelected(service)}>
-                                Edit
+                              <Button asChild variant="outline" size="sm">
+                                <Link
+                                  href={`/admin/scheduling/services/new?serviceId=${encodeURIComponent(service.id)}&returnTo=${encodeURIComponent('/admin/scheduling/services')}`}
+                                >
+                                  Edit
+                                </Link>
                               </Button>
                             </div>
                           </div>
@@ -1428,30 +1595,97 @@ export default function AdminSchedulingServicesPage() {
       </div>
 
       <CrudModal
-        open={categoryOpen}
+        open={linkAddOnModalOpen}
+        onOpenChange={setLinkAddOnModalOpen}
+        title="Link add-on"
+        description={
+          selectedLinkAddOn
+            ? `Configure how "${selectedLinkAddOn.name}" is priced for this link.`
+            : 'Configure add-on pricing before linking.'
+        }
+        size="sm"
+        variant="create"
+        footer={
+          <>
+            <Button type="button" variant="outline" onClick={() => setLinkAddOnModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={confirmLinkAddOnFlow}>
+              Add
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Add-on</Label>
+            <div className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-sm font-medium">
+              {selectedLinkAddOn?.name ?? 'Select an add-on first'}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="link-addon-quantity-shared">Quantity</Label>
+            <Input
+              id="link-addon-quantity-shared"
+              type="number"
+              min={1}
+              value={linkAddOnQuantity}
+              onChange={(event) => setLinkAddOnQuantity(event.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="link-addon-price-shared">Price</Label>
+            <Input
+              id="link-addon-price-shared"
+              type="number"
+              min={0}
+              step="0.01"
+              value={linkAddOnUnitPrice}
+              onChange={(event) => setLinkAddOnUnitPrice(event.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Charge frequency</Label>
+            <Select
+              value={linkAddOnChargeFrequency}
+              onValueChange={(value) =>
+                setLinkAddOnChargeFrequency(value as CategoryAddOnChargeFrequency)
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {CATEGORY_ADD_ON_CHARGE_FREQUENCIES.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </CrudModal>
+
+      <CrudModal
+        open={categoryOpen && Boolean(editingCategoryId)}
         onOpenChange={(open) => {
           setCategoryOpen(open)
           if (!open) {
             setEditingCategoryId(null)
           }
         }}
-        title={editingCategoryId ? `Edit ${LABELS.serviceCategory}` : `New ${LABELS.serviceCategory}`}
-        description={
-          editingCategoryId
-            ? `Update ${LABELS.serviceCategory.toLowerCase()} details and rules.`
-            : `${LABELS.serviceCategory} group ${LABELS.services.toLowerCase()} in the catalog.`
-        }
+        title={`Edit ${LABELS.serviceCategory}`}
+        description={`Update ${LABELS.serviceCategory.toLowerCase()} details and rules.`}
         size="sm"
-        variant={editingCategoryId ? 'edit' : 'create'}
+        variant="edit"
         footer={
           <>
             <Button type="button" variant="outline" onClick={() => setCategoryOpen(false)}>
               Cancel
             </Button>
             <Button type="button" onClick={persistCategory}>
-              {editingCategoryId
-                ? `Save ${LABELS.serviceCategory.toLowerCase()}`
-                : `Create ${LABELS.serviceCategory.toLowerCase()}`}
+              {`Save ${LABELS.serviceCategory.toLowerCase()}`}
             </Button>
           </>
         }
@@ -1681,7 +1915,7 @@ export default function AdminSchedulingServicesPage() {
                         className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2"
                       >
                         <span className="text-sm font-semibold text-foreground">
-                          {addon?.name ?? row.addOnId}
+                          {addon?.name ?? row.addOnName ?? row.addOnId}
                         </span>
                         <div className="flex flex-wrap items-center gap-2">
                           <div className="flex items-center gap-2">
@@ -1701,6 +1935,15 @@ export default function AdminSchedulingServicesPage() {
                           {!row.isFree && addon ? (
                             <Badge variant="secondary">{formatPrice(addon.price)}</Badge>
                           ) : null}
+                          <Badge variant="outline">{`Qty ${row.quantity}`}</Badge>
+                          <Badge variant="outline">{`£${row.unitPrice}`}</Badge>
+                          <Badge variant="outline">
+                            {
+                              CATEGORY_ADD_ON_CHARGE_FREQUENCIES.find(
+                                (option) => option.value === row.chargeFrequency,
+                              )?.label
+                            }
+                          </Badge>
                           <Button
                             type="button"
                             size="sm"
@@ -1721,50 +1964,57 @@ export default function AdminSchedulingServicesPage() {
                       </div>
                     )
                   })}
-                  <Popover open={categoryAddOnOpen} onOpenChange={setCategoryAddOnOpen}>
-                    <PopoverTrigger asChild>
-                      <Button type="button" variant="outline" className="w-full justify-between">
-                        Link add-on
-                        <ChevronsUpDown className="h-4 w-4 opacity-50" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-80 p-0" align="start">
-                      <Command>
-                        <CommandInput placeholder="Search add-ons…" />
-                        <CommandList>
-                          <CommandEmpty>No add-ons found.</CommandEmpty>
-                          <CommandGroup>
-                            {addOnCatalog
-                              .filter(
-                                (a) =>
-                                  !categoryDraft.pendingAddOnLinks.some((p) => p.addOnId === a.id),
-                              )
-                              .map((a) => (
-                                <CommandItem
-                                  key={a.id}
-                                  value={a.name}
-                                  onSelect={() => {
-                                    setCategoryDraft((d) => ({
-                                      ...d,
-                                      pendingAddOnLinks: [
-                                        ...d.pendingAddOnLinks,
-                                        { addOnId: a.id, isFree: false },
-                                      ],
-                                    }))
-                                    setCategoryAddOnOpen(false)
-                                  }}
-                                >
-                                  {a.name}
-                                  <span className="ml-auto text-xs text-muted-foreground">
-                                    {formatPrice(a.price)}
-                                  </span>
-                                </CommandItem>
-                              ))}
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Popover open={categoryAddOnOpen} onOpenChange={setCategoryAddOnOpen}>
+                      <PopoverTrigger asChild>
+                        <Button type="button" variant="outline" className="w-full justify-between sm:flex-1">
+                          {categoryPendingAddOnId
+                            ? (addOnCatalog.find((entry) => entry.id === categoryPendingAddOnId)?.name ??
+                              'Link add-on')
+                            : 'Link add-on'}
+                          <ChevronsUpDown className="h-4 w-4 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-80 p-0" align="start">
+                        <Command>
+                          <CommandInput placeholder="Search add-ons…" />
+                          <CommandList>
+                            <CommandEmpty>No add-ons found.</CommandEmpty>
+                            <CommandGroup>
+                              {addOnCatalog
+                                .filter(
+                                  (a) =>
+                                    !categoryDraft.pendingAddOnLinks.some((p) => p.addOnId === a.id),
+                                )
+                                .map((a) => (
+                                  <CommandItem
+                                    key={a.id}
+                                    value={a.name}
+                                    onSelect={() => {
+                                      setCategoryPendingAddOnId(a.id)
+                                      setCategoryAddOnOpen(false)
+                                    }}
+                                  >
+                                    {a.name}
+                                    <span className="ml-auto text-xs text-muted-foreground">
+                                      {formatPrice(a.price)}
+                                    </span>
+                                  </CommandItem>
+                                ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => openLinkModalForTarget('category')}
+                      disabled={!categoryPendingAddOnId}
+                    >
+                      Add
+                    </Button>
+                  </div>
                 </div>
               </AccordionContent>
             </AccordionItem>
@@ -2233,7 +2483,7 @@ export default function AdminSchedulingServicesPage() {
                           className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2"
                         >
                           <span className="text-sm font-semibold text-foreground">
-                            {addon?.name ?? row.addOnId}
+                            {addon?.name ?? row.addOnName ?? row.addOnId}
                           </span>
                           <div className="flex flex-wrap items-center gap-2">
                             <div className="flex items-center gap-2">
@@ -2248,6 +2498,21 @@ export default function AdminSchedulingServicesPage() {
                             </div>
                             {!row.isFree && addon ? (
                               <Badge variant="secondary">{formatPrice(addon.price)}</Badge>
+                            ) : null}
+                            {row.quantity != null ? (
+                              <Badge variant="outline">{`Qty ${row.quantity}`}</Badge>
+                            ) : null}
+                            {row.unitPrice != null ? (
+                              <Badge variant="outline">{`£${row.unitPrice}`}</Badge>
+                            ) : null}
+                            {row.chargeFrequency ? (
+                              <Badge variant="outline">
+                                {
+                                  CATEGORY_ADD_ON_CHARGE_FREQUENCIES.find(
+                                    (option) => option.value === row.chargeFrequency,
+                                  )?.label
+                                }
+                              </Badge>
                             ) : null}
                             <Button
                               type="button"
@@ -2265,48 +2530,59 @@ export default function AdminSchedulingServicesPage() {
                         </div>
                       )
                     })}
-                    <Popover open={editAddOnOpen} onOpenChange={setEditAddOnOpen}>
-                      <PopoverTrigger asChild>
-                        <Button type="button" variant="outline" className="w-full justify-between">
-                          Link add-on
-                          <ChevronsUpDown className="h-4 w-4 opacity-50" />
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-80 p-0" align="start">
-                        <Command>
-                          <CommandInput placeholder="Search add-ons…" />
-                          <CommandList>
-                            <CommandEmpty>No add-ons found.</CommandEmpty>
-                            <CommandGroup>
-                              {addOnCatalog
-                                .filter(
-                                  (a) =>
-                                    !(selectedLive?.linkedAddOns ?? []).some(
-                                      (p) => p.addOnId === a.id,
-                                    ),
-                                )
-                                .map((a) => (
-                                  <CommandItem
-                                    key={a.id}
-                                    value={a.name}
-                                    onSelect={() => {
-                                      if (selected) {
-                                        linkSchedulingAddOn('service', selected.id, a.id, false)
-                                      }
-                                      setEditAddOnOpen(false)
-                                    }}
-                                  >
-                                    {a.name}
-                                    <span className="ml-auto text-xs text-muted-foreground">
-                                      {formatPrice(a.price)}
-                                    </span>
-                                  </CommandItem>
-                                ))}
-                            </CommandGroup>
-                          </CommandList>
-                        </Command>
-                      </PopoverContent>
-                    </Popover>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <Popover open={editAddOnOpen} onOpenChange={setEditAddOnOpen}>
+                        <PopoverTrigger asChild>
+                          <Button type="button" variant="outline" className="w-full justify-between sm:flex-1">
+                            {editPendingAddOnId
+                              ? (addOnCatalog.find((entry) => entry.id === editPendingAddOnId)?.name ??
+                                'Link add-on')
+                              : 'Link add-on'}
+                            <ChevronsUpDown className="h-4 w-4 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-80 p-0" align="start">
+                          <Command>
+                            <CommandInput placeholder="Search add-ons…" />
+                            <CommandList>
+                              <CommandEmpty>No add-ons found.</CommandEmpty>
+                              <CommandGroup>
+                                {addOnCatalog
+                                  .filter(
+                                    (a) =>
+                                      !(selectedLive?.linkedAddOns ?? []).some(
+                                        (p) => p.addOnId === a.id,
+                                      ),
+                                  )
+                                  .map((a) => (
+                                    <CommandItem
+                                      key={a.id}
+                                      value={a.name}
+                                      onSelect={() => {
+                                        setEditPendingAddOnId(a.id)
+                                        setEditAddOnOpen(false)
+                                      }}
+                                    >
+                                      {a.name}
+                                      <span className="ml-auto text-xs text-muted-foreground">
+                                        {formatPrice(a.price)}
+                                      </span>
+                                    </CommandItem>
+                                  ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => openLinkModalForTarget('edit')}
+                        disabled={!editPendingAddOnId}
+                      >
+                        Add
+                      </Button>
+                    </div>
                   </div>
                 </AccordionContent>
               </AccordionItem>
@@ -2822,7 +3098,7 @@ export default function AdminSchedulingServicesPage() {
                         className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2"
                       >
                         <span className="text-sm font-semibold text-foreground">
-                          {addon?.name ?? row.addOnId}
+                          {addon?.name ?? row.addOnName ?? row.addOnId}
                         </span>
                         <div className="flex flex-wrap items-center gap-2">
                           <div className="flex items-center gap-2">
@@ -2842,6 +3118,15 @@ export default function AdminSchedulingServicesPage() {
                           {!row.isFree && addon ? (
                             <Badge variant="secondary">{formatPrice(addon.price)}</Badge>
                           ) : null}
+                          <Badge variant="outline">{`Qty ${row.quantity}`}</Badge>
+                          <Badge variant="outline">{`£${row.unitPrice}`}</Badge>
+                          <Badge variant="outline">
+                            {
+                              CATEGORY_ADD_ON_CHARGE_FREQUENCIES.find(
+                                (option) => option.value === row.chargeFrequency,
+                              )?.label
+                            }
+                          </Badge>
                           <Button
                             type="button"
                             size="sm"
@@ -2862,52 +3147,59 @@ export default function AdminSchedulingServicesPage() {
                       </div>
                     )
                   })}
-                  <Popover open={createAddOnOpen} onOpenChange={setCreateAddOnOpen}>
-                    <PopoverTrigger asChild>
-                      <Button type="button" variant="outline" className="w-full justify-between">
-                        Link add-on
-                        <ChevronsUpDown className="h-4 w-4 opacity-50" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-80 p-0" align="start">
-                      <Command>
-                        <CommandInput placeholder="Search add-ons…" />
-                        <CommandList>
-                          <CommandEmpty>No add-ons found.</CommandEmpty>
-                          <CommandGroup>
-                            {addOnCatalog
-                              .filter(
-                                (a) =>
-                                  !createDraft.pendingServiceAddOnLinks.some(
-                                    (p) => p.addOnId === a.id,
-                                  ),
-                              )
-                              .map((a) => (
-                                <CommandItem
-                                  key={a.id}
-                                  value={a.name}
-                                  onSelect={() => {
-                                    setCreateDraft((d) => ({
-                                      ...d,
-                                      pendingServiceAddOnLinks: [
-                                        ...d.pendingServiceAddOnLinks,
-                                        { addOnId: a.id, isFree: false },
-                                      ],
-                                    }))
-                                    setCreateAddOnOpen(false)
-                                  }}
-                                >
-                                  {a.name}
-                                  <span className="ml-auto text-xs text-muted-foreground">
-                                    {formatPrice(a.price)}
-                                  </span>
-                                </CommandItem>
-                              ))}
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Popover open={createAddOnOpen} onOpenChange={setCreateAddOnOpen}>
+                      <PopoverTrigger asChild>
+                        <Button type="button" variant="outline" className="w-full justify-between sm:flex-1">
+                          {createPendingAddOnId
+                            ? (addOnCatalog.find((entry) => entry.id === createPendingAddOnId)?.name ??
+                              'Link add-on')
+                            : 'Link add-on'}
+                          <ChevronsUpDown className="h-4 w-4 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-80 p-0" align="start">
+                        <Command>
+                          <CommandInput placeholder="Search add-ons…" />
+                          <CommandList>
+                            <CommandEmpty>No add-ons found.</CommandEmpty>
+                            <CommandGroup>
+                              {addOnCatalog
+                                .filter(
+                                  (a) =>
+                                    !createDraft.pendingServiceAddOnLinks.some(
+                                      (p) => p.addOnId === a.id,
+                                    ),
+                                )
+                                .map((a) => (
+                                  <CommandItem
+                                    key={a.id}
+                                    value={a.name}
+                                    onSelect={() => {
+                                      setCreatePendingAddOnId(a.id)
+                                      setCreateAddOnOpen(false)
+                                    }}
+                                  >
+                                    {a.name}
+                                    <span className="ml-auto text-xs text-muted-foreground">
+                                      {formatPrice(a.price)}
+                                    </span>
+                                  </CommandItem>
+                                ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => openLinkModalForTarget('create')}
+                      disabled={!createPendingAddOnId}
+                    >
+                      Add
+                    </Button>
+                  </div>
                 </div>
               </AccordionContent>
             </AccordionItem>

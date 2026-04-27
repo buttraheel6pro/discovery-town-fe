@@ -2,13 +2,14 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit'
 
 import {
+  addOns as seedAddOns,
   productCategories as baseProductCategories,
   products as baseProducts,
   shopProductCategories,
   shopProducts,
 } from '@/lib/mock-data'
 import type { RootState } from '@/lib/redux/store'
-import type { Product, ProductCategory } from '@/lib/types'
+import type { AddOn, Product, ProductCategory } from '@/lib/types'
 
 export const INVENTORY_STORAGE_KEY = 'discovery-town:inventory-store:v1'
 const GENERIC_PRODUCT_IMAGE_SRC = '/placeholder.jpg'
@@ -16,6 +17,7 @@ const GENERIC_PRODUCT_IMAGE_SRC = '/placeholder.jpg'
 interface InventoryState {
   products: Product[]
   productCategories: ProductCategory[]
+  bookingAddOns: AddOn[]
 }
 
 interface UpdateProductPayload {
@@ -31,6 +33,11 @@ interface UpdateCategoryPayload {
 interface ReorderCategoryPayload {
   id: string
   direction: 'up' | 'down'
+}
+
+interface UpdateBookingAddOnPayload {
+  id: string
+  updates: Partial<AddOn>
 }
 
 function withFallbackImageUrl(product: Product): Product {
@@ -49,6 +56,10 @@ function cloneInitialState(): InventoryState {
     productCategories: [...baseProductCategories, ...shopProductCategories].map(
       (category) => ({ ...category }),
     ),
+    bookingAddOns: seedAddOns.map((addOn) => ({
+      ...addOn,
+      applicableServiceTypes: [...addOn.applicableServiceTypes],
+    })),
   }
 }
 
@@ -57,7 +68,18 @@ const inventorySlice = createSlice({
   initialState: cloneInitialState(),
   reducers: {
     hydrateInventoryState(_state, action: PayloadAction<InventoryState>) {
-      return action.payload
+      return {
+        products: (action.payload.products ?? []).map((product) =>
+          withFallbackImageUrl({ ...product }),
+        ),
+        productCategories: (action.payload.productCategories ?? []).map((category) => ({
+          ...category,
+        })),
+        bookingAddOns: (action.payload.bookingAddOns ?? seedAddOns).map((addOn) => ({
+          ...addOn,
+          applicableServiceTypes: [...addOn.applicableServiceTypes],
+        })),
+      }
     },
     addProduct(state, action: PayloadAction<Product>) {
       state.products.unshift(withFallbackImageUrl(action.payload))
@@ -120,6 +142,33 @@ const inventorySlice = createSlice({
         return entry
       })
     },
+    addBookingAddOn(state, action: PayloadAction<AddOn>) {
+      const next = {
+        ...action.payload,
+        applicableServiceTypes: [...action.payload.applicableServiceTypes],
+      }
+      state.bookingAddOns = [
+        next,
+        ...state.bookingAddOns.filter((addOn) => addOn.id !== next.id),
+      ]
+    },
+    updateBookingAddOn(state, action: PayloadAction<UpdateBookingAddOnPayload>) {
+      const { id, updates } = action.payload
+      state.bookingAddOns = state.bookingAddOns.map((addOn) =>
+        addOn.id === id
+          ? {
+              ...addOn,
+              ...updates,
+              applicableServiceTypes: updates.applicableServiceTypes
+                ? [...updates.applicableServiceTypes]
+                : addOn.applicableServiceTypes,
+            }
+          : addOn,
+      )
+    },
+    deleteBookingAddOn(state, action: PayloadAction<string>) {
+      state.bookingAddOns = state.bookingAddOns.filter((addOn) => addOn.id !== action.payload)
+    },
   },
 })
 
@@ -132,6 +181,9 @@ export const {
   updateProductCategory,
   deleteProductCategory,
   reorderProductCategory,
+  addBookingAddOn,
+  updateBookingAddOn,
+  deleteBookingAddOn,
 } = inventorySlice.actions
 
 export const inventoryReducer = inventorySlice.reducer
@@ -142,3 +194,5 @@ export const selectInventoryProducts = (state: RootState): Product[] => state.in
 export const selectInventoryProductCategories = (
   state: RootState,
 ): ProductCategory[] => state.inventory.productCategories
+export const selectInventoryBookingAddOns = (state: RootState): AddOn[] =>
+  state.inventory.bookingAddOns

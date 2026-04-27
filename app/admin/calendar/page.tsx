@@ -15,7 +15,6 @@ import { LayoutGrid, RefreshCw, ThermometerSun } from 'lucide-react'
 
 import { AvailabilityHeatmap } from '@/components/admin/availability-heatmap'
 import { CalendarGrid } from '@/components/admin/calendar-grid'
-import { QuickCreateModal } from '@/components/admin/quick-create-modal'
 import { ServiceTypeBadge } from '@/components/customer/service-type-badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -144,9 +143,6 @@ function AdminCalendarPageInner() {
   const { locations } = useLocations()
   const [calendarView, setCalendarView] = useState<CalendarView>('month')
   const [date, setDate] = useState<Date>(new Date())
-  const [quickOpen, setQuickOpen] = useState(false)
-  const [quickDate, setQuickDate] = useState<Date>(new Date())
-  const [quickTime, setQuickTime] = useState<string | undefined>(undefined)
   const [, setRefreshKey] = useState(0)
 
   const mainView: AdminCalendarMainView =
@@ -218,10 +214,8 @@ function AdminCalendarPageInner() {
     router.push(`/admin/scheduling/${slot.id}`)
   }
 
-  function handleEmptyClick(d: Date, time?: string) {
-    setQuickDate(d)
-    setQuickTime(time)
-    setQuickOpen(true)
+  function handleEmptyClick(): void {
+    router.push(`/admin/scheduling/new/recurring?returnTo=${encodeURIComponent('/admin/calendar')}`)
   }
 
   function toggleServiceType(t: SchedulingServiceType) {
@@ -526,13 +520,6 @@ function AdminCalendarPageInner() {
           </div>
         </CardContent>
       </Card>
-
-      <QuickCreateModal
-        defaultDate={quickDate}
-        defaultTime={quickTime}
-        open={quickOpen}
-        onClose={() => setQuickOpen(false)}
-      />
     </div>
   )
 }

@@ -8,6 +8,5 @@ export const LABELS = {
   serviceCategory: 'Event Category',
   serviceType: 'Event Type',
   createService: 'Create Event',
-  createSlot: 'Create Session',
 } as const
 

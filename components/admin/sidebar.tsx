@@ -82,6 +82,11 @@ const sidebarGroups = [
         icon: Timer,
       },
       {
+        label: "Add-ons",
+        href: "/admin/scheduling/add-ons",
+        icon: Package,
+      },
+      {
         label: "Private Hire",
         href: "/admin/calendar/private-hire",
         icon: Building2,
