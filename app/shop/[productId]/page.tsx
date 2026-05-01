@@ -1,6 +1,6 @@
 "use client";
 
-import { use } from "react";
+import { use, useState } from "react";
 
 import { CustomerFooter } from "@/components/customer/footer";
 import { CustomerNavbar } from "@/components/customer/navbar";
@@ -17,6 +17,8 @@ export default function ShopProductPage({
   params,
 }: Readonly<ShopProductPageProps>) {
   const { products, productCategories, coupons } = useInventory();
+  const [rentalFromDate, setRentalFromDate] = useState("");
+  const [rentalToDate, setRentalToDate] = useState("");
   const { productId } = use(params);
   const product = products.find((row) => row.id === productId) ?? null;
   const category = product
@@ -71,11 +73,21 @@ export default function ShopProductPage({
               name: coupon.name,
               description: coupon.description,
             }))}
+            rentalFromDate={rentalFromDate}
+            rentalToDate={rentalToDate}
           />
           {product && isRentalProduct(product) ? (
             <RentalAvailabilityCalendar
               productId={product.id}
               stockQuantity={product.stockCount}
+              rentalBillingType={product.rentalBillingType ?? null}
+              maxRentalDays={product.maxRentalDays ?? null}
+              selectedFromDate={rentalFromDate}
+              selectedToDate={rentalToDate}
+              onDateRangeChange={(fromDate, toDate) => {
+                setRentalFromDate(fromDate);
+                setRentalToDate(toDate);
+              }}
             />
           ) : null}
         </div>

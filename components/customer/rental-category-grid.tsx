@@ -1,6 +1,7 @@
 /** Rentals category sections rendered inline with products. */
 
 import { HorizontalScrollSection } from '@/components/customer/horizontal-scroll-section'
+import { ScrollableSectionBreadcrumbs } from '@/components/customer/scrollable-section-breadcrumbs'
 import { ShopProductCard } from '@/components/customer/shop-product-card'
 import type { ProductCategory, Product } from '@/lib/types'
 
@@ -10,22 +11,16 @@ interface RentalCategoryGridProps {
 }
 
 export function RentalCategoryGrid({ categories, products }: Readonly<RentalCategoryGridProps>) {
+  const breadcrumbItems = categories.map((category) => ({
+    id: category.id,
+    label: category.name,
+    href: `#${category.slug}`,
+  }))
+
   return (
     <section className="space-y-4">
       <h2 className="text-2xl font-black text-foreground">Browse rental categories</h2>
-      <div className="overflow-hidden">
-        <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {categories.map((category) => (
-            <a
-              key={category.id}
-              href={`#${category.slug}`}
-              className="shrink-0 rounded-full border border-border bg-background px-4 py-1.5 text-xs font-semibold text-foreground transition-colors hover:bg-secondary"
-            >
-              {category.name}
-            </a>
-          ))}
-        </div>
-      </div>
+      <ScrollableSectionBreadcrumbs items={breadcrumbItems} />
       <div className="space-y-8">
         {categories.map((category) => {
           const items = products.filter((product) => product.categoryId === category.id)

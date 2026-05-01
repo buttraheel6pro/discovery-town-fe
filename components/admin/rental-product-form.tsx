@@ -255,11 +255,10 @@ export function RentalProductForm({
               {tierRows.length > 0 ? (
                 <div className="space-y-2">
                   {tierRows.map((tier, index) => (
-                    <div key={`${index}-${tier.hours}-${tier.price}`} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                    <div key={index} className="grid grid-cols-[1fr_1fr_auto] gap-2">
                       <Input
-                        type="number"
-                        step="1"
-                        min="2"
+                        type="text"
+                        inputMode="numeric"
                         placeholder="Hours (2+)"
                         value={tier.hours}
                         onChange={(event) => {
@@ -270,10 +269,8 @@ export function RentalProductForm({
                         }}
                       />
                       <Input
-                        type="number"
+                        type="text"
                         inputMode="decimal"
-                        step="0.01"
-                        min="0"
                         placeholder="Price"
                         value={tier.price}
                         onChange={(event) => {

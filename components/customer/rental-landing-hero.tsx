@@ -1,8 +1,5 @@
 /** Hero section for rentals landing page. */
-import Link from 'next/link'
-
 import { RentalHowItWorks } from '@/components/customer/rental-how-it-works'
-import { Button } from '@/components/ui/button'
 
 export function RentalLandingHero() {
   return (
@@ -13,13 +10,6 @@ export function RentalLandingHero() {
         <p className="mt-4 max-w-3xl text-white/80">
           Deliver to your door. Pick up at the venue. We handle the details.
         </p>
-        <div className="mt-4">
-          <Link href="/rentals/character-booking?demo=character">
-            <Button className="bg-accent text-accent-foreground hover:bg-accent/90">
-              Book Character Demo
-            </Button>
-          </Link>
-        </div>
         <div className="mt-4">
           <RentalHowItWorks compact />
         </div>

@@ -7,6 +7,7 @@ import { CustomerFooter } from '@/components/customer/footer'
 import { HorizontalScrollSection } from '@/components/customer/horizontal-scroll-section'
 import { CustomerNavbar } from '@/components/customer/navbar'
 import { PromoLinkGridSection } from '@/components/customer/promo-link-grid-section'
+import { ScrollableSectionBreadcrumbs } from '@/components/customer/scrollable-section-breadcrumbs'
 import { ServiceScrollCard } from '@/components/customer/service-scroll-card'
 import { hasAssignedConsumerSlot } from '@/lib/scheduling-visibility'
 import { useScheduling } from '@/lib/scheduling-store'
@@ -83,6 +84,15 @@ export default function PlayPage() {
         .filter((section) => section.services.length > 0),
     [categories, services, slots],
   )
+  const breadcrumbItems = useMemo(
+    () =>
+      sectionServices.map((section) => ({
+        id: section.id,
+        label: section.title,
+        href: `#${section.id}`,
+      })),
+    [sectionServices],
+  )
 
   return (
     <>
@@ -105,16 +115,21 @@ export default function PlayPage() {
 
         <section className="bg-background py-10">
           <div className="mx-auto max-w-7xl space-y-10 px-4 sm:px-6 lg:px-8">
+            <section className="space-y-4">
+              <h2 className="text-2xl font-black text-foreground">Browse play categories</h2>
+              <ScrollableSectionBreadcrumbs items={breadcrumbItems} />
+            </section>
             {sectionServices.map((section) => (
-              <HorizontalScrollSection
-                key={section.id}
-                title={section.title}
-                description={section.description}
-              >
-                {section.services.map((service) => (
-                  <ServiceScrollCard key={service.id} service={service} />
-                ))}
-              </HorizontalScrollSection>
+              <div key={section.id} id={section.id}>
+                <HorizontalScrollSection
+                  title={section.title}
+                  description={section.description}
+                >
+                  {section.services.map((service) => (
+                    <ServiceScrollCard key={service.id} service={service} />
+                  ))}
+                </HorizontalScrollSection>
+              </div>
             ))}
 
             <PromoLinkGridSection

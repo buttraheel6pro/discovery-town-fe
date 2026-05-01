@@ -13,8 +13,10 @@ import { Button } from '@/components/ui/button'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
+import { useToast } from '@/hooks/use-toast'
 import { cn, formatPrice, getStockStatus } from '@/lib/utils'
 import { useInventory } from '@/lib/inventory-store'
+import { isRentalProduct } from '@/lib/rental-product'
 import type { Product } from '@/lib/types'
 
 export interface ShopProductDetailClientProps {
@@ -26,6 +28,8 @@ export interface ShopProductDetailClientProps {
   readonly linkedProducts?: Product[]
   readonly linkedAddOnProducts?: Product[]
   readonly linkedCoupons?: Array<{ id: string; code: string; name: string; description?: string }>
+  readonly rentalFromDate?: string
+  readonly rentalToDate?: string
 }
 
 export function ShopProductDetailClient({
@@ -37,9 +41,12 @@ export function ShopProductDetailClient({
   linkedProducts = [],
   linkedAddOnProducts = [],
   linkedCoupons = [],
+  rentalFromDate = '',
+  rentalToDate = '',
 }: Readonly<ShopProductDetailClientProps>) {
   const router = useRouter()
-  const { addToCart, addCustomCartItem } = useInventory()
+  const { toast } = useToast()
+  const { addToCart, addCustomCartItem, setRentalDates } = useInventory()
 
   const [qtyRaw, setQtyRaw] = useState('1')
   const [selectedGiftQuantity, setSelectedGiftQuantity] = useState(0)
@@ -50,6 +57,9 @@ export function ShopProductDetailClient({
     if (!Number.isFinite(parsed) || parsed <= 0) return 1
     return parsed
   }, [qtyRaw])
+
+  const perDayRangeComplete =
+    rentalFromDate.trim().length > 0 && rentalToDate.trim().length > 0
 
   if (!product) {
     return (
@@ -66,6 +76,8 @@ export function ShopProductDetailClient({
   }
 
   const shopProduct = product
+  const isRental = isRentalProduct(shopProduct)
+  const requiresPerDayDateRange = isRental && shopProduct.rentalBillingType === 'PER_DAY'
 
   const status = getStockStatus(shopProduct)
   const unitPrice = shopProduct.memberPrice ?? shopProduct.price
@@ -77,6 +89,62 @@ export function ShopProductDetailClient({
     shopProduct.allowBackorders || shopProduct.stockCount <= 0
       ? undefined
       : Math.max(1, shopProduct.stockCount)
+
+  function toIsoRange(fromDate: string, toDate: string): { fromIso: string; toIso: string } | null {
+    const fromTrimmed = fromDate.trim()
+    const toTrimmed = toDate.trim()
+    if (!fromTrimmed || !toTrimmed) return null
+    const fromDateTime = new Date(`${fromTrimmed}T00:00:00`)
+    const toDateTime = new Date(`${toTrimmed}T23:59:59`)
+    if (!Number.isFinite(fromDateTime.getTime()) || !Number.isFinite(toDateTime.getTime())) return null
+    return { fromIso: fromDateTime.toISOString(), toIso: toDateTime.toISOString() }
+  }
+
+  function getInclusiveRentalDays(fromIso: string, toIso: string): number {
+    const from = new Date(fromIso)
+    const to = new Date(toIso)
+    const fromDay = Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate())
+    const toDay = Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), to.getUTCDate())
+    return Math.floor((toDay - fromDay) / 86400000) + 1
+  }
+
+  function validateAndPersistPerDayDates(): boolean {
+    if (!requiresPerDayDateRange) return true
+
+    const isoRange = toIsoRange(rentalFromDate, rentalToDate)
+    if (!isoRange) {
+      toast({
+        title: 'Select rental period first',
+        description: 'Please select From and To dates from the calendar below before adding to cart.',
+        variant: 'destructive',
+      })
+      return false
+    }
+    const { fromIso, toIso } = isoRange
+
+    if (new Date(fromIso).getTime() > new Date(toIso).getTime()) {
+      toast({
+        title: 'Invalid date range',
+        description: 'The to date must be the same day or after the from date.',
+        variant: 'destructive',
+      })
+      return false
+    }
+
+    const selectedDays = getInclusiveRentalDays(fromIso, toIso)
+    const maxRentalDays = shopProduct.maxRentalDays ?? null
+    if (maxRentalDays != null && selectedDays > maxRentalDays) {
+      toast({
+        title: 'Selected period exceeds max rental days',
+        description: `Your selected To date exceeds the ${maxRentalDays}-day rental limit. Please choose an earlier To date.`,
+        variant: 'destructive',
+      })
+      return false
+    }
+
+    setRentalDates(fromIso, toIso)
+    return true
+  }
 
   function dec() {
     setQtyRaw(String(Math.max(1, qty - 1)))
@@ -132,6 +200,7 @@ export function ShopProductDetailClient({
       return
     }
 
+    if (!validateAndPersistPerDayDates()) return
     addToCart({ product: shopProduct, quantity: qty })
   }
 
@@ -354,6 +423,28 @@ export function ShopProductDetailClient({
             <>
               {isGiftProduct ? null : (
                 <>
+                  {requiresPerDayDateRange ? (
+                    perDayRangeComplete ? (
+                      <div className="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs">
+                        <p className="font-semibold text-foreground">Rental period</p>
+                        <p className="mt-1 text-muted-foreground">
+                          <span className="font-medium text-foreground">From:</span>{' '}
+                          {rentalFromDate.trim()}
+                        </p>
+                        <p className="text-muted-foreground">
+                          <span className="font-medium text-foreground">To:</span>{' '}
+                          {rentalToDate.trim()}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                        <p className="font-medium text-foreground">
+                          Please select your rental period from the calendar below.
+                        </p>
+                        <p>Use first click for From date and second click for To date.</p>
+                      </div>
+                    )
+                  ) : null}
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-sm font-semibold text-foreground">Quantity</p>
                     <div className="flex items-center gap-2">
@@ -380,7 +471,12 @@ export function ShopProductDetailClient({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div
+                    className={cn(
+                      'grid grid-cols-1 gap-3',
+                      isRental ? '' : 'sm:grid-cols-2',
+                    )}
+                  >
                     <Button
                       className="bg-accent text-accent-foreground hover:bg-accent/90 font-semibold"
                       onClick={add}
@@ -388,9 +484,11 @@ export function ShopProductDetailClient({
                       <ShoppingCart className="mr-2 h-4 w-4" />
                       Add to cart
                     </Button>
-                    <Button variant="outline" className="font-semibold" onClick={buyNow}>
-                      Buy now
-                    </Button>
+                    {isRental ? null : (
+                      <Button variant="outline" className="font-semibold" onClick={buyNow}>
+                        Buy now
+                      </Button>
+                    )}
                   </div>
                 </>
               )}

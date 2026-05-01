@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn, formatPrice } from '@/lib/utils'
 import { useInventory } from '@/lib/inventory-store'
+import { isRentalProduct } from '@/lib/rental-product'
 import type { Product } from '@/lib/types'
 
 const SHOP_FALLBACK_SRC = '/placeholder.jpg'
@@ -38,6 +39,7 @@ export function ShopProductCard({ product, className }: Readonly<ShopProductCard
     const category = productCategories.find((row) => row.id === product.categoryId) ?? null
     return (category?.productType ?? '').toLowerCase() === 'gifts'
   }, [product.categoryId, productCategories])
+  const isRental = useMemo(() => isRentalProduct(product), [product])
   const compareAt = product.compareAtPrice ?? null
   const unitPrice = product.memberPrice ?? product.price
   const giftUpper = product.giftPriceUpperLimit ?? null
@@ -116,7 +118,7 @@ export function ShopProductCard({ product, className }: Readonly<ShopProductCard
           <StockStatusBadge product={product} />
         </div>
 
-        {isGiftProduct ? (
+        {isGiftProduct || isRental ? (
           <Button asChild size="sm" className="w-full bg-accent text-accent-foreground hover:bg-accent/90">
             <Link href={`/shop/${product.id}`}>View details</Link>
           </Button>

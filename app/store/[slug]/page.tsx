@@ -8,6 +8,7 @@ import { CustomerFooter } from '@/components/customer/footer'
 import { HorizontalScrollSection } from '@/components/customer/horizontal-scroll-section'
 import { CustomerNavbar } from '@/components/customer/navbar'
 import { PromoLinkGridSection } from '@/components/customer/promo-link-grid-section'
+import { ScrollableSectionBreadcrumbs } from '@/components/customer/scrollable-section-breadcrumbs'
 import { ShopProductCard } from '@/components/customer/shop-product-card'
 import { useInventory } from '@/lib/inventory-store'
 import type { ProductCategory } from '@/lib/types'
@@ -98,7 +99,17 @@ export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) 
   }, [productCategories, productType, products])
 
   const title = PRODUCT_TYPE_LABELS[productType] ?? productType
+  const isCafeAndFood = productType === 'cafe&food'
   const productById = useMemo(() => new Map(products.map((product) => [product.id, product])), [products])
+  const breadcrumbItems = useMemo(
+    () =>
+      sections.map((section) => ({
+        id: section.category.id,
+        label: section.category.name,
+        href: `#${section.category.slug || section.category.id}`,
+      })),
+    [sections],
+  )
 
   return (
     <>
@@ -121,40 +132,70 @@ export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) 
 
         <section className="bg-background py-10">
           <div className="mx-auto max-w-7xl space-y-10 px-4 sm:px-6 lg:px-8">
-            {sections.length === 0 ? (
+            {isCafeAndFood ? (
               <div className="rounded-xl border border-border bg-card p-10 text-center">
-                <p className="text-sm font-semibold text-foreground">No products available right now.</p>
+                <p className="text-sm font-semibold text-foreground">Coming soon</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Cafe & Food products will be available here shortly.
+                </p>
               </div>
-            ) : (
-              sections.map((section) => (
-                <HorizontalScrollSection
-                  key={section.category.id}
-                  title={section.category.name}
-                  description={section.category.description}
-                  viewAllHref={`/shop?category=${section.category.id}`}
-                >
-                  {section.productIds.map((productId) => {
-                    const product = productById.get(productId)
-                    if (!product) {
-                      return null
-                    }
-                    return (
-                      <div key={product.id} className="w-[280px] shrink-0 snap-start sm:w-[300px]">
-                        <ShopProductCard product={product} className="h-full" />
-                      </div>
-                    )
-                  })}
-                </HorizontalScrollSection>
-              ))
-            )}
+            ) : null}
 
-            {productType === 'cafe&food' ? (
-              <PromoLinkGridSection
-                eyebrow="Services"
-                title="Take Out & Delivery"
-                description="Need cafe items for an event? Choose pickup or full delivery and catering support."
-                items={CAFE_SERVICE_LINK_ITEMS}
-              />
+            {!isCafeAndFood ? (
+              <>
+                {sections.length === 0 ? (
+                  <div className="rounded-xl border border-border bg-card p-10 text-center">
+                    <p className="text-sm font-semibold text-foreground">
+                      No products available right now.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <section className="space-y-4">
+                      <h2 className="text-2xl font-black text-foreground">
+                        Browse {title.toLowerCase()} categories
+                      </h2>
+                      <ScrollableSectionBreadcrumbs items={breadcrumbItems} />
+                    </section>
+                    {sections.map((section) => (
+                      <div
+                        key={section.category.id}
+                        id={section.category.slug || section.category.id}
+                      >
+                        <HorizontalScrollSection
+                          title={section.category.name}
+                          description={section.category.description}
+                          viewAllHref={`/shop?category=${section.category.id}`}
+                        >
+                          {section.productIds.map((productId) => {
+                            const product = productById.get(productId)
+                            if (!product) {
+                              return null
+                            }
+                            return (
+                              <div
+                                key={product.id}
+                                className="w-[280px] shrink-0 snap-start sm:w-[300px]"
+                              >
+                                <ShopProductCard product={product} className="h-full" />
+                              </div>
+                            )
+                          })}
+                        </HorizontalScrollSection>
+                      </div>
+                    ))}
+                  </>
+                )}
+
+                {productType === 'cafe&food' ? (
+                  <PromoLinkGridSection
+                    eyebrow="Services"
+                    title="Take Out & Delivery"
+                    description="Need cafe items for an event? Choose pickup or full delivery and catering support."
+                    items={CAFE_SERVICE_LINK_ITEMS}
+                  />
+                ) : null}
+              </>
             ) : null}
           </div>
         </section>

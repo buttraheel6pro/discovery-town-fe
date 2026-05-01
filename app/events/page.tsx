@@ -8,6 +8,7 @@ import { CustomerFooter } from '@/components/customer/footer'
 import { HorizontalScrollSection } from '@/components/customer/horizontal-scroll-section'
 import { CustomerNavbar } from '@/components/customer/navbar'
 import { PromoLinkGridSection } from '@/components/customer/promo-link-grid-section'
+import { ScrollableSectionBreadcrumbs } from '@/components/customer/scrollable-section-breadcrumbs'
 import { ServiceScrollCard } from '@/components/customer/service-scroll-card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -162,6 +163,17 @@ export default function EventsPage() {
 
     return sections
   }, [categories, filtered])
+  const breadcrumbItems = useMemo(
+    () =>
+      groupedSections
+        .filter((section) => section.items.length > 0)
+        .map((section) => ({
+          id: section.key,
+          label: section.title,
+          href: `#events-section-${section.key}`,
+        })),
+    [groupedSections],
+  )
 
   return (
     <>
@@ -309,17 +321,22 @@ export default function EventsPage() {
               </div>
             ) : (
               <div className="space-y-10">
+                <section className="space-y-4">
+                  <h2 className="text-2xl font-black text-foreground">Browse event categories</h2>
+                  <ScrollableSectionBreadcrumbs items={breadcrumbItems} />
+                </section>
                 {groupedSections.map((section) =>
                   section.items.length > 0 ? (
-                    <HorizontalScrollSection
-                      key={section.key}
-                      title={section.title}
-                      description={section.description}
-                    >
-                      {section.items.map((service) => (
-                        <ServiceScrollCard key={service.id} service={service} />
-                      ))}
-                    </HorizontalScrollSection>
+                    <div key={section.key} id={`events-section-${section.key}`}>
+                      <HorizontalScrollSection
+                        title={section.title}
+                        description={section.description}
+                      >
+                        {section.items.map((service) => (
+                          <ServiceScrollCard key={service.id} service={service} />
+                        ))}
+                      </HorizontalScrollSection>
+                    </div>
                   ) : null,
                 )}
               </div>

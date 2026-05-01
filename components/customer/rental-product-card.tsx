@@ -36,6 +36,7 @@ function getPricingLabel(product: Product): string {
 export function RentalProductCard({ product, className }: Readonly<RentalProductCardProps>) {
   const { addToCart } = useInventory()
   const isAvailable = product.stockCount > 0
+  const requiresPerDayDateRange = product.rentalBillingType === 'PER_DAY'
 
   return (
     <article className={cn('overflow-hidden rounded-xl border border-border bg-card', className)}>
@@ -68,12 +69,20 @@ export function RentalProductCard({ product, className }: Readonly<RentalProduct
         <p className={cn('text-xs font-semibold', isAvailable ? 'text-green-700' : 'text-red-700')}>
           {isAvailable ? 'Available' : 'Fully booked'}
         </p>
-        <Button
-          className="w-full"
-          onClick={() => addToCart({ product })}
-        >
-          Add to Rental Cart
-        </Button>
+        {requiresPerDayDateRange ? (
+          <Button className="w-full" asChild>
+            <Link href={`/shop/${product.id}#rental-dates`}>
+              Select rental dates
+            </Link>
+          </Button>
+        ) : (
+          <Button
+            className="w-full"
+            onClick={() => addToCart({ product })}
+          >
+            Add to Rental Cart
+          </Button>
+        )}
       </div>
     </article>
   )

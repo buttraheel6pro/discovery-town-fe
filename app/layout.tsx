@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Inter, Barlow } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
+import { Toaster } from '@/components/ui/toaster'
 import { CalendarProvider } from '@/lib/calendar-store'
 import { ClientProvider } from '@/lib/client-store'
 import { InventoryProvider } from '@/lib/inventory-store'
@@ -65,6 +66,7 @@ export default function RootLayout({
             </InventoryProvider>
           </SchedulingProvider>
         </AppStoreProvider>
+        <Toaster />
         <Analytics />
       </body>
     </html>

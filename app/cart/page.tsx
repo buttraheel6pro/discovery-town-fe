@@ -94,7 +94,6 @@ export default function CartPage() {
     removeFromCart,
     setCouponDirect,
     removeCoupon,
-    setRentalDates,
     setFulfillmentMode,
     setDeliveryFee,
     setAcknowledgments,
@@ -575,7 +574,6 @@ export default function CartPage() {
                   <RentalCartSidebar
                     cart={cart}
                     rentalSubtotal={rentalSubtotal}
-                    onSetRentalDates={setRentalDates}
                     onSetFulfillmentMode={setFulfillmentMode}
                     onSetDeliveryFee={setDeliveryFee}
                     onSetAcknowledgments={setAcknowledgments}

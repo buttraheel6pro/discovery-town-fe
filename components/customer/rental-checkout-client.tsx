@@ -14,7 +14,7 @@ import { useInventory } from '@/lib/inventory-store'
 import { formatPrice } from '@/lib/utils'
 import type { Coupon, RentalAcknowledgmentType } from '@/lib/types'
 
-type CheckoutStep = 'dates' | 'fulfillment' | 'ack' | 'payment' | 'confirmation'
+type CheckoutStep = 'fulfillment' | 'ack' | 'payment' | 'confirmation'
 
 const ACK_OPTIONS: { id: RentalAcknowledgmentType; label: string }[] = [
   { id: 'MECHANICAL_BULL_SAFETY', label: 'Mechanical Bull: Safety acknowledgment' },
@@ -27,16 +27,16 @@ export function RentalCheckoutClient() {
   const router = useRouter()
   const {
     cart,
+    products,
     setCouponDirect,
     removeCoupon,
-    setRentalDates,
     setFulfillmentMode,
     setDeliveryFee,
     setAcknowledgments,
     addOrder,
     clearCart,
   } = useInventory()
-  const [step, setStep] = useState<CheckoutStep>('dates')
+  const [step, setStep] = useState<CheckoutStep>('fulfillment')
   const [cardNumber, setCardNumber] = useState('')
   const [expiry, setExpiry] = useState('')
   const [cvv, setCvv] = useState('')
@@ -48,6 +48,16 @@ export function RentalCheckoutClient() {
   const deliveryFee = cart.fulfillmentMode === 'DELIVERY' ? cart.deliveryFee ?? 0 : 0
   const deposit = cart.depositTotal ?? 0
   const total = subtotal - cart.couponDiscount + deliveryFee + deposit
+  const hasPerDayRentalInCart = useMemo(() => {
+    return cart.items.some((item) => {
+      const productId = typeof item.metadata?.productId === 'string' ? item.metadata.productId : null
+      if (!productId) return false
+      const product = products.find((entry) => entry.id === productId) ?? null
+      return product?.rentalBillingType === 'PER_DAY'
+    })
+  }, [cart.items, products])
+  const missingRequiredPerDayDates =
+    hasPerDayRentalInCart && (!cart.rentalStartAt || !cart.rentalEndAt)
 
   function applyCoupon(coupon: Coupon | null, discount: number) {
     if (!coupon || discount <= 0) {
@@ -58,7 +68,7 @@ export function RentalCheckoutClient() {
   }
 
   function placeOrder() {
-    if (!cardNumber || !expiry || !cvv) {
+    if (!cardNumber || !expiry || !cvv || missingRequiredPerDayDates) {
       return
     }
     const nowIso = new Date().toISOString()
@@ -103,30 +113,16 @@ export function RentalCheckoutClient() {
   return (
     <div className="space-y-6 rounded-xl border border-border bg-card p-6">
       <div className="flex flex-wrap gap-2 text-xs font-semibold text-muted-foreground">
-        <span>Step 1: Dates</span>
-        <span>Step 2: Fulfillment</span>
-        <span>Step 3: Acknowledgments</span>
-        <span>Step 4: Payment</span>
-        <span>Step 5: Confirmation</span>
+        <span>Step 1: Fulfillment</span>
+        <span>Step 2: Acknowledgments</span>
+        <span>Step 3: Payment</span>
+        <span>Step 4: Confirmation</span>
       </div>
 
-      {step === 'dates' ? (
-        <div className="space-y-4">
-          <h2 className="text-xl font-bold">Confirm rental dates</h2>
-          <Label>Start date</Label>
-          <Input
-            type="datetime-local"
-            value={cart.rentalStartAt?.slice(0, 16) ?? ''}
-            onChange={(event) => setRentalDates(event.target.value, cart.rentalEndAt ?? null)}
-          />
-          <Label>End date</Label>
-          <Input
-            type="datetime-local"
-            value={cart.rentalEndAt?.slice(0, 16) ?? ''}
-            onChange={(event) => setRentalDates(cart.rentalStartAt ?? null, event.target.value)}
-          />
-          <Button onClick={() => setStep('fulfillment')}>Continue</Button>
-        </div>
+      {missingRequiredPerDayDates ? (
+        <p className="rounded-md border border-border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+          Rental dates are not set. Go back to the rental product page and select your from/to dates.
+        </p>
       ) : null}
 
       {step === 'fulfillment' ? (
@@ -209,7 +205,9 @@ export function RentalCheckoutClient() {
             </div>
           </div>
           <p className="text-sm text-muted-foreground">Total: {formatPrice(total)}</p>
-          <Button onClick={placeOrder}>Place rental order</Button>
+          <Button onClick={placeOrder} disabled={missingRequiredPerDayDates}>
+            Place rental order
+          </Button>
         </div>
       ) : null}
 

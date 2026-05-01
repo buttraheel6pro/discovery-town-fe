@@ -13,6 +13,7 @@ import {
   draftToProductPatch,
   productToDraft,
 } from '@/components/admin/product-form'
+import { RentalProductForm } from '@/components/admin/rental-product-form'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/hooks/use-toast'
@@ -98,11 +99,6 @@ export default function AdminInventoryProductEditPage() {
     giftPriceUpperLimit: '0',
   })
 
-  useEffect(() => {
-    if (!product) return
-    setDraft(productToDraft(product, categories))
-  }, [product, categories])
-
   const categoryById = useMemo(() => {
     return new Map(productCategories.map((entry) => [entry.id, entry]))
   }, [productCategories])
@@ -110,6 +106,11 @@ export default function AdminInventoryProductEditPage() {
     if (!product) return false
     const category = categoryById.get(product.categoryId) ?? null
     return (category?.productType ?? '').toLowerCase() === 'gifts'
+  }, [categoryById, product])
+  const isRentalProduct = useMemo(() => {
+    if (!product) return false
+    const category = categoryById.get(product.categoryId) ?? null
+    return (category?.productType ?? '').toLowerCase() === 'rentals'
   }, [categoryById, product])
   const giftsRootCategory = useMemo(() => {
     return categories.find(
@@ -122,6 +123,25 @@ export default function AdminInventoryProductEditPage() {
     if (!giftsRootCategory) return []
     return categories.filter((category) => category.parentId === giftsRootCategory.id)
   }, [categories, giftsRootCategory])
+
+  const rentalsRootCategory = useMemo(() => {
+    return categories.find(
+      (category) =>
+        (category.productType ?? '').toLowerCase() === 'rentals' &&
+        (category.parentId == null || category.parentId === ''),
+    )
+  }, [categories])
+
+  const rentalsSubCategories = useMemo(() => {
+    if (!rentalsRootCategory) return []
+    return categories.filter((category) => category.parentId === rentalsRootCategory.id)
+  }, [categories, rentalsRootCategory])
+
+  useEffect(() => {
+    if (!product) return
+    const next = productToDraft(product, categories)
+    setDraft(isRentalProduct ? { ...next, isRental: true } : next)
+  }, [product, categories, isRentalProduct])
 
   useEffect(() => {
     if (!product || !isGiftProduct) return
@@ -201,6 +221,36 @@ export default function AdminInventoryProductEditPage() {
       return
     }
 
+    if (isRentalProduct) {
+      if (!draft.rentalBillingType) {
+        toast({
+          title: 'Rental billing required',
+          description: 'Select a rental billing type before saving a rental product.',
+          variant: 'destructive',
+        })
+        return
+      }
+      const patch = draftToProductPatch({ ...draft, isRental: true })
+      const resolvedRentalPrice =
+        draft.rentalBillingType === 'PER_DAY'
+          ? toNumberOrUndefined(draft.rentalPricePerDay)
+          : draft.rentalBillingType === 'PER_HALF_DAY'
+            ? toNumberOrUndefined(draft.rentalPricePerHalfDay)
+            : draft.rentalBillingType === 'PER_HOUR'
+              ? toNumberOrUndefined(draft.rentalPriceFirstHourPremium) ??
+                toNumberOrUndefined(draft.rentalPricePerHour)
+              : draft.rentalBillingType === 'PER_EVENT'
+                ? toNumberOrUndefined(draft.rentalPricePerEvent)
+                : undefined
+      updateProduct(product.id, {
+        ...patch,
+        price: resolvedRentalPrice ?? patch.price ?? product.price,
+        isRental: true,
+      })
+      router.push(returnTo)
+      return
+    }
+
     const wantsPromote = draft.canBeAddOn && !product.linkedAddOnId
     const patch = draftToProductPatch(draft)
     updateProduct(product.id, patch)
@@ -256,12 +306,18 @@ export default function AdminInventoryProductEditPage() {
         </Link>
         <div>
           <h1 className="text-3xl font-bold text-foreground">
-            {isGiftProduct ? 'Edit gift product' : 'Edit product'}
+            {isGiftProduct
+              ? 'Edit gift product'
+              : isRentalProduct
+                ? 'Edit rental product'
+                : 'Edit product'}
           </h1>
           <p className="text-muted-foreground mt-2">
             {isGiftProduct
               ? 'Update gift-specific details and linked selections.'
-              : 'Update product details, pricing, and inventory.'}
+              : isRentalProduct
+                ? 'Update rental billing, pricing, and fulfillment settings.'
+                : 'Update product details, pricing, and inventory.'}
           </p>
         </div>
       </div>
@@ -272,7 +328,9 @@ export default function AdminInventoryProductEditPage() {
           <CardDescription>
             {isGiftProduct
               ? 'Use the gifts form fields and save changes.'
-              : 'Update all fields and save changes.'}
+              : isRentalProduct
+                ? 'Use the rental form fields and save changes.'
+                : 'Update all fields and save changes.'}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -303,6 +361,13 @@ export default function AdminInventoryProductEditPage() {
                 }))}
               couponOptions={coupons.filter((coupon) => coupon.isActive)}
               occasions={occasions}
+            />
+          ) : isRentalProduct ? (
+            <RentalProductForm
+              value={{ ...draft, isRental: true }}
+              onChange={setDraft}
+              rentalsCategoryName={rentalsRootCategory?.name ?? 'Rentals'}
+              subCategories={rentalsSubCategories}
             />
           ) : (
             <ProductForm

@@ -22,7 +22,6 @@ const ACK_OPTIONS: { id: RentalAcknowledgmentType; label: string }[] = [
 interface RentalCartSidebarProps {
   readonly cart: CartState
   readonly rentalSubtotal: number
-  readonly onSetRentalDates: (start: string | null, end: string | null) => void
   readonly onSetFulfillmentMode: (mode: 'PICKUP' | 'DELIVERY' | null, address?: string | null) => void
   readonly onSetDeliveryFee: (fee: number) => void
   readonly onSetAcknowledgments: (acknowledgments: RentalAcknowledgmentType[]) => void
@@ -34,17 +33,9 @@ interface RentalCartSidebarProps {
   readonly onClose: () => void
 }
 
-function toInputDateTime(value: string | null | undefined): string {
-  if (!value) {
-    return ''
-  }
-  return value.slice(0, 16)
-}
-
 export function RentalCartSidebar({
   cart,
   rentalSubtotal,
-  onSetRentalDates,
   onSetFulfillmentMode,
   onSetDeliveryFee,
   onSetAcknowledgments,
@@ -75,32 +66,10 @@ export function RentalCartSidebar({
       </div>
       <Separator />
 
-      <div className="space-y-3">
-        <Label htmlFor="rental-start">Start</Label>
-        <Input
-          id="rental-start"
-          type="datetime-local"
-          value={toInputDateTime(cart.rentalStartAt)}
-          onChange={(event) => {
-            const nextStart = event.target.value || null
-            onSetRentalDates(nextStart, cart.rentalEndAt ?? null)
-          }}
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="rental-end">End</Label>
-        <Input
-          id="rental-end"
-          type="datetime-local"
-          value={toInputDateTime(cart.rentalEndAt)}
-          onChange={(event) => {
-            const nextEnd = event.target.value || null
-            onSetRentalDates(cart.rentalStartAt ?? null, nextEnd)
-          }}
-        />
-      </div>
       {!cart.rentalStartAt || !cart.rentalEndAt ? (
-        <p className="text-xs text-muted-foreground">Set your rental dates first.</p>
+        <p className="text-xs text-muted-foreground">
+          Select rental dates on the product page before checkout.
+        </p>
       ) : null}
 
       <div className="space-y-3">
@@ -205,7 +174,7 @@ export function RentalCartSidebar({
         className="h-11 w-full bg-accent font-bold text-accent-foreground hover:bg-accent/90"
         asChild
       >
-        <Link href="/shop/checkout">Proceed to rental checkout</Link>
+        <Link href="/rentals/checkout">Proceed to rental checkout</Link>
       </Button>
       <p className="text-center text-xs text-muted-foreground">
         Rental checkout follows the same checkout page as shop items.
