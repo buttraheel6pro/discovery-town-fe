@@ -6,6 +6,10 @@ import { Provider } from 'react-redux'
 
 import { useAppDispatch, useAppSelector } from '@/lib/redux/hooks'
 import {
+  inventoryStateForLocalStorage,
+  setLocalStorageJson,
+} from '@/lib/browser-local-storage-json'
+import {
   hydrateInventoryState,
   INVENTORY_STORAGE_KEY,
   selectInventoryState,
@@ -54,10 +58,7 @@ function SchedulingPersistenceBridge() {
       return
     }
 
-    window.localStorage.setItem(
-      SCHEDULING_STORAGE_KEY,
-      JSON.stringify(scheduling),
-    )
+    setLocalStorageJson(SCHEDULING_STORAGE_KEY, scheduling)
   }, [hydrated, scheduling])
 
   return null
@@ -94,10 +95,11 @@ function InventoryPersistenceBridge() {
       return
     }
 
-    window.localStorage.setItem(
-      INVENTORY_STORAGE_KEY,
-      JSON.stringify(inventory),
-    )
+    const wroteFullState = setLocalStorageJson(INVENTORY_STORAGE_KEY, inventory)
+    if (wroteFullState) {
+      return
+    }
+    setLocalStorageJson(INVENTORY_STORAGE_KEY, inventoryStateForLocalStorage(inventory))
   }, [hydrated, inventory])
 
   return null

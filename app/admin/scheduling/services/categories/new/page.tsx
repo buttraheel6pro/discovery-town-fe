@@ -122,6 +122,7 @@ function AdminSchedulingCategoryNewPageInner() {
   const [newAddOnId, setNewAddOnId] = useState<string>('')
   const [addOnModalOpen, setAddOnModalOpen] = useState(false)
   const [pendingAddOnQuantity, setPendingAddOnQuantity] = useState('1')
+  const [pendingAddOnIsFree, setPendingAddOnIsFree] = useState(false)
   const [pendingAddOnUnitPrice, setPendingAddOnUnitPrice] = useState('')
   const [pendingAddOnChargeFrequency, setPendingAddOnChargeFrequency] =
     useState<CategoryAddOnChargeFrequency>('ONE_TIME')
@@ -150,6 +151,7 @@ function AdminSchedulingCategoryNewPageInner() {
     }
     const selectedAddOn = addOnCatalog.find((entry) => entry.id === newAddOnId)
     setPendingAddOnQuantity('1')
+    setPendingAddOnIsFree(false)
     setPendingAddOnUnitPrice(
       selectedAddOn ? String(Number(selectedAddOn.price.toFixed(2))) : '',
     )
@@ -162,7 +164,7 @@ function AdminSchedulingCategoryNewPageInner() {
       return
     }
     const parsedQuantity = Number.parseInt(pendingAddOnQuantity, 10)
-    const parsedUnitPrice = Number.parseFloat(pendingAddOnUnitPrice)
+    const parsedUnitPrice = pendingAddOnIsFree ? 0 : Number.parseFloat(pendingAddOnUnitPrice)
     if (!Number.isFinite(parsedQuantity) || parsedQuantity < 1 || !Number.isFinite(parsedUnitPrice)) {
       return
     }
@@ -173,7 +175,7 @@ function AdminSchedulingCategoryNewPageInner() {
         {
           addOnId: newAddOnId,
           addOnName: selectedAddOnForModal?.name ?? undefined,
-          isFree: false,
+          isFree: pendingAddOnIsFree,
           quantity: String(parsedQuantity),
           unitPrice: Number(parsedUnitPrice).toFixed(2),
           chargeFrequency: pendingAddOnChargeFrequency,
@@ -643,7 +645,15 @@ function AdminSchedulingCategoryNewPageInner() {
               min={0}
               step="0.01"
               value={pendingAddOnUnitPrice}
+              disabled={pendingAddOnIsFree}
               onChange={(event) => setPendingAddOnUnitPrice(event.target.value)}
+            />
+          </div>
+          <div className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2">
+            <span className="text-sm font-medium text-foreground">Free</span>
+            <Switch
+              checked={pendingAddOnIsFree}
+              onCheckedChange={(value) => setPendingAddOnIsFree(value)}
             />
           </div>
           <div className="space-y-2">

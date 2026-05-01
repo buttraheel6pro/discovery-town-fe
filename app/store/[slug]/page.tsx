@@ -2,7 +2,7 @@
 'use client'
 
 import { use, useMemo } from 'react'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 
 import { CustomerFooter } from '@/components/customer/footer'
 import { HorizontalScrollSection } from '@/components/customer/horizontal-scroll-section'
@@ -56,6 +56,9 @@ export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) 
   const resolvedParams = use(params)
   const { products, productCategories } = useInventory()
   const productType = fromSlug(resolvedParams.slug)
+  if (productType === 'rentals') {
+    redirect('/rentals')
+  }
   const validProductTypes = new Set(productCategories.map((category) => category.productType ?? 'shop'))
 
   if (!validProductTypes.has(productType)) {

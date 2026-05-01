@@ -5,6 +5,7 @@
 import Link from 'next/link'
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { ArrowLeft } from 'lucide-react'
 
 import { CrudModal } from '@/components/admin/crud-modal'
 import { EventTypeSelector } from '@/components/admin/event-type-selector'
@@ -250,6 +251,7 @@ function AdminSchedulingServiceNewPageInner() {
   const [newAddOnId, setNewAddOnId] = useState<string>('')
   const [addOnModalOpen, setAddOnModalOpen] = useState(false)
   const [pendingAddOnQuantity, setPendingAddOnQuantity] = useState('1')
+  const [pendingAddOnIsFree, setPendingAddOnIsFree] = useState(false)
   const [pendingAddOnUnitPrice, setPendingAddOnUnitPrice] = useState('')
   const [pendingAddOnChargeFrequency, setPendingAddOnChargeFrequency] =
     useState<CategoryAddOnChargeFrequency>('ONE_TIME')
@@ -284,6 +286,7 @@ function AdminSchedulingServiceNewPageInner() {
     }
     const selectedAddOn = addOnCatalog.find((entry) => entry.id === newAddOnId)
     setPendingAddOnQuantity('1')
+    setPendingAddOnIsFree(false)
     setPendingAddOnUnitPrice(
       selectedAddOn ? String(Number(selectedAddOn.price.toFixed(2))) : '',
     )
@@ -296,7 +299,7 @@ function AdminSchedulingServiceNewPageInner() {
       return
     }
     const parsedQuantity = Number.parseInt(pendingAddOnQuantity, 10)
-    const parsedUnitPrice = Number.parseFloat(pendingAddOnUnitPrice)
+    const parsedUnitPrice = pendingAddOnIsFree ? 0 : Number.parseFloat(pendingAddOnUnitPrice)
     if (!Number.isFinite(parsedQuantity) || parsedQuantity < 1 || !Number.isFinite(parsedUnitPrice)) {
       return
     }
@@ -307,7 +310,7 @@ function AdminSchedulingServiceNewPageInner() {
         {
           addOnId: newAddOnId,
           addOnName: selectedAddOnForModal?.name ?? undefined,
-          isFree: false,
+          isFree: pendingAddOnIsFree,
           quantity: String(parsedQuantity),
           unitPrice: Number(parsedUnitPrice).toFixed(2),
           chargeFrequency: pendingAddOnChargeFrequency,
@@ -469,7 +472,13 @@ function AdminSchedulingServiceNewPageInner() {
 
   return (
     <div className="max-w-5xl space-y-6">
-      <div>
+      <div className="space-y-3">
+        <Link href={returnTo}>
+          <Button type="button" variant="outline" className="gap-2">
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </Button>
+        </Link>
         <h1 className="text-3xl font-bold text-foreground">
           {isEditing ? 'Edit event' : 'New event'}
         </h1>
@@ -1101,7 +1110,15 @@ function AdminSchedulingServiceNewPageInner() {
               min={0}
               step="0.01"
               value={pendingAddOnUnitPrice}
+              disabled={pendingAddOnIsFree}
               onChange={(event) => setPendingAddOnUnitPrice(event.target.value)}
+            />
+          </div>
+          <div className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2">
+            <span className="text-sm font-medium text-foreground">Free</span>
+            <Switch
+              checked={pendingAddOnIsFree}
+              onCheckedChange={(value) => setPendingAddOnIsFree(value)}
             />
           </div>
           <div className="space-y-2">

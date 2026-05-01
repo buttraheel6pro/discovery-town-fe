@@ -14,7 +14,12 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import type { Product, ProductCategory } from '@/lib/types'
+import type { Product, ProductCategory, RentalBillingType } from '@/lib/types'
+
+export interface HourlyTierDraft {
+  hours: string
+  price: string
+}
 
 export type ProductDraft = {
   name: string
@@ -36,6 +41,20 @@ export type ProductDraft = {
   isActive: boolean
   imageUrl: string
   canBeAddOn: boolean
+  isRental: boolean
+  rentalBillingType: RentalBillingType | ''
+  rentalPricePerDay: string
+  rentalPricePerHalfDay: string
+  rentalPricePerHour: string
+  rentalPricePerEvent: string
+  rentalPriceFirstHourPremium: string
+  rentalMinHours: string
+  rentalHourlyTierPrices: HourlyTierDraft[]
+  requiresDelivery: boolean
+  requiresStaff: boolean
+  setupMinutes: string
+  maxRentalDays: string
+  depositAmount: string
 }
 
 export interface ProductFormProps {
@@ -75,6 +94,25 @@ export function productToDraft(product: Product, categories: ProductCategory[]):
     isActive: product.isActive ?? true,
     imageUrl: product.imageUrl ?? '',
     canBeAddOn: false,
+    isRental: product.isRental ?? false,
+    rentalBillingType: product.rentalBillingType ?? '',
+    rentalPricePerDay: product.rentalPricePerDay != null ? String(product.rentalPricePerDay) : '',
+    rentalPricePerHalfDay:
+      product.rentalPricePerHalfDay != null ? String(product.rentalPricePerHalfDay) : '',
+    rentalPricePerHour: product.pricePerHour != null ? String(product.pricePerHour) : '',
+    rentalPricePerEvent: product.pricePerEvent != null ? String(product.pricePerEvent) : '',
+    rentalPriceFirstHourPremium:
+      product.priceFirstHourPremium != null ? String(product.priceFirstHourPremium) : '',
+    rentalMinHours: product.minHours != null ? String(product.minHours) : '',
+    rentalHourlyTierPrices: (product.rentalHourlyTierPrices ?? []).map((tier) => ({
+      hours: String(tier.hours),
+      price: String(tier.price),
+    })),
+    requiresDelivery: product.requiresDelivery ?? false,
+    requiresStaff: product.requiresStaff ?? false,
+    setupMinutes: product.setupMinutes != null ? String(product.setupMinutes) : '',
+    maxRentalDays: product.maxRentalDays != null ? String(product.maxRentalDays) : '',
+    depositAmount: product.depositAmount != null ? String(product.depositAmount) : '',
   }
 }
 
@@ -84,8 +122,26 @@ export function draftToProductPatch(draft: ProductDraft): Partial<Product> {
   const compareAtPrice = toNumberOrEmpty(draft.compareAtPrice)
   const costPrice = toNumberOrEmpty(draft.costPrice)
   const taxRate = toNumberOrEmpty(draft.taxRate)
+  const rentalPricePerDay = toNumberOrEmpty(draft.rentalPricePerDay)
+  const rentalPricePerHalfDay = toNumberOrEmpty(draft.rentalPricePerHalfDay)
+  const rentalPricePerHour = toNumberOrEmpty(draft.rentalPricePerHour)
+  const rentalPricePerEvent = toNumberOrEmpty(draft.rentalPricePerEvent)
+  const rentalPriceFirstHourPremium = toNumberOrEmpty(draft.rentalPriceFirstHourPremium)
+  const depositAmount = toNumberOrEmpty(draft.depositAmount)
+  const rentalMinHours = Number.parseInt(draft.rentalMinHours || '0', 10)
+  const rentalHourlyTierPrices = draft.rentalHourlyTierPrices
+    .map((tier) => {
+      const hours = Number.parseInt(tier.hours.trim(), 10)
+      const price = Number.parseFloat(tier.price.trim())
+      if (!Number.isFinite(hours) || hours < 2) return null
+      if (!Number.isFinite(price) || price < 0) return null
+      return { hours, price }
+    })
+    .filter((tier): tier is { hours: number; price: number } => Boolean(tier))
   const stockCount = Number.parseInt(draft.stockCount || '0', 10)
   const lowStockThreshold = Number.parseInt(draft.lowStockThreshold || '0', 10)
+  const setupMinutes = Number.parseInt(draft.setupMinutes || '0', 10)
+  const maxRentalDays = Number.parseInt(draft.maxRentalDays || '0', 10)
 
   const base: Partial<Product> = {
     name: draft.name.trim(),
@@ -106,6 +162,22 @@ export function draftToProductPatch(draft: ProductDraft): Partial<Product> {
     availablePOS: draft.availablePOS,
     isActive: draft.isActive,
     imageUrl: draft.imageUrl.trim() || undefined,
+    isRental: draft.isRental,
+    rentalBillingType: draft.rentalBillingType || undefined,
+    rentalPricePerDay: rentalPricePerDay ?? undefined,
+    rentalPricePerHalfDay: rentalPricePerHalfDay ?? undefined,
+    pricePerHour: rentalPricePerHour ?? undefined,
+    pricePerEvent: rentalPricePerEvent ?? undefined,
+    priceFirstHourPremium: rentalPriceFirstHourPremium ?? undefined,
+    minHours:
+      Number.isFinite(rentalMinHours) && rentalMinHours > 0 ? rentalMinHours : undefined,
+    rentalHourlyTierPrices:
+      rentalHourlyTierPrices.length > 0 ? rentalHourlyTierPrices : undefined,
+    requiresDelivery: draft.requiresDelivery,
+    requiresStaff: draft.requiresStaff,
+    setupMinutes: Number.isFinite(setupMinutes) && setupMinutes > 0 ? setupMinutes : undefined,
+    maxRentalDays: Number.isFinite(maxRentalDays) && maxRentalDays > 0 ? maxRentalDays : undefined,
+    depositAmount: depositAmount ?? undefined,
   }
   if (draft.canBeAddOn) {
     return { ...base, canBeAddOn: true }
@@ -497,6 +569,156 @@ export function ProductForm({
             ) : null}
           </>
         )}
+      </div>
+
+      <div className="space-y-3 rounded-xl border border-border bg-card p-4">
+        <p className="text-sm font-semibold text-foreground">Rental settings</p>
+        <div className="flex items-center justify-between rounded-lg border border-border p-3">
+          <Label htmlFor="prod-is-rental">Rental product</Label>
+          <Switch
+            id="prod-is-rental"
+            checked={value.isRental}
+            onCheckedChange={(next) => set('isRental', next)}
+            disabled={disabled}
+          />
+        </div>
+
+        {value.isRental ? (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="prod-rental-billing">Rental billing type</Label>
+              <Select
+                value={value.rentalBillingType}
+                onValueChange={(next) => set('rentalBillingType', next as RentalBillingType)}
+                disabled={disabled}
+              >
+                <SelectTrigger id="prod-rental-billing">
+                  <SelectValue placeholder="Select rental billing type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="PER_DAY">Per day</SelectItem>
+                  <SelectItem value="PER_HALF_DAY">Per half day</SelectItem>
+                  <SelectItem value="PER_HOUR">Per hour</SelectItem>
+                  <SelectItem value="PER_EVENT">Per event</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              {(value.rentalBillingType === 'PER_DAY' || value.rentalBillingType === '') && (
+                <div className="space-y-2">
+                  <Label htmlFor="prod-rental-per-day">Rental price per day</Label>
+                  <Input
+                    id="prod-rental-per-day"
+                    type="number"
+                    inputMode="decimal"
+                    step="0.01"
+                    value={value.rentalPricePerDay}
+                    onChange={(e) => set('rentalPricePerDay', e.target.value)}
+                    disabled={disabled}
+                  />
+                </div>
+              )}
+              {(value.rentalBillingType === 'PER_DAY' || value.rentalBillingType === 'PER_HALF_DAY') && (
+                <div className="space-y-2">
+                  <Label htmlFor="prod-rental-per-half-day">Rental price per half day</Label>
+                  <Input
+                    id="prod-rental-per-half-day"
+                    type="number"
+                    inputMode="decimal"
+                    step="0.01"
+                    value={value.rentalPricePerHalfDay}
+                    onChange={(e) => set('rentalPricePerHalfDay', e.target.value)}
+                    disabled={disabled}
+                  />
+                </div>
+              )}
+              {value.rentalBillingType === 'PER_HOUR' && (
+                <div className="space-y-2">
+                  <Label htmlFor="prod-rental-per-hour">Rental price per hour</Label>
+                  <Input
+                    id="prod-rental-per-hour"
+                    type="number"
+                    inputMode="decimal"
+                    step="0.01"
+                    value={value.rentalPricePerHour}
+                    onChange={(e) => set('rentalPricePerHour', e.target.value)}
+                    disabled={disabled}
+                  />
+                </div>
+              )}
+              {value.rentalBillingType === 'PER_EVENT' && (
+                <div className="space-y-2">
+                  <Label htmlFor="prod-rental-per-event">Rental price per event</Label>
+                  <Input
+                    id="prod-rental-per-event"
+                    type="number"
+                    inputMode="decimal"
+                    step="0.01"
+                    value={value.rentalPricePerEvent}
+                    onChange={(e) => set('rentalPricePerEvent', e.target.value)}
+                    disabled={disabled}
+                  />
+                </div>
+              )}
+              <div className="space-y-2">
+                <Label htmlFor="prod-rental-setup-minutes">Setup minutes</Label>
+                <Input
+                  id="prod-rental-setup-minutes"
+                  type="number"
+                  step="1"
+                  value={value.setupMinutes}
+                  onChange={(e) => set('setupMinutes', e.target.value)}
+                  disabled={disabled}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="prod-rental-max-days">Max rental days</Label>
+                <Input
+                  id="prod-rental-max-days"
+                  type="number"
+                  step="1"
+                  value={value.maxRentalDays}
+                  onChange={(e) => set('maxRentalDays', e.target.value)}
+                  disabled={disabled}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="prod-rental-deposit">Deposit amount</Label>
+                <Input
+                  id="prod-rental-deposit"
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  value={value.depositAmount}
+                  onChange={(e) => set('depositAmount', e.target.value)}
+                  disabled={disabled}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="flex items-center justify-between rounded-lg border border-border p-3">
+                <Label htmlFor="prod-rental-requires-delivery">Requires delivery</Label>
+                <Switch
+                  id="prod-rental-requires-delivery"
+                  checked={value.requiresDelivery}
+                  onCheckedChange={(next) => set('requiresDelivery', next)}
+                  disabled={disabled}
+                />
+              </div>
+              <div className="flex items-center justify-between rounded-lg border border-border p-3">
+                <Label htmlFor="prod-rental-requires-staff">Requires staff</Label>
+                <Switch
+                  id="prod-rental-requires-staff"
+                  checked={value.requiresStaff}
+                  onCheckedChange={(next) => set('requiresStaff', next)}
+                  disabled={disabled}
+                />
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   )

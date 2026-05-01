@@ -1,7 +1,12 @@
 /** Centralized API constants for endpoints and default headers. */
 export const API_PATHS = {
   login: '/auth/login',
+  me: '/auth/me',
   refresh: '/auth/refresh',
+  locations: '/locations',
+  services: '/services',
+  serviceCategories: '/service-categories',
+  tags: '/tags',
 } as const
 
 export const API_HEADERS = {

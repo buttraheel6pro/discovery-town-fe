@@ -6,6 +6,7 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from '
 import {
   coupons as baseCoupons,
   orders as baseOrders,
+  staffAssignments as seedStaffAssignments,
   shopCoupons,
   shopOrders,
   shopStockMovements,
@@ -36,7 +37,10 @@ import type {
   Order,
   Product,
   ProductCategory,
+  RentalAcknowledgmentType,
   SavedPaymentMethod,
+  StaffAssignment,
+  StaffAssignmentStatus,
   StockMovement,
 } from '@/lib/types'
 
@@ -51,6 +55,13 @@ function emptyCart(): CartState {
     couponDiscount: 0,
     contactId: null,
     contactName: null,
+    rentalStartAt: null,
+    rentalEndAt: null,
+    fulfillmentMode: null,
+    deliveryAddress: null,
+    deliveryFee: 0,
+    depositTotal: 0,
+    acknowledgments: [],
   }
 }
 
@@ -74,8 +85,35 @@ function loadCartFromStorage(storageKey: string): CartState {
         : 0
     const contactId = typeof parsed.contactId === 'string' ? parsed.contactId : null
     const contactName = typeof parsed.contactName === 'string' ? parsed.contactName : null
+    const rentalStartAt = typeof parsed.rentalStartAt === 'string' ? parsed.rentalStartAt : null
+    const rentalEndAt = typeof parsed.rentalEndAt === 'string' ? parsed.rentalEndAt : null
+    const fulfillmentMode =
+      parsed.fulfillmentMode === 'PICKUP' || parsed.fulfillmentMode === 'DELIVERY'
+        ? parsed.fulfillmentMode
+        : null
+    const deliveryAddress = typeof parsed.deliveryAddress === 'string' ? parsed.deliveryAddress : null
+    const deliveryFee =
+      typeof parsed.deliveryFee === 'number' && Number.isFinite(parsed.deliveryFee) ? parsed.deliveryFee : 0
+    const depositTotal =
+      typeof parsed.depositTotal === 'number' && Number.isFinite(parsed.depositTotal) ? parsed.depositTotal : 0
+    const acknowledgments = Array.isArray(parsed.acknowledgments)
+      ? (parsed.acknowledgments.filter((entry): entry is RentalAcknowledgmentType => typeof entry === 'string') as RentalAcknowledgmentType[])
+      : []
 
-    return { items, couponCode, couponDiscount, contactId, contactName }
+    return {
+      items,
+      couponCode,
+      couponDiscount,
+      contactId,
+      contactName,
+      rentalStartAt,
+      rentalEndAt,
+      fulfillmentMode,
+      deliveryAddress,
+      deliveryFee,
+      depositTotal,
+      acknowledgments,
+    }
   } catch {
     return emptyCart()
   }
@@ -119,6 +157,7 @@ interface InventoryStore {
   bookingAddOns: AddOn[]
   stockMovements: StockMovement[]
   orders: Order[]
+  staffAssignments: StaffAssignment[]
   coupons: Coupon[]
   /** Consumer/shop cart (persisted). */
   cart: CartState
@@ -165,6 +204,13 @@ interface InventoryStore {
   ) => void
 
   addOrder: (o: Order) => void
+  confirmRentalOrder: (id: string) => void
+  markRentalOut: (id: string) => void
+  markRentalReturned: (id: string) => void
+  reportRentalDamage: (id: string, capturedAmount: number, notes: string) => void
+  markInvitationDesignComplete: (id: string) => void
+  assignStaffToAssignment: (assignmentId: string, staffId: string, notes?: string) => void
+  updateStaffAssignmentStatus: (assignmentId: string, status: StaffAssignmentStatus) => void
   fulfillOrder: (id: string) => void
   cancelOrder: (id: string, reason: string) => void
   refundOrder: (id: string, amount: number, reason: string) => void
@@ -189,12 +235,18 @@ interface InventoryStore {
     metadata?: Record<string, unknown>
   }) => void
   removeFromCart: (cartItemId: string) => void
+  updateCartItem: (cartItemId: string, updates: Partial<CartItem>) => void
   updateCartQuantity: (cartItemId: string, quantity: number) => void
   applyCoupon: (code: string) => void
   /** Apply a code + discount already validated (e.g. shared CouponPanel). */
   setCouponDirect: (code: string, discount: number) => void
   removeCoupon: () => void
   clearCart: () => void
+  setRentalDates: (start: string | null, end: string | null) => void
+  setFulfillmentMode: (mode: 'PICKUP' | 'DELIVERY' | null, address?: string | null) => void
+  setDeliveryFee: (fee: number) => void
+  setDepositTotal: (amount: number) => void
+  setAcknowledgments: (acknowledgments: RentalAcknowledgmentType[]) => void
   attachCustomer: (contactId: string, contactName: string) => void
   detachCustomer: () => void
 
@@ -230,6 +282,9 @@ export function InventoryProvider({
     ...baseOrders.map((o) => ({ ...o })),
     ...shopOrders.map((o) => ({ ...o })),
   ])
+  const [staffAssignments, setStaffAssignments] = useState<StaffAssignment[]>(() =>
+    seedStaffAssignments.map((assignment) => ({ ...assignment })),
+  )
   const [coupons, setCoupons] = useState<Coupon[]>(() => [
     ...baseCoupons.map((c) => ({ ...c })),
     ...shopCoupons.map((c) => ({ ...c })),
@@ -528,6 +583,98 @@ export function InventoryProvider({
       if (o.couponCode) incrementRedemption(o.couponCode)
     }
 
+    function confirmRentalOrder(id: string) {
+      const nowIso = new Date().toISOString()
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.id === id
+            ? { ...o, rentalStatus: 'CONFIRMED', status: 'PROCESSING', updatedAt: nowIso }
+            : o,
+        ),
+      )
+    }
+
+    function markRentalOut(id: string) {
+      const nowIso = new Date().toISOString()
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.id === id ? { ...o, rentalStatus: 'OUT', status: 'PROCESSING', updatedAt: nowIso } : o,
+        ),
+      )
+    }
+
+    function markRentalReturned(id: string) {
+      const nowIso = new Date().toISOString()
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.id === id
+            ? { ...o, rentalStatus: 'RETURNED', status: 'DELIVERED', updatedAt: nowIso }
+            : o,
+        ),
+      )
+    }
+
+    function reportRentalDamage(id: string, capturedAmount: number, notes: string) {
+      const nowIso = new Date().toISOString()
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.id === id
+            ? {
+                ...o,
+                rentalStatus: 'COMPLETED',
+                status: 'DELIVERED',
+                depositCapturedAmount: Math.max(0, capturedAmount),
+                damageNotes: notes,
+                updatedAt: nowIso,
+              }
+            : o,
+        ),
+      )
+    }
+
+    function markInvitationDesignComplete(id: string) {
+      const nowIso = new Date().toISOString()
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.id === id
+            ? { ...o, designCompletedAt: nowIso, status: 'DELIVERED', updatedAt: nowIso }
+            : o,
+        ),
+      )
+    }
+
+    function assignStaffToAssignment(assignmentId: string, staffId: string, notes?: string) {
+      const nowIso = new Date().toISOString()
+      setStaffAssignments((prev) =>
+        prev.map((assignment) =>
+          assignment.id === assignmentId
+            ? {
+                ...assignment,
+                staffId,
+                status: 'CONFIRMED',
+                notes: notes != null && notes.length > 0 ? notes : assignment.notes,
+                updatedAt: nowIso,
+              }
+            : assignment,
+        ),
+      )
+    }
+
+    function updateStaffAssignmentStatus(assignmentId: string, status: StaffAssignmentStatus) {
+      const nowIso = new Date().toISOString()
+      setStaffAssignments((prev) =>
+        prev.map((assignment) =>
+          assignment.id === assignmentId
+            ? {
+                ...assignment,
+                status,
+                updatedAt: nowIso,
+              }
+            : assignment,
+        ),
+      )
+    }
+
     function fulfillOrder(id: string) {
       const nowIso = new Date().toISOString()
       setOrders((prev) =>
@@ -668,6 +815,15 @@ export function InventoryProvider({
       setCart((prev) => ({ ...prev, items: prev.items.filter((i) => i.id !== cartItemId) }))
     }
 
+    function updateCartItem(cartItemId: string, updates: Partial<CartItem>) {
+      setCart((prev) => ({
+        ...prev,
+        items: prev.items.map((item) =>
+          item.id === cartItemId ? { ...item, ...updates } : item,
+        ),
+      }))
+    }
+
     function removeFromPosCart(cartItemId: string) {
       setPosCart((prev) => ({ ...prev, items: prev.items.filter((i) => i.id !== cartItemId) }))
     }
@@ -726,6 +882,30 @@ export function InventoryProvider({
       }
     }
 
+    function setRentalDates(start: string | null, end: string | null) {
+      setCart((prev) => ({ ...prev, rentalStartAt: start, rentalEndAt: end }))
+    }
+
+    function setFulfillmentMode(mode: 'PICKUP' | 'DELIVERY' | null, address?: string | null) {
+      setCart((prev) => ({
+        ...prev,
+        fulfillmentMode: mode,
+        deliveryAddress: mode === 'DELIVERY' ? (address ?? prev.deliveryAddress ?? '') : null,
+      }))
+    }
+
+    function setDeliveryFee(fee: number) {
+      setCart((prev) => ({ ...prev, deliveryFee: Math.max(0, fee) }))
+    }
+
+    function setDepositTotal(amount: number) {
+      setCart((prev) => ({ ...prev, depositTotal: Math.max(0, amount) }))
+    }
+
+    function setAcknowledgments(acknowledgments: RentalAcknowledgmentType[]) {
+      setCart((prev) => ({ ...prev, acknowledgments }))
+    }
+
     function clearPosCart() {
       setPosCart(emptyCart())
       if (typeof window !== 'undefined') {
@@ -773,6 +953,7 @@ export function InventoryProvider({
       bookingAddOns,
       stockMovements,
       orders,
+      staffAssignments,
       coupons,
       cart,
       posCart,
@@ -791,6 +972,13 @@ export function InventoryProvider({
       promoteProductToAddOn,
       adjustStock,
       addOrder,
+      confirmRentalOrder,
+      markRentalOut,
+      markRentalReturned,
+      reportRentalDamage,
+      markInvitationDesignComplete,
+      assignStaffToAssignment,
+      updateStaffAssignmentStatus,
       fulfillOrder,
       cancelOrder,
       refundOrder,
@@ -802,11 +990,17 @@ export function InventoryProvider({
       addToCart,
       addCustomCartItem,
       removeFromCart,
+      updateCartItem,
       updateCartQuantity,
       applyCoupon,
       setCouponDirect,
       removeCoupon,
       clearCart,
+      setRentalDates,
+      setFulfillmentMode,
+      setDeliveryFee,
+      setDepositTotal,
+      setAcknowledgments,
       attachCustomer,
       detachCustomer,
       addToPosCart,
@@ -829,6 +1023,7 @@ export function InventoryProvider({
     posCart,
     productCategories,
     products,
+    staffAssignments,
     stockMovements,
   ])
 

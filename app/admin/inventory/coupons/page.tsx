@@ -2,6 +2,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import Link from 'next/link'
 import { Copy, Plus } from 'lucide-react'
 
 import { CrudModal } from '@/components/admin/crud-modal'
@@ -38,12 +39,11 @@ function defaultCouponDraft(): CouponDraft {
 }
 
 export default function AdminInventoryCouponsPage() {
-  const { coupons, addCoupon, updateCoupon, deleteCoupon, orders } = useInventory()
+  const { coupons, updateCoupon, deleteCoupon, orders } = useInventory()
   const { toast } = useToast()
 
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<Coupon | null>(null)
-  const [createOpen, setCreateOpen] = useState(false)
   const [draft, setDraft] = useState<CouponDraft>(defaultCouponDraft)
 
   const filtered = useMemo(() => {
@@ -58,35 +58,6 @@ export default function AdminInventoryCouponsPage() {
     if (!selected) return []
     return orders.filter((o) => (o.couponCode ?? '').toUpperCase() === selected.code.toUpperCase())
   }, [orders, selected])
-
-  function openCreate() {
-    setDraft(defaultCouponDraft())
-    setCreateOpen(true)
-  }
-
-  function persistCreate() {
-    const patch = draftToCouponPatch(draft)
-    const created: Coupon = {
-      id: `coupon-admin-${Date.now()}`,
-      tenantId: 'tenant-1',
-      code: patch.code ?? 'NEW',
-      name: patch.name ?? 'New coupon',
-      description: patch.description,
-      type: patch.type ?? 'PERCENTAGE',
-      value: patch.value ?? 0,
-      usageLimit: patch.usageLimit,
-      usageCount: 0,
-      validFrom: patch.validFrom ?? new Date().toISOString(),
-      validUntil: patch.validUntil ?? new Date().toISOString(),
-      requiresSubscription: patch.requiresSubscription ?? false,
-      applicableTo: patch.applicableTo ?? ['SHOP'],
-      isActive: patch.isActive ?? true,
-      perContactLimit: patch.perContactLimit,
-      restrictToTagId: patch.restrictToTagId,
-    }
-    addCoupon(created)
-    setCreateOpen(false)
-  }
 
   function openEdit(c: Coupon) {
     setSelected(c)
@@ -115,10 +86,12 @@ export default function AdminInventoryCouponsPage() {
           <h1 className="text-3xl font-bold text-foreground">Coupons</h1>
           <p className="text-muted-foreground mt-2">Create and manage discount codes.</p>
         </div>
-        <Button onClick={openCreate} className="gap-2">
-          <Plus className="h-4 w-4" />
-          New coupon
-        </Button>
+        <Link href="/admin/inventory/coupons/new">
+          <Button className="gap-2">
+            <Plus className="h-4 w-4" />
+            New coupon
+          </Button>
+        </Link>
       </div>
 
       <Card>
@@ -189,26 +162,6 @@ export default function AdminInventoryCouponsPage() {
           </Table>
         </CardContent>
       </Card>
-
-      <CrudModal
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        title="New coupon"
-        description="Create a coupon code for shop or booking discounts."
-        size="lg"
-        variant="create"
-        scrollMode="dialog"
-        footer={
-          <>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={persistCreate}>Create</Button>
-          </>
-        }
-      >
-        <CouponForm value={draft} onChange={setDraft} />
-      </CrudModal>
 
       <CrudModal
         open={selected !== null}

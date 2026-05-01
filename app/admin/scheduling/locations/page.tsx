@@ -18,7 +18,6 @@ import {
 } from '@/components/ui/table'
 import { useCalendar } from '@/lib/calendar-store'
 import { useLocations } from '@/lib/location-store'
-import { newAdminEntityId } from '@/lib/scheduling-admin-builders'
 import { useScheduling } from '@/lib/scheduling-store'
 import { cn } from '@/lib/utils'
 import type { Location, OperatingHours } from '@/lib/types'
@@ -40,6 +39,7 @@ function locationToDraft(loc: Location): LocationDraft {
     name: loc.name ?? '',
     address: loc.address ?? '',
     city: loc.city ?? '',
+    country: loc.country ?? '',
     postcode: loc.postcode ?? '',
     timezone: loc.timezone ?? 'Europe/London',
     isActive: loc.isActive ?? true,
@@ -55,6 +55,7 @@ function draftToPatch(draft: LocationDraft): Partial<Location> {
     name: draft.name.trim(),
     address: draft.address.trim(),
     city: draft.city.trim(),
+    country: draft.country.trim(),
     postcode: draft.postcode.trim(),
     timezone: draft.timezone.trim(),
     isActive: draft.isActive,
@@ -68,19 +69,48 @@ function draftToPatch(draft: LocationDraft): Partial<Location> {
   }
 }
 
+function areOperatingHoursEqual(a: OperatingHours[], b: OperatingHours[]): boolean {
+  if (a.length !== b.length) {
+    return false
+  }
+
+  for (let index = 0; index < a.length; index += 1) {
+    const left = a[index]
+    const right = b[index]
+    if (
+      left.dayOfWeek !== right.dayOfWeek ||
+      left.openTime !== right.openTime ||
+      left.closeTime !== right.closeTime ||
+      left.isClosed !== right.isClosed
+    ) {
+      return false
+    }
+  }
+
+  return true
+}
+
 export default function AdminSchedulingLocationsPage() {
-  const { locations, addLocation, updateLocation, deleteLocation } = useLocations()
+  const { locations, isLoading, loadError, addLocation, updateLocation, deleteLocation } =
+    useLocations()
   const { services, slots } = useScheduling()
   const { inquiries } = useCalendar()
   const [search, setSearch] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [selected, setSelected] = useState<Location | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [isCreating, setIsCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
+  const [isUpdating, setIsUpdating] = useState(false)
+  const [updateError, setUpdateError] = useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const [draft, setDraft] = useState<LocationDraft>({
     name: '',
     address: '',
     city: '',
+    country: '',
     postcode: '',
     timezone: 'Europe/London',
     isActive: true,
@@ -89,8 +119,6 @@ export default function AdminSchedulingLocationsPage() {
     imageUrl: '',
     operatingHours: defaultOperatingHours(),
   })
-
-  const tenantId = locations[0]?.tenantId ?? 'tenant-1'
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -117,10 +145,12 @@ export default function AdminSchedulingLocationsPage() {
   }, [services, slots, inquiries])
 
   function openCreate() {
+    setCreateError(null)
     setDraft({
       name: '',
       address: '',
       city: '',
+      country: '',
       postcode: '',
       timezone: 'Europe/London',
       isActive: true,
@@ -133,57 +163,152 @@ export default function AdminSchedulingLocationsPage() {
   }
 
   function openEdit(loc: Location) {
+    setUpdateError(null)
     setSelected(loc)
     setDraft(locationToDraft(loc))
   }
 
-  function persistCreate() {
+  async function persistCreate(): Promise<void> {
     const patch = draftToPatch(draft)
-    if (!patch.name || !patch.address || !patch.city || !patch.postcode || !patch.timezone) return
-
-    const now = new Date().toISOString()
-    const created: Location = {
-      id: newAdminEntityId('loc'),
-      tenantId,
-      name: patch.name,
-      address: patch.address,
-      city: patch.city,
-      postcode: patch.postcode,
-      timezone: patch.timezone,
-      isActive: patch.isActive ?? true,
-      phone: patch.phone,
-      email: patch.email,
-      settings: patch.settings ?? { operatingHours: defaultOperatingHours() },
-      imageUrl: patch.imageUrl,
-      createdAt: now,
-      updatedAt: now,
+    if (
+      !patch.name ||
+      !patch.address ||
+      !patch.city ||
+      !patch.country ||
+      !patch.postcode ||
+      !patch.timezone
+    ) {
+      return
     }
-    addLocation(created)
-    setCreateOpen(false)
+
+    setIsCreating(true)
+    setCreateError(null)
+
+    try {
+      await addLocation({
+        name: patch.name,
+        address: patch.address,
+        city: patch.city,
+        country: patch.country,
+        timezone: patch.timezone,
+        phone: patch.phone,
+        email: patch.email,
+        imageUrl: patch.imageUrl,
+        isActive: patch.isActive ?? true,
+        settings: patch.settings ?? {},
+      })
+      setCreateOpen(false)
+    } catch (error) {
+      setCreateError(error instanceof Error ? error.message : 'Failed to create location')
+    } finally {
+      setIsCreating(false)
+    }
   }
 
-  function persistEdit() {
+  async function persistEdit(): Promise<void> {
     if (!selected) return
     const patch = draftToPatch(draft)
-    if (!patch.name || !patch.address || !patch.city || !patch.postcode || !patch.timezone) return
-    updateLocation(selected.id, patch)
-    setSelected(null)
+    if (
+      !patch.name ||
+      !patch.address ||
+      !patch.city ||
+      !patch.country ||
+      !patch.postcode ||
+      !patch.timezone
+    ) {
+      return
+    }
+
+    const updatePayload: {
+      name?: string
+      address?: string
+      city?: string
+      country?: string
+      timezone?: string
+      phone?: string
+      email?: string
+      imageUrl?: string
+      isActive?: boolean
+      settings?: Record<string, unknown>
+    } = {}
+
+    if (patch.name !== selected.name) {
+      updatePayload.name = patch.name
+    }
+    if (patch.address !== selected.address) {
+      updatePayload.address = patch.address
+    }
+    if (patch.city !== selected.city) {
+      updatePayload.city = patch.city
+    }
+    if ((patch.country ?? undefined) !== (selected.country ?? undefined)) {
+      updatePayload.country = patch.country
+    }
+    if (patch.timezone !== selected.timezone) {
+      updatePayload.timezone = patch.timezone
+    }
+    if ((patch.phone ?? undefined) !== (selected.phone ?? undefined)) {
+      updatePayload.phone = patch.phone
+    }
+    if ((patch.email ?? undefined) !== (selected.email ?? undefined)) {
+      updatePayload.email = patch.email
+    }
+    if ((patch.imageUrl ?? undefined) !== (selected.imageUrl ?? undefined)) {
+      updatePayload.imageUrl = patch.imageUrl
+    }
+    if ((patch.isActive ?? true) !== (selected.isActive ?? true)) {
+      updatePayload.isActive = patch.isActive ?? true
+    }
+
+    const nextHours = patch.settings?.operatingHours ?? defaultOperatingHours()
+    const prevHours = selected.settings?.operatingHours ?? defaultOperatingHours()
+    if (!areOperatingHoursEqual(nextHours, prevHours)) {
+      updatePayload.settings = {
+        operatingHours: nextHours,
+      }
+    }
+
+    if (Object.keys(updatePayload).length === 0) {
+      setSelected(null)
+      return
+    }
+
+    setIsUpdating(true)
+    setUpdateError(null)
+    try {
+      await updateLocation(selected.id, updatePayload)
+      setSelected(null)
+    } catch (error) {
+      setUpdateError(error instanceof Error ? error.message : 'Failed to update location')
+    } finally {
+      setIsUpdating(false)
+    }
   }
 
   const deleteTarget = selected
   const deleteBlockedCount = deleteTarget ? (usageByLocationId.get(deleteTarget.id) ?? 0) : 0
 
   function requestDelete(loc: Location) {
+    setDeleteError(null)
     setSelected(loc)
     setDeleteOpen(true)
   }
 
-  function confirmDelete() {
+  async function confirmDelete(): Promise<void> {
     if (!deleteTarget) return
     if ((usageByLocationId.get(deleteTarget.id) ?? 0) > 0) return
-    deleteLocation(deleteTarget.id)
-    setDeleteOpen(false)
-    setSelected(null)
+
+    setIsDeleting(true)
+    setDeleteError(null)
+    try {
+      await deleteLocation(deleteTarget.id)
+      setDeleteOpen(false)
+      setSelected(null)
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : 'Failed to delete location')
+    } finally {
+      setIsDeleting(false)
+    }
   }
 
   return (
@@ -206,6 +331,12 @@ export default function AdminSchedulingLocationsPage() {
 
       <Card>
         <CardContent className="space-y-4 pt-6">
+          {loadError ? (
+            <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              Failed to refresh locations from API: {loadError}
+            </p>
+          ) : null}
+
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="max-w-md w-full">
               <Input
@@ -216,6 +347,7 @@ export default function AdminSchedulingLocationsPage() {
               />
             </div>
             <p className="text-sm text-muted-foreground">
+              {isLoading ? 'Loading... ' : null}
               <span className="font-semibold text-foreground">{filtered.length}</span>{' '}
               {filtered.length === 1 ? 'location' : 'locations'}
             </p>
@@ -311,18 +443,25 @@ export default function AdminSchedulingLocationsPage() {
               className="bg-accent text-accent-foreground hover:bg-accent/90"
               onClick={persistCreate}
               disabled={
+                isCreating ||
                 !draft.name.trim() ||
                 !draft.address.trim() ||
                 !draft.city.trim() ||
+                !draft.country.trim() ||
                 !draft.postcode.trim() ||
                 !draft.timezone.trim()
               }
             >
-              Create
+              {isCreating ? 'Creating...' : 'Create'}
             </Button>
           </div>
         }
       >
+        {createError ? (
+          <p className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            Failed to create location: {createError}
+          </p>
+        ) : null}
         <LocationForm value={draft} onChange={setDraft} />
       </CrudModal>
 
@@ -345,18 +484,25 @@ export default function AdminSchedulingLocationsPage() {
               className="bg-accent text-accent-foreground hover:bg-accent/90"
               onClick={persistEdit}
               disabled={
+                isUpdating ||
                 !draft.name.trim() ||
                 !draft.address.trim() ||
                 !draft.city.trim() ||
+                !draft.country.trim() ||
                 !draft.postcode.trim() ||
                 !draft.timezone.trim()
               }
             >
-              Save changes
+              {isUpdating ? 'Saving...' : 'Save changes'}
             </Button>
           </div>
         }
       >
+        {updateError ? (
+          <p className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            Failed to update location: {updateError}
+          </p>
+        ) : null}
         <LocationForm value={draft} onChange={setDraft} />
       </CrudModal>
 
@@ -379,13 +525,18 @@ export default function AdminSchedulingLocationsPage() {
               type="button"
               variant="destructive"
               onClick={confirmDelete}
-              disabled={deleteBlockedCount > 0}
+              disabled={deleteBlockedCount > 0 || isDeleting}
             >
-              Delete
+              {isDeleting ? 'Deleting...' : 'Delete'}
             </Button>
           </div>
         }
       >
+        {deleteError ? (
+          <p className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            Failed to delete location: {deleteError}
+          </p>
+        ) : null}
         {deleteBlockedCount > 0 ? (
           <div className="space-y-2 text-sm">
             <p className="font-semibold text-foreground">

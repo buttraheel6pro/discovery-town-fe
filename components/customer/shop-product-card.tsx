@@ -22,7 +22,7 @@ export interface ShopProductCardProps {
 }
 
 export function ShopProductCard({ product, className }: Readonly<ShopProductCardProps>) {
-  const { addToCart, cart } = useInventory()
+  const { addToCart, cart, productCategories } = useInventory()
   const [usePlaceholder, setUsePlaceholder] = useState(false)
 
   const inCartQty = useMemo(() => {
@@ -34,8 +34,18 @@ export function ShopProductCard({ product, className }: Readonly<ShopProductCard
   const imageSrc = usePlaceholder
     ? PLACEHOLDER_SRC
     : product.imageUrl ?? SHOP_FALLBACK_SRC
+  const isGiftProduct = useMemo(() => {
+    const category = productCategories.find((row) => row.id === product.categoryId) ?? null
+    return (category?.productType ?? '').toLowerCase() === 'gifts'
+  }, [product.categoryId, productCategories])
   const compareAt = product.compareAtPrice ?? null
   const unitPrice = product.memberPrice ?? product.price
+  const giftUpper = product.giftPriceUpperLimit ?? null
+  const showGiftPriceRange =
+    isGiftProduct &&
+    giftUpper != null &&
+    Number.isFinite(giftUpper) &&
+    giftUpper > unitPrice
   const savings = compareAt != null && compareAt > unitPrice ? compareAt - unitPrice : null
 
   return (
@@ -92,7 +102,9 @@ export function ShopProductCard({ product, className }: Readonly<ShopProductCard
               className="text-lg font-black text-foreground"
               style={{ fontFamily: 'var(--font-barlow)' }}
             >
-              {formatPrice(unitPrice)}
+              {showGiftPriceRange
+                ? `${formatPrice(unitPrice)}–${formatPrice(giftUpper)}`
+                : formatPrice(unitPrice)}
             </p>
             {product.memberPrice != null ? (
               <p className="text-xs font-semibold text-accent">
@@ -104,28 +116,34 @@ export function ShopProductCard({ product, className }: Readonly<ShopProductCard
           <StockStatusBadge product={product} />
         </div>
 
-        <Button
-          size="sm"
-          className={cn(
-            'w-full font-semibold transition-all',
-            inCartQty > 0
-              ? 'bg-green-600 text-white hover:bg-green-600'
-              : 'bg-accent text-accent-foreground hover:bg-accent/90',
-          )}
-          onClick={() => addToCart({ product })}
-        >
-          {inCartQty > 0 ? (
-            <>
-              <Check className="mr-1.5 h-3.5 w-3.5" />
-              Added ({inCartQty})
-            </>
-          ) : (
-            <>
-              <Plus className="mr-1.5 h-3.5 w-3.5" />
-              Add to cart
-            </>
-          )}
-        </Button>
+        {isGiftProduct ? (
+          <Button asChild size="sm" className="w-full bg-accent text-accent-foreground hover:bg-accent/90">
+            <Link href={`/shop/${product.id}`}>View details</Link>
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            className={cn(
+              'w-full font-semibold transition-all',
+              inCartQty > 0
+                ? 'bg-green-600 text-white hover:bg-green-600'
+                : 'bg-accent text-accent-foreground hover:bg-accent/90',
+            )}
+            onClick={() => addToCart({ product })}
+          >
+            {inCartQty > 0 ? (
+              <>
+                <Check className="mr-1.5 h-3.5 w-3.5" />
+                Added ({inCartQty})
+              </>
+            ) : (
+              <>
+                <Plus className="mr-1.5 h-3.5 w-3.5" />
+                Add to cart
+              </>
+            )}
+          </Button>
+        )}
       </div>
     </article>
   )

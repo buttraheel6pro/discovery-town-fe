@@ -8,12 +8,6 @@ import { Check, GripVertical, MoreHorizontal, Plus, Search, SlidersHorizontal } 
 
 import { CrudModal } from '@/components/admin/crud-modal'
 import { CSVImportModal } from '@/components/admin/csv-import-modal'
-import {
-  ProductForm,
-  type ProductDraft,
-  draftToProductPatch,
-  productToDraft,
-} from '@/components/admin/product-form'
 import { StockAdjustmentModal } from '@/components/admin/stock-adjustment-modal'
 import { StockStatusBadge } from '@/components/admin/stock-status-badge'
 import {
@@ -45,14 +39,6 @@ import { formatPrice } from '@/lib/utils'
 import { useInventory } from '@/lib/inventory-store'
 import type { Product, ProductCategory } from '@/lib/types'
 
-function slugify(input: string): string {
-  return input
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)/g, '')
-}
-
 function toDisplayType(value: string): string {
   return value
     .split('&')
@@ -72,8 +58,6 @@ export default function AdminInventoryProductsPage() {
   const {
     products,
     productCategories,
-    bookingAddOns,
-    addProduct,
     updateProduct,
     promoteProductToAddOn,
     delinkBookingAddOnFromProduct,
@@ -128,34 +112,8 @@ export default function AdminInventoryProductsPage() {
   const [showOnlyActive, setShowOnlyActive] = useState(true)
   const [showOnlyAddOns, setShowOnlyAddOns] = useState(false)
 
-  const [createOpen, setCreateOpen] = useState(false)
-  const [editProduct, setEditProduct] = useState<Product | null>(null)
   const [adjustProduct, setAdjustProduct] = useState<Product | null>(null)
   const [importOpen, setImportOpen] = useState(false)
-
-  const [draft, setDraft] = useState<ProductDraft>(() =>
-    productToDraft(
-      {
-        id: 'new',
-        tenantId: 'tenant-1',
-        categoryId: categories[0]?.id ?? '',
-        name: '',
-        slug: '',
-        description: '',
-        sku: undefined,
-        price: 0,
-        memberPrice: undefined,
-        stockCount: 0,
-        lowStockThreshold: 10,
-        allowBackorders: false,
-        isActive: true,
-        isFeatured: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-      categories,
-    ),
-  )
 
   const countableProducts = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -188,95 +146,6 @@ export default function AdminInventoryProductsPage() {
       return true
     })
   }, [categories, categoryId, countableProducts])
-
-  function openCreate() {
-    setDraft(
-      productToDraft(
-        {
-          id: 'new',
-          tenantId: 'tenant-1',
-          categoryId: categoryId ?? categories[0]?.id ?? '',
-          name: '',
-          slug: '',
-          description: '',
-          sku: undefined,
-          price: 0,
-          memberPrice: undefined,
-          stockCount: 0,
-          lowStockThreshold: 10,
-          allowBackorders: false,
-          isActive: true,
-          isFeatured: false,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-        categories,
-      ),
-    )
-    setCreateOpen(true)
-  }
-
-  function persistCreate() {
-    const wantsPromote = draft.canBeAddOn
-    const patch = draftToProductPatch(draft)
-    const nowIso = new Date().toISOString()
-    const id = `prod-admin-${Date.now()}`
-    const created: Product = {
-      id,
-      tenantId: 'tenant-1',
-      categoryId: patch.categoryId ?? categories[0]?.id ?? '',
-      name: patch.name ?? 'New product',
-      slug: slugify(patch.name ?? '') || id,
-      description: patch.description,
-      sku: patch.sku,
-      price: patch.price ?? 0,
-      memberPrice: patch.memberPrice,
-      costPrice: patch.costPrice,
-      compareAtPrice: patch.compareAtPrice ?? null,
-      taxable: patch.taxable ?? true,
-      taxRate: patch.taxRate ?? 20,
-      trackInventory: patch.trackInventory ?? true,
-      stockCount: patch.stockCount ?? 0,
-      lowStockThreshold: patch.lowStockThreshold ?? 10,
-      allowBackorders: patch.allowBackorders ?? false,
-      availableOnline: patch.availableOnline ?? true,
-      availablePOS: patch.availablePOS ?? true,
-      isActive: patch.isActive ?? true,
-      isFeatured: false,
-      imageUrl: patch.imageUrl,
-      galleryImages: [],
-      createdAt: nowIso,
-      updatedAt: nowIso,
-    }
-    addProduct(created)
-    if (wantsPromote) {
-      const result = promoteProductToAddOn(id, created)
-      if (!result.ok) {
-        toast({ title: 'Add-on link failed', description: result.message, variant: 'destructive' })
-      }
-    }
-    setCreateOpen(false)
-  }
-
-  function openEdit(p: Product) {
-    setEditProduct(p)
-    setDraft(productToDraft(p, categories))
-  }
-
-  function persistEdit() {
-    if (!editProduct) return
-    const wantsPromote = draft.canBeAddOn && !editProduct.linkedAddOnId
-    const patch = draftToProductPatch(draft)
-    updateProduct(editProduct.id, patch)
-    if (wantsPromote) {
-      const merged = { ...editProduct, ...patch } as Product
-      const result = promoteProductToAddOn(editProduct.id, merged)
-      if (!result.ok) {
-        toast({ title: 'Add-on link failed', description: result.message, variant: 'destructive' })
-      }
-    }
-    setEditProduct(null)
-  }
 
   function categoryLabelForProduct(product: Product): string {
     const selected = categoryById.get(product.categoryId)
@@ -399,13 +268,6 @@ export default function AdminInventoryProductsPage() {
     })
   }
 
-  const editLockedPromoted = useMemo(() => {
-    if (!editProduct?.linkedAddOnId) return null
-    const name =
-      bookingAddOns.find((a) => a.id === editProduct.linkedAddOnId)?.name ?? editProduct.name
-    return { id: editProduct.linkedAddOnId, name }
-  }, [bookingAddOns, editProduct])
-
   return (
     <div className="space-y-6">
       <div className="flex items-end justify-between gap-4">
@@ -417,10 +279,12 @@ export default function AdminInventoryProductsPage() {
           <Button variant="outline" onClick={() => setImportOpen(true)}>
             Import CSV
           </Button>
-          <Button onClick={openCreate} className="gap-2">
-            <Plus className="h-4 w-4" />
-            New product
-          </Button>
+          <Link href="/admin/inventory/products/new">
+            <Button className="gap-2">
+              <Plus className="h-4 w-4" />
+              New product
+            </Button>
+          </Link>
         </div>
       </div>
 
@@ -671,7 +535,15 @@ export default function AdminInventoryProductsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.map((p) => (
+                {filtered.map((p) => {
+                  const selectedCategory = categoryById.get(p.categoryId) ?? null
+                  const topLevelCategory = selectedCategory?.parentId
+                    ? (categoryById.get(selectedCategory.parentId) ?? null)
+                    : selectedCategory
+                  const isGiftCardProduct =
+                    (topLevelCategory?.productType ?? '').toLowerCase() === 'gifts'
+
+                  return (
                   <TableRow key={p.id}>
                     <TableCell className="whitespace-normal">
                       <div className="flex items-center gap-3">
@@ -712,29 +584,38 @@ export default function AdminInventoryProductsPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
-                        <Button variant="outline" size="sm" onClick={() => setAdjustProduct(p)}>
-                          Stock
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={() => openEdit(p)}>
-                          Edit
-                        </Button>
-                        {p.linkedAddOnId ? (
-                          <Button variant="outline" size="sm" onClick={() => delinkFromRow(p)}>
-                            De-link
+                        {!isGiftCardProduct ? (
+                          <Button variant="outline" size="sm" onClick={() => setAdjustProduct(p)}>
+                            Stock
                           </Button>
                         ) : null}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={Boolean(p.linkedAddOnId)}
-                          onClick={() => promoteFromRow(p)}
-                        >
-                          {p.linkedAddOnId ? 'Linked' : 'Link add-on'}
+                        <Button asChild variant="outline" size="sm">
+                          <Link href={`/admin/inventory/products/${p.id}/edit?returnTo=${encodeURIComponent('/admin/inventory/products')}`}>
+                            Edit
+                          </Link>
                         </Button>
+                        {!isGiftCardProduct ? (
+                          <>
+                            {p.linkedAddOnId ? (
+                              <Button variant="outline" size="sm" onClick={() => delinkFromRow(p)}>
+                                De-link
+                              </Button>
+                            ) : null}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={Boolean(p.linkedAddOnId)}
+                              onClick={() => promoteFromRow(p)}
+                            >
+                              {p.linkedAddOnId ? 'Linked' : 'Link add-on'}
+                            </Button>
+                          </>
+                        ) : null}
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  )
+                })}
               </TableBody>
             </Table>
           </CardContent>
@@ -812,53 +693,6 @@ export default function AdminInventoryProductsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      <CrudModal
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        title="New product"
-        description="Create a new shop product."
-        size="lg"
-        variant="create"
-        scrollMode="dialog"
-        footer={
-          <>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={persistCreate}>Create</Button>
-          </>
-        }
-      >
-        <ProductForm value={draft} onChange={setDraft} categories={categories} />
-      </CrudModal>
-
-      <CrudModal
-        open={editProduct !== null}
-        onOpenChange={(open) => {
-          if (!open) setEditProduct(null)
-        }}
-        title="Edit product"
-        description="Update product details, pricing, and inventory."
-        size="lg"
-        variant="edit"
-        scrollMode="dialog"
-        footer={
-          <>
-            <Button variant="outline" onClick={() => setEditProduct(null)}>
-              Cancel
-            </Button>
-            <Button onClick={persistEdit}>Save</Button>
-          </>
-        }
-      >
-        <ProductForm
-          value={draft}
-          onChange={setDraft}
-          categories={categories}
-          lockedPromotedAddOn={editLockedPromoted}
-        />
-      </CrudModal>
 
       {adjustProduct ? (
         <StockAdjustmentModal product={adjustProduct} open={true} onClose={() => setAdjustProduct(null)} />

@@ -1,25 +1,108 @@
 /** Cart page — shared cart for shop + future checkout flows. */
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
+import Image from 'next/image'
 import Link from 'next/link'
-import { ArrowLeft, ShoppingBag } from 'lucide-react'
+import { ArrowLeft, Minus, Plus, ShoppingBag } from 'lucide-react'
 
 import { CouponPanel } from '@/components/customer/coupon-panel'
 import { CustomerFooter } from '@/components/customer/footer'
 import { CustomerNavbar } from '@/components/customer/navbar'
-import { ShopCartItem } from '@/components/customer/shop-cart-item'
+import { RentalCartSidebar } from '@/components/customer/rental-cart-sidebar'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Separator } from '@/components/ui/separator'
 import { useClients } from '@/lib/client-store'
 import { calcCartTotals, formatPrice } from '@/lib/utils'
 import { useInventory } from '@/lib/inventory-store'
+import { isGiftProduct } from '@/lib/gift-product'
+import { isRentalProduct } from '@/lib/rental-product'
 import type { Coupon } from '@/lib/types'
 
+interface GiftBundleItem {
+  readonly productId: string
+  readonly name: string
+  readonly imageUrl: string
+  readonly unitPrice: number
+  readonly quantity: number
+}
+
+interface GiftBundleMetadata {
+  readonly giftBundle: true
+  readonly primary: GiftBundleItem
+  readonly addOns: GiftBundleItem[]
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function parseGiftBundleMetadata(value: unknown): GiftBundleMetadata | null {
+  if (!isRecord(value)) return null
+  if (value.giftBundle !== true) return null
+  const primaryRaw = value.primary
+  if (!isRecord(primaryRaw)) return null
+  const addOnsRaw = Array.isArray(value.addOns) ? value.addOns : []
+  const primary: GiftBundleItem = {
+    productId: typeof primaryRaw.productId === 'string' ? primaryRaw.productId : '',
+    name: typeof primaryRaw.name === 'string' ? primaryRaw.name : 'Gift item',
+    imageUrl:
+      typeof primaryRaw.imageUrl === 'string' ? primaryRaw.imageUrl : '/placeholder.jpg',
+    unitPrice:
+      typeof primaryRaw.unitPrice === 'number' && Number.isFinite(primaryRaw.unitPrice)
+        ? primaryRaw.unitPrice
+        : 0,
+    quantity:
+      typeof primaryRaw.quantity === 'number' && Number.isFinite(primaryRaw.quantity)
+        ? Math.max(1, primaryRaw.quantity)
+        : 1,
+  }
+  if (!primary.productId) return null
+  const addOns = addOnsRaw
+    .map((row) => {
+      if (!isRecord(row)) return null
+      const productId = typeof row.productId === 'string' ? row.productId : ''
+      if (!productId) return null
+      return {
+        productId,
+        name: typeof row.name === 'string' ? row.name : 'Add-on',
+        imageUrl: typeof row.imageUrl === 'string' ? row.imageUrl : '/placeholder.jpg',
+        unitPrice:
+          typeof row.unitPrice === 'number' && Number.isFinite(row.unitPrice) ? row.unitPrice : 0,
+        quantity:
+          typeof row.quantity === 'number' && Number.isFinite(row.quantity)
+            ? Math.max(1, row.quantity)
+            : 1,
+      } satisfies GiftBundleItem
+    })
+    .filter((row): row is GiftBundleItem => Boolean(row))
+  return { giftBundle: true, primary, addOns }
+}
+
 export default function CartPage() {
-  const { cart, updateCartQuantity, removeFromCart, setCouponDirect, removeCoupon } =
-    useInventory()
+  const [showRentalDetails, setShowRentalDetails] = useState(false)
+  const [showShopSummary, setShowShopSummary] = useState(false)
+  const [selectedGrouping, setSelectedGrouping] = useState<
+    'rental' | 'request' | 'gift' | 'shop' | null
+  >(null)
+  const {
+    cart,
+    products,
+    productCategories,
+    updateCartItem,
+    removeFromCart,
+    setCouponDirect,
+    removeCoupon,
+    setRentalDates,
+    setFulfillmentMode,
+    setDeliveryFee,
+    setAcknowledgments,
+  } = useInventory()
   const { contacts, subscriptions } = useClients()
+  const [editingGiftBundleItemId, setEditingGiftBundleItemId] = useState<string | null>(null)
+  const [editingGiftPrimaryQty, setEditingGiftPrimaryQty] = useState(1)
+  const [editingGiftAddOns, setEditingGiftAddOns] = useState<GiftBundleItem[]>([])
 
   const primaryContact =
     contacts.find((c) => c.contactType === 'CUSTOMER') ?? contacts[0] ?? null
@@ -34,9 +117,6 @@ export default function CartPage() {
       ),
   )
 
-  const { subtotal, tax, total } = useMemo(() => {
-    return calcCartTotals(cart.items, cart.couponDiscount, 20)
-  }, [cart.couponDiscount, cart.items])
   const groupedRequestItems = useMemo(
     () =>
       cart.items.filter(
@@ -48,6 +128,60 @@ export default function CartPage() {
     () => cart.items.filter((item) => !groupedRequestItems.some((requestItem) => requestItem.id === item.id)),
     [cart.items, groupedRequestItems],
   )
+  const rentalItems = useMemo(() => {
+    return standardItems.filter((item) => {
+      if (item.type !== 'product') return false
+      const productId = item.metadata?.productId
+      if (typeof productId !== 'string') return false
+      const product = products.find((row) => row.id === productId) ?? null
+      if (product) return isRentalProduct(product)
+      return productId.startsWith('prod-rental-')
+    })
+  }, [products, standardItems])
+  const rentalSubtotal = useMemo(
+    () => rentalItems.reduce((sum, item) => sum + item.price * item.quantity, 0),
+    [rentalItems],
+  )
+  const nonRentalItems = useMemo(
+    () => standardItems.filter((item) => !rentalItems.some((rentalItem) => rentalItem.id === item.id)),
+    [rentalItems, standardItems],
+  )
+  const giftCartItems = useMemo(() => {
+    return nonRentalItems.filter((item) => {
+      if (parseGiftBundleMetadata(item.metadata)) return true
+      if (item.type !== 'product') return false
+      const productId = item.metadata?.productId
+      if (typeof productId !== 'string') return false
+      const product = products.find((row) => row.id === productId) ?? null
+      if (product) return isGiftProduct(product, productCategories)
+      return false
+    })
+  }, [nonRentalItems, productCategories, products])
+  const shopCartItems = useMemo(
+    () => nonRentalItems.filter((item) => !giftCartItems.some((giftItem) => giftItem.id === item.id)),
+    [giftCartItems, nonRentalItems],
+  )
+  const nonRentalTotals = useMemo(() => calcCartTotals(nonRentalItems, cart.couponDiscount, 20), [
+    cart.couponDiscount,
+    nonRentalItems,
+  ])
+  const editingGiftCartItem = useMemo(() => {
+    if (!editingGiftBundleItemId) return null
+    return cart.items.find((item) => item.id === editingGiftBundleItemId) ?? null
+  }, [cart.items, editingGiftBundleItemId])
+  const editingGiftMetadata = useMemo(
+    () => parseGiftBundleMetadata(editingGiftCartItem?.metadata),
+    [editingGiftCartItem?.metadata],
+  )
+  const editingGiftTotal = useMemo(() => {
+    if (!editingGiftMetadata) return 0
+    const primaryTotal = editingGiftMetadata.primary.unitPrice * editingGiftPrimaryQty
+    const addOnTotal = editingGiftAddOns.reduce(
+      (sum, addOn) => sum + addOn.unitPrice * addOn.quantity,
+      0,
+    )
+    return primaryTotal + addOnTotal
+  }, [editingGiftAddOns, editingGiftMetadata, editingGiftPrimaryQty])
 
   function handleCouponApplied(coupon: Coupon | null, discountAmount: number) {
     if (!coupon || discountAmount <= 0) {
@@ -55,6 +189,62 @@ export default function CartPage() {
       return
     }
     setCouponDirect(coupon.code, discountAmount)
+  }
+
+  function selectGrouping(grouping: 'rental' | 'request' | 'gift' | 'shop') {
+    setSelectedGrouping(grouping)
+    if (grouping === 'rental') {
+      setShowRentalDetails(true)
+      setShowShopSummary(false)
+      return
+    }
+    setShowShopSummary(true)
+    setShowRentalDetails(false)
+  }
+
+  function openGiftBundleEditor(cartItemId: string) {
+    const cartItem = cart.items.find((item) => item.id === cartItemId) ?? null
+    const metadata = parseGiftBundleMetadata(cartItem?.metadata)
+    if (!metadata) return
+    setEditingGiftBundleItemId(cartItemId)
+    setEditingGiftPrimaryQty(metadata.primary.quantity)
+    setEditingGiftAddOns(metadata.addOns)
+  }
+
+  function closeGiftBundleEditor() {
+    setEditingGiftBundleItemId(null)
+    setEditingGiftPrimaryQty(1)
+    setEditingGiftAddOns([])
+  }
+
+  function updateEditingGiftAddOnQuantity(productId: string, delta: number) {
+    setEditingGiftAddOns((prev) =>
+      prev.flatMap((item) => {
+        if (item.productId !== productId) return [item]
+        const nextQty = item.quantity + delta
+        if (nextQty <= 0) return []
+        return [{ ...item, quantity: nextQty }]
+      }),
+    )
+  }
+
+  function saveGiftBundleChanges() {
+    if (!editingGiftCartItem || !editingGiftMetadata) return
+    const nextMetadata: GiftBundleMetadata = {
+      giftBundle: true,
+      primary: {
+        ...editingGiftMetadata.primary,
+        quantity: editingGiftPrimaryQty,
+      },
+      addOns: editingGiftAddOns,
+    }
+    updateCartItem(editingGiftCartItem.id, {
+      price: editingGiftTotal,
+      quantity: 1,
+      description: `${editingGiftPrimaryQty} gift item(s), ${editingGiftAddOns.length} add-on type(s)`,
+      metadata: nextMetadata as unknown as Record<string, unknown>,
+    })
+    closeGiftBundleEditor()
   }
 
   return (
@@ -89,11 +279,99 @@ export default function CartPage() {
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
               <div className="lg:col-span-2 space-y-4">
+                {rentalItems.length > 0 ? (
+                  <div
+                    className="space-y-3 rounded-xl border border-border bg-card p-4 cursor-pointer"
+                    onClick={() => selectGrouping('rental')}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground">
+                        Rental items
+                      </h2>
+                      <label
+                        className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-foreground"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          selectGrouping('rental')
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="checkout-grouping"
+                          checked={selectedGrouping === 'rental'}
+                          onChange={() => selectGrouping('rental')}
+                          className="h-4 w-4"
+                        />
+                        Open rental details
+                      </label>
+                    </div>
+                    {rentalItems.map((item) => (
+                      <div
+                        key={item.id}
+                        className="rounded-lg border border-border bg-background p-3 text-sm cursor-pointer"
+                        onClick={() => {
+                          selectGrouping('rental')
+                        }}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-semibold text-foreground">{item.name}</p>
+                            {item.description ? (
+                              <p className="text-xs whitespace-pre-line text-muted-foreground">
+                                {item.description}
+                              </p>
+                            ) : null}
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              Qty: {item.quantity}
+                            </p>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              removeFromCart(item.id)
+                            }}
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                        <div className="mt-2 flex items-center justify-between">
+                          <p className="font-semibold text-foreground">
+                            {formatPrice(item.price * item.quantity)}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
                 {groupedRequestItems.length > 0 ? (
-                  <div className="space-y-3 rounded-xl border border-border bg-card p-4">
-                    <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground">
-                      Request bundles
-                    </h2>
+                  <div
+                    className="space-y-3 rounded-xl border border-border bg-card p-4 cursor-pointer"
+                    onClick={() => selectGrouping('request')}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground">
+                        Request bundles
+                      </h2>
+                      <label
+                        className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-foreground"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          selectGrouping('request')
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="checkout-grouping"
+                          checked={selectedGrouping === 'request'}
+                          onChange={() => selectGrouping('request')}
+                          className="h-4 w-4"
+                        />
+                        Open checkout details
+                      </label>
+                    </div>
                     {groupedRequestItems.map((item) => (
                       <div key={item.id} className="rounded-lg border border-border bg-background p-3 text-sm">
                         <div className="flex items-start justify-between gap-3">
@@ -114,70 +392,376 @@ export default function CartPage() {
                     ))}
                   </div>
                 ) : null}
-                {standardItems.map((item) => (
-                  <ShopCartItem
-                    key={item.id}
-                    item={item}
-                    onUpdateQuantity={(qty) => updateCartQuantity(item.id, qty)}
-                    onRemove={() => removeFromCart(item.id)}
-                  />
-                ))}
+
+                {giftCartItems.length > 0 ? (
+                  <div
+                    className="space-y-3 rounded-xl border border-border bg-card p-4 cursor-pointer"
+                    onClick={() => selectGrouping('gift')}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground">
+                        Gift items
+                      </h2>
+                      <label
+                        className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-foreground"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          selectGrouping('gift')
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="checkout-grouping"
+                          checked={selectedGrouping === 'gift'}
+                          onChange={() => selectGrouping('gift')}
+                          className="h-4 w-4"
+                        />
+                        Open checkout details
+                      </label>
+                    </div>
+                    {giftCartItems.map((item) => (
+                      <div key={item.id} className="rounded-lg border border-border bg-background p-3 text-sm">
+                        {(() => {
+                          const giftBundle = parseGiftBundleMetadata(item.metadata)
+                          if (giftBundle) {
+                            return (
+                              <>
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <p className="font-semibold text-foreground">{item.name}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      Gift x{giftBundle.primary.quantity} · Add-ons {giftBundle.addOns.length}
+                                    </p>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => openGiftBundleEditor(item.id)}
+                                    >
+                                      View details
+                                    </Button>
+                                    <Button variant="ghost" size="sm" onClick={() => removeFromCart(item.id)}>
+                                      Remove
+                                    </Button>
+                                  </div>
+                                </div>
+                                <div className="mt-2 flex items-center justify-between">
+                                  <p className="font-semibold text-foreground">{formatPrice(item.price)}</p>
+                                </div>
+                              </>
+                            )
+                          }
+                          return (
+                            <>
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="font-semibold text-foreground">{item.name}</p>
+                                  {item.description ? (
+                                    <p className="text-xs whitespace-pre-line text-muted-foreground">
+                                      {item.description}
+                                    </p>
+                                  ) : null}
+                                  <p className="mt-1 text-xs text-muted-foreground">Qty: {item.quantity}</p>
+                                </div>
+                                <Button variant="ghost" size="sm" onClick={() => removeFromCart(item.id)}>
+                                  Remove
+                                </Button>
+                              </div>
+                              <div className="mt-2 flex items-center justify-between">
+                                <p className="font-semibold text-foreground">
+                                  {formatPrice(item.price * item.quantity)}
+                                </p>
+                              </div>
+                            </>
+                          )
+                        })()}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {shopCartItems.length > 0 ? (
+                  <div
+                    className="space-y-3 rounded-xl border border-border bg-card p-4 cursor-pointer"
+                    onClick={() => selectGrouping('shop')}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground">
+                        Shop & other items
+                      </h2>
+                      <label
+                        className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-foreground"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          selectGrouping('shop')
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="checkout-grouping"
+                          checked={selectedGrouping === 'shop'}
+                          onChange={() => selectGrouping('shop')}
+                          className="h-4 w-4"
+                        />
+                        Open checkout details
+                      </label>
+                    </div>
+                    {shopCartItems.map((item) => (
+                      <div key={item.id} className="rounded-lg border border-border bg-background p-3 text-sm">
+                        {(() => {
+                          const giftBundle = parseGiftBundleMetadata(item.metadata)
+                          if (giftBundle) {
+                            return (
+                              <>
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <p className="font-semibold text-foreground">{item.name}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      Gift x{giftBundle.primary.quantity} · Add-ons {giftBundle.addOns.length}
+                                    </p>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => openGiftBundleEditor(item.id)}
+                                    >
+                                      View details
+                                    </Button>
+                                    <Button variant="ghost" size="sm" onClick={() => removeFromCart(item.id)}>
+                                      Remove
+                                    </Button>
+                                  </div>
+                                </div>
+                                <div className="mt-2 flex items-center justify-between">
+                                  <p className="font-semibold text-foreground">{formatPrice(item.price)}</p>
+                                </div>
+                              </>
+                            )
+                          }
+                          return (
+                            <>
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="font-semibold text-foreground">{item.name}</p>
+                                  {item.description ? (
+                                    <p className="text-xs whitespace-pre-line text-muted-foreground">
+                                      {item.description}
+                                    </p>
+                                  ) : null}
+                                  <p className="mt-1 text-xs text-muted-foreground">Qty: {item.quantity}</p>
+                                </div>
+                                <Button variant="ghost" size="sm" onClick={() => removeFromCart(item.id)}>
+                                  Remove
+                                </Button>
+                              </div>
+                              <div className="mt-2 flex items-center justify-between">
+                                <p className="font-semibold text-foreground">
+                                  {formatPrice(item.price * item.quantity)}
+                                </p>
+                              </div>
+                            </>
+                          )
+                        })()}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </div>
 
               <aside className="space-y-6">
-                <div className="bg-card rounded-xl border border-border p-6 space-y-4">
-                  <h2 className="font-bold text-lg">Order summary</h2>
-                  <Separator />
-
-                  <CouponPanel
-                    context="ORDER"
-                    subtotal={subtotal}
+                {rentalItems.length > 0 && showRentalDetails ? (
+                  <RentalCartSidebar
+                    cart={cart}
+                    rentalSubtotal={rentalSubtotal}
+                    onSetRentalDates={setRentalDates}
+                    onSetFulfillmentMode={setFulfillmentMode}
+                    onSetDeliveryFee={setDeliveryFee}
+                    onSetAcknowledgments={setAcknowledgments}
                     onCouponApplied={handleCouponApplied}
                     hasActiveSubscription={hasActiveSubscription}
                     contactId={cart.contactId ?? primaryContact?.id}
                     externalAppliedCode={cart.couponCode}
                     externalDiscount={cart.couponDiscount}
+                    onClose={() => {
+                      setShowRentalDetails(false)
+                    }}
                   />
-
-                  <Separator />
-
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between text-muted-foreground">
-                      <span>Subtotal</span>
-                      <span>{formatPrice(subtotal)}</span>
-                    </div>
-                    {cart.couponDiscount > 0 ? (
-                      <div className="flex justify-between text-green-700">
-                        <span>Discount</span>
-                        <span>-{formatPrice(cart.couponDiscount)}</span>
-                      </div>
-                    ) : null}
-                    <div className="flex justify-between text-muted-foreground">
-                      <span>VAT (20%)</span>
-                      <span>{formatPrice(tax)}</span>
-                    </div>
+                ) : null}
+                {nonRentalItems.length > 0 &&
+                showShopSummary &&
+                !showRentalDetails ? (
+                  <div className="bg-card rounded-xl border border-border p-6 space-y-4">
+                    <h2 className="font-bold text-lg">Shop order summary</h2>
                     <Separator />
-                    <div className="flex justify-between font-black text-base">
-                      <span>Total</span>
-                      <span className="text-accent">{formatPrice(total)}</span>
-                    </div>
-                  </div>
 
-                  <Button
-                    className="w-full bg-accent text-accent-foreground hover:bg-accent/90 font-bold h-11"
-                    asChild
-                  >
-                    <Link href="/shop/checkout">Proceed to checkout</Link>
-                  </Button>
-                  <p className="text-xs text-center text-muted-foreground">
-                    Mock checkout. Secure payment UI.
-                  </p>
-                </div>
+                    <CouponPanel
+                      context="ORDER"
+                      subtotal={nonRentalTotals.subtotal}
+                      onCouponApplied={handleCouponApplied}
+                      hasActiveSubscription={hasActiveSubscription}
+                      contactId={cart.contactId ?? primaryContact?.id}
+                      externalAppliedCode={cart.couponCode}
+                      externalDiscount={cart.couponDiscount}
+                    />
+
+                    <Separator />
+
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>Subtotal</span>
+                        <span>{formatPrice(nonRentalTotals.subtotal)}</span>
+                      </div>
+                      {cart.couponDiscount > 0 ? (
+                        <div className="flex justify-between text-green-700">
+                          <span>Discount</span>
+                          <span>-{formatPrice(cart.couponDiscount)}</span>
+                        </div>
+                      ) : null}
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>VAT (20%)</span>
+                        <span>{formatPrice(nonRentalTotals.tax)}</span>
+                      </div>
+                      <Separator />
+                      <div className="flex justify-between font-black text-base">
+                        <span>Total</span>
+                        <span className="text-accent">{formatPrice(nonRentalTotals.total)}</span>
+                      </div>
+                    </div>
+
+                    <Button
+                      className="w-full bg-accent text-accent-foreground hover:bg-accent/90 font-bold h-11"
+                      asChild
+                    >
+                      <Link href="/shop/checkout">Proceed to shop checkout</Link>
+                    </Button>
+                  </div>
+                ) : null}
+                {!showRentalDetails && !showShopSummary ? (
+                  <div className="rounded-xl border border-dashed border-border bg-card p-4 text-sm text-muted-foreground">
+                    To proceed with checkout, select a cart grouping (Rental, Request bundles, Gift
+                    items, or Shop & other items).
+                  </div>
+                ) : null}
+                {rentalItems.length > 0 && (giftCartItems.length > 0 || shopCartItems.length > 0) ? (
+                  <div className="rounded-xl border border-border bg-card p-4 text-xs text-muted-foreground">
+                    Rentals use a separate checkout from gift and shop items. Complete each flow when
+                    both are in your cart.
+                  </div>
+                ) : null}
               </aside>
             </div>
           )}
         </div>
       </main>
+      <Dialog open={editingGiftBundleItemId !== null} onOpenChange={(open) => !open && closeGiftBundleEditor()}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Gift bundle details</DialogTitle>
+            <DialogDescription>Adjust selected gift and add-on quantities.</DialogDescription>
+          </DialogHeader>
+          {editingGiftMetadata ? (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-3">
+                <div className="relative h-12 w-12 overflow-hidden rounded-md border border-border">
+                  <Image
+                    src={editingGiftMetadata.primary.imageUrl}
+                    alt={editingGiftMetadata.primary.name}
+                    fill
+                    className="object-cover"
+                    sizes="48px"
+                  />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-foreground">
+                    {editingGiftMetadata.primary.name}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {formatPrice(editingGiftMetadata.primary.unitPrice)} each
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => setEditingGiftPrimaryQty((prev) => Math.max(1, prev - 1))}
+                  >
+                    <Minus className="h-3.5 w-3.5" />
+                  </Button>
+                  <span className="w-6 text-center text-sm font-semibold">{editingGiftPrimaryQty}</span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => setEditingGiftPrimaryQty((prev) => prev + 1)}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+              {editingGiftAddOns.map((item) => (
+                <div
+                  key={item.productId}
+                  className="flex items-center gap-3 rounded-lg border border-border bg-card p-3"
+                >
+                  <div className="relative h-12 w-12 overflow-hidden rounded-md border border-border">
+                    <Image
+                      src={item.imageUrl}
+                      alt={item.name}
+                      fill
+                      className="object-cover"
+                      sizes="48px"
+                    />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-foreground">{item.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatPrice(item.unitPrice)} each
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => updateEditingGiftAddOnQuantity(item.productId, -1)}
+                    >
+                      <Minus className="h-3.5 w-3.5" />
+                    </Button>
+                    <span className="w-6 text-center text-sm font-semibold">{item.quantity}</span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => updateEditingGiftAddOnQuantity(item.productId, 1)}
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+              <div className="flex items-center justify-between rounded-lg border border-border bg-muted/20 px-3 py-2">
+                <span className="text-sm font-medium text-foreground">Bundle total</span>
+                <span className="text-sm font-bold text-foreground">{formatPrice(editingGiftTotal)}</span>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={closeGiftBundleEditor}>
+                  Cancel
+                </Button>
+                <Button type="button" onClick={saveGiftBundleChanges}>
+                  Save changes
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
       <CustomerFooter />
     </>
   )

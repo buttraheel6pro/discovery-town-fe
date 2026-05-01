@@ -16,6 +16,7 @@ import type {
   EventPackage,
   SchedulingBooking,
   SchedulingCategory,
+  SchedulingOccasion,
   SchedulingService,
   SchedulingSlot,
   SchedulingWaitlistEntry,
@@ -32,6 +33,7 @@ interface SchedulingState {
   bookings: SchedulingBooking[]
   waitlist: SchedulingWaitlistEntry[]
   packages: EventPackage[]
+  occasions: SchedulingOccasion[]
 }
 
 interface UpdateCategoryPayload {
@@ -92,6 +94,11 @@ interface DuplicatePackagePayload {
   nowIso: string
 }
 
+interface UpdateOccasionPayload {
+  occasionId: string
+  patch: Partial<SchedulingOccasion>
+}
+
 function cloneInitialState(): SchedulingState {
   return {
     categories: schedulingCategories.map((category) => ({
@@ -121,6 +128,7 @@ function cloneInitialState(): SchedulingState {
       addOns: pkg.addOns.slice(),
       features: pkg.features.slice(),
     })),
+    occasions: [],
   }
 }
 
@@ -129,7 +137,10 @@ const schedulingSlice = createSlice({
   initialState: cloneInitialState(),
   reducers: {
     hydrateSchedulingState(_state, action: PayloadAction<SchedulingState>) {
-      return action.payload
+      return {
+        ...action.payload,
+        occasions: action.payload.occasions?.map((occasion) => ({ ...occasion })) ?? [],
+      }
     },
     addCategory(state, action: PayloadAction<SchedulingCategory>) {
       state.categories.unshift(action.payload)
@@ -469,6 +480,19 @@ const schedulingSlice = createSlice({
       }
       state.packages.unshift(copy)
     },
+    addOccasion(state, action: PayloadAction<SchedulingOccasion>) {
+      state.occasions.unshift(action.payload)
+    },
+    updateOccasion(state, action: PayloadAction<UpdateOccasionPayload>) {
+      const { occasionId, patch } = action.payload
+      state.occasions = state.occasions.map((occasion) =>
+        occasion.id === occasionId ? { ...occasion, ...patch } : occasion,
+      )
+    },
+    removeOccasion(state, action: PayloadAction<string>) {
+      const occasionId = action.payload
+      state.occasions = state.occasions.filter((occasion) => occasion.id !== occasionId)
+    },
   },
 })
 
@@ -498,6 +522,9 @@ export const {
   updatePackage,
   removePackage,
   duplicatePackage,
+  addOccasion,
+  updateOccasion,
+  removeOccasion,
 } = schedulingSlice.actions
 
 export const schedulingReducer = schedulingSlice.reducer
@@ -519,3 +546,6 @@ export const selectSchedulingWaitlist = (
   state: RootState,
 ): SchedulingWaitlistEntry[] => state.scheduling.waitlist
 export const selectSchedulingPackages = (state: RootState): EventPackage[] => state.scheduling.packages
+export const selectSchedulingOccasions = (
+  state: RootState,
+): SchedulingOccasion[] => state.scheduling.occasions

@@ -10,12 +10,22 @@ export interface ShopImageGalleryProps {
   readonly images: string[]
   readonly alt: string
   readonly className?: string
+  /**
+   * When true, the hero image grows to fill available column height (gift detail beside tall copy).
+   * Thumbnails stay fixed height below.
+   */
+  readonly fillMainHeight?: boolean
 }
 
 const SHOP_FALLBACK_SRC = '/placeholder.jpg'
 const PLACEHOLDER_SRC = '/placeholder.jpg'
 
-export function ShopImageGallery({ images, alt, className }: Readonly<ShopImageGalleryProps>) {
+export function ShopImageGallery({
+  images,
+  alt,
+  className,
+  fillMainHeight = false,
+}: Readonly<ShopImageGalleryProps>) {
   const sanitized = useMemo(() => {
     const cleaned = images.filter((i) => i && i.trim().length > 0)
     return cleaned.length ? cleaned : [SHOP_FALLBACK_SRC]
@@ -65,9 +75,19 @@ export function ShopImageGallery({ images, alt, className }: Readonly<ShopImageG
   }
 
   return (
-    <div className={cn('space-y-3', className)}>
+    <div
+      className={cn(
+        fillMainHeight ? 'flex h-full min-h-0 flex-1 flex-col gap-3' : 'space-y-3',
+        className,
+      )}
+    >
       <div
-        className="relative aspect-[4/3] overflow-hidden rounded-xl border border-border bg-muted/30"
+        className={cn(
+          'relative overflow-hidden rounded-xl border border-border bg-muted/30',
+          fillMainHeight
+            ? 'min-h-[14rem] w-full flex-1 lg:min-h-0'
+            : 'aspect-[4/3]',
+        )}
         style={{ touchAction: 'pan-y' }}
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
@@ -83,7 +103,7 @@ export function ShopImageGallery({ images, alt, className }: Readonly<ShopImageG
       </div>
 
       {sanitized.length > 1 ? (
-        <div className="flex gap-2 overflow-x-auto pb-1">
+        <div className="flex shrink-0 gap-2 overflow-x-auto pb-1">
           {sanitized.map((src, idx) => {
             const active = idx === activeIdx
             return (

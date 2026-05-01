@@ -1,16 +1,29 @@
 /** Location store — in-memory CRUD for admin + shared selectors (mock-backed). */
 'use client'
 
-import React, { createContext, useContext, useMemo, useState } from 'react'
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
 
 import { locations as initialLocations } from '@/lib/mock-data'
-import type { Location, OperatingHours } from '@/lib/types'
+import {
+  createLocation as createLocationRequest,
+  deleteLocation as deleteLocationRequest,
+  listLocations,
+  updateLocation as updateLocationRequest,
+} from '@/lib/services/locations'
+import type {
+  CreateLocationPayload,
+  Location,
+  OperatingHours,
+  UpdateLocationPayload,
+} from '@/lib/types'
 
 interface LocationStore {
   locations: Location[]
-  addLocation: (location: Location) => void
-  updateLocation: (locationId: string, patch: Partial<Location>) => void
-  deleteLocation: (locationId: string) => void
+  isLoading: boolean
+  loadError: string | null
+  addLocation: (payload: CreateLocationPayload) => Promise<Location>
+  updateLocation: (locationId: string, payload: UpdateLocationPayload) => Promise<Location>
+  deleteLocation: (locationId: string) => Promise<void>
 }
 
 const LocationContext = createContext<LocationStore | null>(null)
@@ -46,33 +59,77 @@ export function LocationProvider({
   const [locations, setLocations] = useState<Location[]>(() =>
     initialLocations.map((l) => withRequiredSettings({ ...l })),
   )
+  const [isLoading, setIsLoading] = useState<boolean>(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let isMounted = true
+
+    async function loadLocations(): Promise<void> {
+      setIsLoading(true)
+      setLoadError(null)
+
+      try {
+        const result = await listLocations({
+          page: 1,
+          limit: 20,
+        })
+        if (!isMounted) {
+          return
+        }
+        setLocations(result.locations.map((location) => withRequiredSettings({ ...location })))
+      } catch (error) {
+        if (!isMounted) {
+          return
+        }
+        setLoadError(error instanceof Error ? error.message : 'Failed to load locations')
+      } finally {
+        if (!isMounted) {
+          return
+        }
+        setIsLoading(false)
+      }
+    }
+
+    void loadLocations()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   const value = useMemo<LocationStore>(() => {
-    function addLocation(location: Location) {
-      setLocations((prev) => [withRequiredSettings({ ...location }), ...prev])
+    async function addLocation(payload: CreateLocationPayload): Promise<Location> {
+      const created = await createLocationRequest(payload)
+      const normalized = withRequiredSettings({ ...created })
+      setLocations((prev) => [normalized, ...prev])
+      return normalized
     }
 
-    function updateLocation(locationId: string, patch: Partial<Location>) {
-      setLocations((prev) =>
-        prev.map((l) =>
-          l.id === locationId
-            ? withRequiredSettings({
-                ...l,
-                ...patch,
-                settings: patch.settings ?? l.settings,
-                updatedAt: patch.updatedAt ?? new Date().toISOString(),
-              })
-            : l,
-        ),
-      )
+    async function updateLocation(
+      locationId: string,
+      payload: UpdateLocationPayload,
+    ): Promise<Location> {
+      const updated = await updateLocationRequest(locationId, payload)
+      const normalized = withRequiredSettings({ ...updated })
+      setLocations((prev) => prev.map((l) => (l.id === locationId ? normalized : l)))
+      return normalized
     }
 
-    function deleteLocation(locationId: string) {
+    async function deleteLocation(locationId: string): Promise<void> {
+      await deleteLocationRequest(locationId)
       setLocations((prev) => prev.filter((l) => l.id !== locationId))
     }
 
-    return { locations, addLocation, updateLocation, deleteLocation }
-  }, [locations])
+    return {
+      locations,
+      isLoading,
+      loadError,
+      addLocation,
+      updateLocation,
+      deleteLocation,
+    }
+  }, [isLoading, loadError, locations])
 
   return (
     <LocationContext.Provider value={value}>{children}</LocationContext.Provider>

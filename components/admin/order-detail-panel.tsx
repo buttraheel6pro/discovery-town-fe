@@ -8,6 +8,9 @@ import { RefundModal } from '@/components/admin/refund-modal'
 import { OrderChannelBadge } from '@/components/admin/order-channel-badge'
 import { OrderStatusBadge } from '@/components/admin/order-status-badge'
 import { PaymentStatusBadge } from '@/components/admin/payment-status-badge'
+import { RentalActionsPanel } from '@/components/admin/rental-actions-panel'
+import { RentalOrderStatusBadge } from '@/components/admin/rental-order-status-badge'
+import { InvitationDesignPanel } from '@/components/admin/invitation-design-panel'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -72,6 +75,9 @@ export function OrderDetailPanel({ order, onClose }: Readonly<OrderDetailPanelPr
             <OrderChannelBadge channel={order.channel} />
             <PaymentStatusBadge status={order.paymentStatus} />
             <OrderStatusBadge status={order.status} />
+            {order.fulfillmentType === 'RENTAL' ? (
+              <RentalOrderStatusBadge status={order.rentalStatus} />
+            ) : null}
           </div>
           <p className="text-xs text-muted-foreground">
             Created {new Date(order.createdAt).toLocaleString()}
@@ -143,6 +149,9 @@ export function OrderDetailPanel({ order, onClose }: Readonly<OrderDetailPanelPr
           </TableBody>
         </Table>
       </div>
+
+      {order.fulfillmentType === 'RENTAL' ? <RentalActionsPanel order={order} /> : null}
+      {order.fulfillmentType === 'INVITATION' ? <InvitationDesignPanel order={order} /> : null}
 
       <div className="grid gap-6 md:grid-cols-2">
         <div className="space-y-2">

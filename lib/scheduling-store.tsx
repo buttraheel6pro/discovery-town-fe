@@ -9,6 +9,7 @@ import {
   addBooking as addBookingAction,
   addCategory as addCategoryAction,
   addPackage as addPackageAction,
+  addOccasion as addOccasionAction,
   addService as addServiceAction,
   addSlot as addSlotAction,
   addSlots as addSlotsAction,
@@ -23,10 +24,12 @@ import {
   removeCategory as removeCategoryAction,
   removeFromWaitlist as removeFromWaitlistAction,
   removePackage as removePackageAction,
+  removeOccasion as removeOccasionAction,
   removeService as removeServiceAction,
   selectSchedulingBookings,
   selectSchedulingCategories,
   selectSchedulingPackages,
+  selectSchedulingOccasions,
   selectSchedulingServices,
   selectSchedulingSlots,
   selectSchedulingWaitlist,
@@ -35,6 +38,7 @@ import {
   unlinkSchedulingAddOn as unlinkSchedulingAddOnAction,
   updateCategory as updateCategoryAction,
   updatePackage as updatePackageAction,
+  updateOccasion as updateOccasionAction,
   updateService as updateServiceAction,
   type SchedulingAddOnParent,
 } from '@/lib/redux/slices/scheduling-slice'
@@ -43,6 +47,7 @@ import type {
   EventPackage,
   SchedulingBooking,
   SchedulingCategory,
+  SchedulingOccasion,
   SchedulingService,
   SchedulingSlot,
   SchedulingWaitlistEntry,
@@ -55,6 +60,7 @@ interface SchedulingStore {
   bookings: SchedulingBooking[]
   waitlist: SchedulingWaitlistEntry[]
   packages: EventPackage[]
+  occasions: SchedulingOccasion[]
   addCategory: (category: SchedulingCategory) => void
   removeCategory: (categoryId: string) => void
   updateCategory: (categoryId: string, patch: Partial<SchedulingCategory>) => void
@@ -102,6 +108,9 @@ interface SchedulingStore {
   updatePackage: (packageId: string, patch: Partial<EventPackage>) => void
   removePackage: (packageId: string) => void
   duplicatePackage: (packageId: string) => void
+  addOccasion: (occasion: SchedulingOccasion) => void
+  updateOccasion: (occasionId: string, patch: Partial<SchedulingOccasion>) => void
+  removeOccasion: (occasionId: string) => void
 }
 
 const SchedulingContext = createContext<SchedulingStore | null>(null)
@@ -118,6 +127,7 @@ export function SchedulingProvider({
   const bookings = useAppSelector(selectSchedulingBookings)
   const waitlist = useAppSelector(selectSchedulingWaitlist)
   const packages = useAppSelector(selectSchedulingPackages)
+  const occasions = useAppSelector(selectSchedulingOccasions)
 
   const value = useMemo<SchedulingStore>(() => {
     function addBooking(booking: SchedulingBooking) {
@@ -287,6 +297,18 @@ export function SchedulingProvider({
       )
     }
 
+    function addOccasion(occasion: SchedulingOccasion) {
+      dispatch(addOccasionAction(occasion))
+    }
+
+    function updateOccasion(occasionId: string, patch: Partial<SchedulingOccasion>) {
+      dispatch(updateOccasionAction({ occasionId, patch }))
+    }
+
+    function removeOccasion(occasionId: string) {
+      dispatch(removeOccasionAction(occasionId))
+    }
+
     return {
       categories,
       services,
@@ -294,6 +316,7 @@ export function SchedulingProvider({
       bookings,
       waitlist,
       packages,
+      occasions,
       addCategory,
       removeCategory,
       updateCategory,
@@ -321,8 +344,11 @@ export function SchedulingProvider({
       updatePackage,
       removePackage,
       duplicatePackage,
+      addOccasion,
+      updateOccasion,
+      removeOccasion,
     }
-  }, [bookings, categories, dispatch, packages, services, slots, waitlist])
+  }, [bookings, categories, dispatch, occasions, packages, services, slots, waitlist])
 
   return (
     <SchedulingContext.Provider value={value}>

@@ -16,6 +16,7 @@ export interface LocationDraft {
   readonly name: string
   readonly address: string
   readonly city: string
+  readonly country: string
   readonly postcode: string
   readonly timezone: string
   readonly isActive: boolean
@@ -144,6 +145,17 @@ export function LocationForm({
                 value={value.postcode}
                 onChange={(e) => onChange({ ...value, postcode: e.target.value })}
                 placeholder="M1 2AB"
+                disabled={disabled}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="loc-country">Country</Label>
+              <Input
+                id="loc-country"
+                value={value.country}
+                onChange={(e) => onChange({ ...value, country: e.target.value })}
+                placeholder="United Kingdom"
                 disabled={disabled}
               />
             </div>

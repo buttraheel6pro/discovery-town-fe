@@ -77,6 +77,11 @@ const sidebarGroups = [
         icon: Building2,
       },
       {
+        label: "Customer Locations",
+        href: "/admin/scheduling/locations/customer-crud",
+        icon: Users,
+      },
+      {
         label: "Event Type",
         href: "/admin/scheduling/services",
         icon: Timer,
@@ -85,6 +90,11 @@ const sidebarGroups = [
         label: "Add-ons",
         href: "/admin/scheduling/add-ons",
         icon: Package,
+      },
+      {
+        label: "Occasions",
+        href: "/admin/scheduling/occasions",
+        icon: CalendarDays,
       },
       {
         label: "Private Hire",
@@ -111,6 +121,11 @@ const sidebarGroups = [
         href: "/admin/class-packs",
         icon: CreditCard,
       },
+      {
+        label: "Roles",
+        href: "/admin/scheduling/roles",
+        icon: Activity,
+      },
     ],
   },
   {
@@ -131,6 +146,11 @@ const sidebarGroups = [
         label: "Orders",
         href: "/admin/orders",
         icon: ShoppingCart,
+      },
+      {
+        label: "Staff Assignments",
+        href: "/admin/rentals/staff-assignments",
+        icon: Users2,
       },
       {
         label: "POS",
@@ -199,7 +219,7 @@ const SECTION_ROOTS = [
   "/admin/calendar",
   "/admin/clients",
   "/admin/reports",
-  "/admin"
+  "/admin",
 ];
 
 function isItemActive(href: string, pathname: string) {

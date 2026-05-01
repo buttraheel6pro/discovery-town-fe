@@ -19,7 +19,7 @@ import { formatPrice } from '@/lib/utils'
 import { useInventory } from '@/lib/inventory-store'
 import type { Order, OrderStatus } from '@/lib/types'
 
-type StatusTab = 'ALL' | 'PENDING' | 'PROCESSING' | 'DELIVERED' | 'REFUNDED' | 'CANCELLED'
+type StatusTab = 'ALL' | 'RENTALS' | 'PENDING' | 'PROCESSING' | 'DELIVERED' | 'REFUNDED' | 'CANCELLED'
 
 function OrdersManagementContent() {
   const searchParams = useSearchParams()
@@ -43,6 +43,9 @@ function OrdersManagementContent() {
     const q = search.trim().toLowerCase()
     return orders
       .filter((o) => {
+        if (tab === 'RENTALS') {
+          return o.fulfillmentType === 'RENTAL'
+        }
         if (tab !== 'ALL' && o.status !== tab) return false
         if (!q) return true
         const hay = `${o.orderNumber} ${(o.contactName ?? '')} ${(o.contactEmail ?? '')}`.toLowerCase()
@@ -124,6 +127,7 @@ function OrdersManagementContent() {
           <Tabs value={tab} onValueChange={(v) => setTab(v as StatusTab)}>
             <TabsList className="flex flex-wrap">
               <TabsTrigger value="ALL">All</TabsTrigger>
+              <TabsTrigger value="RENTALS">Rentals</TabsTrigger>
               <TabsTrigger value="PENDING">Pending</TabsTrigger>
               <TabsTrigger value="PROCESSING">Processing</TabsTrigger>
               <TabsTrigger value="DELIVERED">Delivered</TabsTrigger>
@@ -142,10 +146,10 @@ function OrdersManagementContent() {
             <TableHeader>
               <TableRow>
                 <TableHead>Order</TableHead>
-                <TableHead>Channel</TableHead>
+                <TableHead>{tab === 'RENTALS' ? 'Fulfillment' : 'Channel'}</TableHead>
                 <TableHead>Customer</TableHead>
-                <TableHead className="text-right">Items</TableHead>
-                <TableHead className="text-right">Total</TableHead>
+                <TableHead className="text-right">{tab === 'RENTALS' ? 'Rental date' : 'Items'}</TableHead>
+                <TableHead className="text-right">{tab === 'RENTALS' ? 'Deposit' : 'Total'}</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Created</TableHead>
                 <TableHead className="text-right">Action</TableHead>
@@ -156,14 +160,24 @@ function OrdersManagementContent() {
                 <TableRow key={o.id}>
                   <TableCell className="font-mono text-xs font-semibold text-foreground">{o.orderNumber}</TableCell>
                   <TableCell>
-                    <OrderChannelBadge channel={o.channel} />
+                    {tab === 'RENTALS' ? (
+                      <span className="text-sm font-medium text-foreground">{o.fulfillmentMode ?? '—'}</span>
+                    ) : (
+                      <OrderChannelBadge channel={o.channel} />
+                    )}
                   </TableCell>
                   <TableCell className="whitespace-normal">
                     <p className="text-sm font-semibold text-foreground">{o.contactName ?? 'Guest'}</p>
                     <p className="text-xs text-muted-foreground">{o.contactEmail ?? '—'}</p>
                   </TableCell>
-                  <TableCell className="text-right">{o.items.length}</TableCell>
-                  <TableCell className="text-right font-semibold">{formatPrice(o.total)}</TableCell>
+                  <TableCell className="text-right">
+                    {tab === 'RENTALS'
+                      ? `${o.rentalStartAt?.slice(0, 10) ?? '—'} to ${o.rentalEndAt?.slice(0, 10) ?? '—'}`
+                      : o.items.length}
+                  </TableCell>
+                  <TableCell className="text-right font-semibold">
+                    {tab === 'RENTALS' ? formatPrice(o.depositAmount ?? 0) : formatPrice(o.total)}
+                  </TableCell>
                   <TableCell className="flex flex-wrap items-center gap-2">
                     <PaymentStatusBadge status={o.paymentStatus} />
                     <OrderStatusBadge status={o.status} />

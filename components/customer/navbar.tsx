@@ -38,6 +38,7 @@ export function CustomerNavbar() {
 
   const storeItems = useMemo<NavbarLinkItem[]>(() => {
     const productTypeValues = [...new Set(productCategories.map((category) => category.productType ?? 'shop'))]
+      .filter((productType) => productType !== 'rentals')
     const sortedProductTypes = productTypeValues.sort((left, right) => left.localeCompare(right))
 
     const dynamicItems = sortedProductTypes.map((productType) => ({
@@ -46,7 +47,10 @@ export function CustomerNavbar() {
       description: `Browse ${PRODUCT_TYPE_LABELS[productType] ?? productType} collections`,
     }))
 
-    return dynamicItems
+    return [
+      { label: 'Rentals', href: '/rentals', description: 'Equipment, staffed services, and event rentals.' },
+      ...dynamicItems,
+    ]
   }, [productCategories])
 
   const discoverItems: NavbarLinkItem[] = [

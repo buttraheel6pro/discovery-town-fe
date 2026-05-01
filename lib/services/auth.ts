@@ -8,8 +8,14 @@ import {
   type LoginRequest,
   type LoginResponse,
 } from '@/lib/schemas/auth/login'
+import {
+  currentUserProfileSchema,
+  meResponseSchema,
+} from '@/lib/schemas/auth/me'
+import type { CurrentUserProfile } from '@/lib/types'
 
 const LOGIN_PATH = API_PATHS.login
+const ME_PATH = API_PATHS.me
 
 let authFailureInitialized = false
 
@@ -39,6 +45,13 @@ export async function loginUser(payload: LoginRequest): Promise<LoginResponse> {
   const parsedResponse = loginResponseSchema.parse(response.data)
   setAuthSession(parsedResponse)
   return parsedResponse
+}
+
+export async function getCurrentUserProfile(): Promise<CurrentUserProfile> {
+  initializeAuthFailureHandler()
+  const response = await apiClient.get(ME_PATH)
+  const parsedResponse = meResponseSchema.parse(response.data)
+  return currentUserProfileSchema.parse(parsedResponse)
 }
 
 export function logoutUser(): void {

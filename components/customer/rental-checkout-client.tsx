@@ -1,0 +1,228 @@
+/** Rental checkout client with multi-step flow. */
+'use client'
+
+import { useMemo, useState } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+
+import { CouponPanel } from '@/components/customer/coupon-panel'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Separator } from '@/components/ui/separator'
+import { useInventory } from '@/lib/inventory-store'
+import { formatPrice } from '@/lib/utils'
+import type { Coupon, RentalAcknowledgmentType } from '@/lib/types'
+
+type CheckoutStep = 'dates' | 'fulfillment' | 'ack' | 'payment' | 'confirmation'
+
+const ACK_OPTIONS: { id: RentalAcknowledgmentType; label: string }[] = [
+  { id: 'MECHANICAL_BULL_SAFETY', label: 'Mechanical Bull: Safety acknowledgment' },
+  { id: 'GENERATOR_VENTILATION', label: 'Generator: Ventilation safety acknowledgment' },
+  { id: 'FOOD_EQUIPMENT_SANITATION', label: 'Food equipment: Sanitation acknowledgment' },
+  { id: 'DJ_CONTROLLER_DEPOSIT', label: 'DJ Controller: $200 refundable deposit notice' },
+]
+
+export function RentalCheckoutClient() {
+  const router = useRouter()
+  const {
+    cart,
+    setCouponDirect,
+    removeCoupon,
+    setRentalDates,
+    setFulfillmentMode,
+    setDeliveryFee,
+    setAcknowledgments,
+    addOrder,
+    clearCart,
+  } = useInventory()
+  const [step, setStep] = useState<CheckoutStep>('dates')
+  const [cardNumber, setCardNumber] = useState('')
+  const [expiry, setExpiry] = useState('')
+  const [cvv, setCvv] = useState('')
+
+  const subtotal = useMemo(
+    () => cart.items.reduce((sum, item) => sum + item.price * item.quantity, 0),
+    [cart.items],
+  )
+  const deliveryFee = cart.fulfillmentMode === 'DELIVERY' ? cart.deliveryFee ?? 0 : 0
+  const deposit = cart.depositTotal ?? 0
+  const total = subtotal - cart.couponDiscount + deliveryFee + deposit
+
+  function applyCoupon(coupon: Coupon | null, discount: number) {
+    if (!coupon || discount <= 0) {
+      removeCoupon()
+      return
+    }
+    setCouponDirect(coupon.code, discount)
+  }
+
+  function placeOrder() {
+    if (!cardNumber || !expiry || !cvv) {
+      return
+    }
+    const nowIso = new Date().toISOString()
+    addOrder({
+      id: `rental-order-${Date.now()}`,
+      tenantId: 'tenant-1',
+      orderNumber: `RNT-${Date.now().toString().slice(-6)}`,
+      contactId: cart.contactId ?? 'contact-1',
+      channel: 'ONLINE',
+      items: cart.items.map((item) => ({
+        id: `ritem-${item.id}`,
+        orderId: `rental-order-${Date.now()}`,
+        productId: String(item.metadata?.productId ?? ''),
+        productName: item.name,
+        quantity: item.quantity,
+        unitPrice: item.price,
+        totalPrice: item.price * item.quantity,
+        total: item.price * item.quantity,
+      })),
+      subtotal,
+      discount: cart.couponDiscount,
+      tax: 0,
+      total,
+      status: 'PROCESSING',
+      paymentStatus: 'PAID',
+      fulfillmentType: 'RENTAL',
+      rentalStatus: 'PENDING',
+      rentalStartAt: cart.rentalStartAt ?? null,
+      rentalEndAt: cart.rentalEndAt ?? null,
+      fulfillmentMode: cart.fulfillmentMode ?? null,
+      deliveryAddress: cart.deliveryAddress ?? null,
+      deliveryFee,
+      depositAmount: deposit,
+      acknowledgments: cart.acknowledgments ?? [],
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    })
+    clearCart()
+    setStep('confirmation')
+  }
+
+  return (
+    <div className="space-y-6 rounded-xl border border-border bg-card p-6">
+      <div className="flex flex-wrap gap-2 text-xs font-semibold text-muted-foreground">
+        <span>Step 1: Dates</span>
+        <span>Step 2: Fulfillment</span>
+        <span>Step 3: Acknowledgments</span>
+        <span>Step 4: Payment</span>
+        <span>Step 5: Confirmation</span>
+      </div>
+
+      {step === 'dates' ? (
+        <div className="space-y-4">
+          <h2 className="text-xl font-bold">Confirm rental dates</h2>
+          <Label>Start date</Label>
+          <Input
+            type="datetime-local"
+            value={cart.rentalStartAt?.slice(0, 16) ?? ''}
+            onChange={(event) => setRentalDates(event.target.value, cart.rentalEndAt ?? null)}
+          />
+          <Label>End date</Label>
+          <Input
+            type="datetime-local"
+            value={cart.rentalEndAt?.slice(0, 16) ?? ''}
+            onChange={(event) => setRentalDates(cart.rentalStartAt ?? null, event.target.value)}
+          />
+          <Button onClick={() => setStep('fulfillment')}>Continue</Button>
+        </div>
+      ) : null}
+
+      {step === 'fulfillment' ? (
+        <div className="space-y-4">
+          <h2 className="text-xl font-bold">Fulfillment</h2>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setFulfillmentMode('PICKUP')}>
+              Pickup
+            </Button>
+            <Button variant="outline" onClick={() => setFulfillmentMode('DELIVERY')}>
+              Delivery
+            </Button>
+          </div>
+          {cart.fulfillmentMode === 'DELIVERY' ? (
+            <>
+              <Label>Delivery address</Label>
+              <Input
+                value={cart.deliveryAddress ?? ''}
+                onChange={(event) => setFulfillmentMode('DELIVERY', event.target.value)}
+              />
+              <Label>Delivery fee</Label>
+              <Input
+                type="number"
+                min={0}
+                value={cart.deliveryFee ?? 0}
+                onChange={(event) => setDeliveryFee(Number(event.target.value))}
+              />
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Pickup venue: 4821 Oak Tree Blvd, Carmel IN 46032. Pickup hours 9:00AM-7:00PM.
+            </p>
+          )}
+          <Button onClick={() => setStep('ack')}>Continue</Button>
+        </div>
+      ) : null}
+
+      {step === 'ack' ? (
+        <div className="space-y-3">
+          <h2 className="text-xl font-bold">Acknowledgments</h2>
+          {ACK_OPTIONS.map((option) => {
+            const checked = (cart.acknowledgments ?? []).includes(option.id)
+            return (
+              <label key={option.id} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={(event) => {
+                    const current = cart.acknowledgments ?? []
+                    if (event.target.checked) {
+                      setAcknowledgments([...current, option.id])
+                    } else {
+                      setAcknowledgments(current.filter((entry) => entry !== option.id))
+                    }
+                  }}
+                />
+                {option.label}
+              </label>
+            )
+          })}
+          <Button onClick={() => setStep('payment')}>Continue</Button>
+        </div>
+      ) : null}
+
+      {step === 'payment' ? (
+        <div className="space-y-4">
+          <h2 className="text-xl font-bold">Payment</h2>
+          <CouponPanel context="ORDER" subtotal={subtotal} onCouponApplied={applyCoupon} />
+          <Separator />
+          <Label>Card number</Label>
+          <Input value={cardNumber} onChange={(event) => setCardNumber(event.target.value)} />
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <Label>Expiry</Label>
+              <Input value={expiry} onChange={(event) => setExpiry(event.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label>CVV</Label>
+              <Input value={cvv} onChange={(event) => setCvv(event.target.value)} />
+            </div>
+          </div>
+          <p className="text-sm text-muted-foreground">Total: {formatPrice(total)}</p>
+          <Button onClick={placeOrder}>Place rental order</Button>
+        </div>
+      ) : null}
+
+      {step === 'confirmation' ? (
+        <div className="space-y-3 text-center">
+          <h2 className="text-2xl font-black text-foreground">Rental confirmed</h2>
+          <p className="text-sm text-muted-foreground">Your rental order has been submitted.</p>
+          <Button onClick={() => router.push('/rentals')}>Back to rentals</Button>
+          <Link className="block text-sm text-accent" href="/admin/orders">
+            View in admin orders
+          </Link>
+        </div>
+      ) : null}
+    </div>
+  )
+}

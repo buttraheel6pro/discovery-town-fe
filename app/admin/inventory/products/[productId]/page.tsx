@@ -1,17 +1,12 @@
 /** Admin product detail — fields and stock movement history. */
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import Image from 'next/image'
+import { ArrowLeft } from 'lucide-react'
 
-import { CrudModal } from '@/components/admin/crud-modal'
-import {
-  ProductForm,
-  type ProductDraft,
-  draftToProductPatch,
-  productToDraft,
-} from '@/components/admin/product-form'
 import { StockAdjustmentModal } from '@/components/admin/stock-adjustment-modal'
 import { StockMovementTimeline } from '@/components/admin/stock-movement-timeline'
 import { StockStatusBadge } from '@/components/admin/stock-status-badge'
@@ -20,18 +15,23 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useToast } from '@/hooks/use-toast'
 import { formatPrice } from '@/lib/utils'
 import { useInventory } from '@/lib/inventory-store'
-import type { Product, ProductCategory } from '@/lib/types'
+import type { ProductCategory } from '@/lib/types'
 
 export default function AdminInventoryProductDetailPage() {
   const params = useParams<{ productId: string }>()
   const productId = params.productId
+  const [returnTo, setReturnTo] = useState('/admin/inventory/products')
 
-  const { toast } = useToast()
-  const { products, productCategories, bookingAddOns, stockMovements, updateProduct, promoteProductToAddOn } =
-    useInventory()
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const target = new URLSearchParams(window.location.search).get('returnTo')?.trim()
+    if (!target || !target.startsWith('/')) return
+    setReturnTo(target)
+  }, [])
+
+  const { products, productCategories, stockMovements, updateProduct } = useInventory()
   const categories = useMemo(
     () => productCategories.slice().sort((a, b) => a.displayOrder - b.displayOrder),
     [productCategories],
@@ -47,53 +47,7 @@ export default function AdminInventoryProductDetailPage() {
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
   }, [productId, stockMovements])
 
-  const [editOpen, setEditOpen] = useState(false)
   const [adjustOpen, setAdjustOpen] = useState(false)
-  const [draft, setDraft] = useState<ProductDraft>(() =>
-    product && categories.length ? productToDraft(product, categories) : productToDraft(
-      {
-        id: 'new',
-        tenantId: 'tenant-1',
-        categoryId: categories[0]?.id ?? '',
-        name: '',
-        slug: '',
-        description: '',
-        sku: undefined,
-        price: 0,
-        memberPrice: undefined,
-        stockCount: 0,
-        lowStockThreshold: 10,
-        allowBackorders: false,
-        isActive: true,
-        isFeatured: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-      categories,
-    ),
-  )
-
-  const lockedPromotedAddOn = useMemo(() => {
-    if (!product?.linkedAddOnId) return null
-    const name =
-      bookingAddOns.find((a) => a.id === product.linkedAddOnId)?.name ?? product.name
-    return { id: product.linkedAddOnId, name }
-  }, [product, bookingAddOns])
-
-  function persistEdit() {
-    if (!product) return
-    const wantsPromote = draft.canBeAddOn && !product.linkedAddOnId
-    const patch = draftToProductPatch(draft)
-    updateProduct(product.id, patch)
-    if (wantsPromote) {
-      const merged = { ...product, ...patch } as Product
-      const result = promoteProductToAddOn(product.id, merged)
-      if (!result.ok) {
-        toast({ title: 'Add-on link failed', description: result.message, variant: 'destructive' })
-      }
-    }
-    setEditOpen(false)
-  }
 
   if (!product) {
     return (
@@ -101,6 +55,14 @@ export default function AdminInventoryProductDetailPage() {
         <CardHeader>
           <CardTitle>Product not found</CardTitle>
           <CardDescription>The product may have been deleted.</CardDescription>
+          <div className="pt-2">
+            <Link href={returnTo}>
+              <Button type="button" variant="outline" className="gap-2">
+                <ArrowLeft className="h-4 w-4" />
+                Back
+              </Button>
+            </Link>
+          </div>
         </CardHeader>
       </Card>
     )
@@ -108,6 +70,12 @@ export default function AdminInventoryProductDetailPage() {
 
   return (
     <div className="space-y-6">
+      <Link href={returnTo}>
+        <Button type="button" variant="outline" className="gap-2">
+          <ArrowLeft className="h-4 w-4" />
+          Back
+        </Button>
+      </Link>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-center gap-4">
           <div className="relative h-16 w-16 overflow-hidden rounded-xl border border-border bg-muted/30">
@@ -134,11 +102,10 @@ export default function AdminInventoryProductDetailPage() {
           <Button variant="outline" onClick={() => setAdjustOpen(true)}>
             Adjust stock
           </Button>
-          <Button onClick={() => {
-            setDraft(productToDraft(product, categories))
-            setEditOpen(true)
-          }}>
-            Edit
+          <Button asChild>
+            <Link href={`/admin/inventory/products/${product.id}/edit?returnTo=${encodeURIComponent(returnTo)}`}>
+              Edit
+            </Link>
           </Button>
         </div>
       </div>
@@ -206,31 +173,6 @@ export default function AdminInventoryProductDetailPage() {
           <StockMovementTimeline movements={movements} />
         </TabsContent>
       </Tabs>
-
-      <CrudModal
-        open={editOpen}
-        onOpenChange={setEditOpen}
-        title="Edit product"
-        description="Update product details, pricing, and inventory."
-        size="lg"
-        variant="edit"
-        scrollMode="dialog"
-        footer={
-          <>
-            <Button variant="outline" onClick={() => setEditOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={persistEdit}>Save</Button>
-          </>
-        }
-      >
-        <ProductForm
-          value={draft}
-          onChange={setDraft}
-          categories={categories}
-          lockedPromotedAddOn={lockedPromotedAddOn}
-        />
-      </CrudModal>
 
       <StockAdjustmentModal product={product} open={adjustOpen} onClose={() => setAdjustOpen(false)} />
     </div>

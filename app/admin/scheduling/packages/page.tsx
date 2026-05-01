@@ -2,6 +2,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import Link from 'next/link'
 
 import { CrudModal } from '@/components/admin/crud-modal'
 import { Button } from '@/components/ui/button'
@@ -87,29 +88,6 @@ export default function AdminSchedulingPackagesPage() {
   const [draftAdditionalAdultPrice, setDraftAdditionalAdultPrice] = useState('')
   const [draftDuration, setDraftDuration] = useState('')
   const [draftSetupTime, setDraftSetupTime] = useState('')
-
-  function openCreate() {
-    const fallbackService = assignableServices[0]?.id ?? ''
-    setEditingId(null)
-    setDraftServiceId(fallbackService)
-    setDraftTier('SILVER')
-    setDraftName('')
-    setDraftBasePrice('0')
-    setDraftFeatures('')
-    setDraftIsActive(true)
-    setDraftIsWholeVenue(false)
-    setDraftDepositAmount('')
-    setDraftDepositNonRefundable(false)
-    setDraftMinChildSeats('')
-    setDraftMaxChildSeats('')
-    setDraftMinAdultSeats('')
-    setDraftMaxAdultSeats('')
-    setDraftAdditionalChildPrice('')
-    setDraftAdditionalAdultPrice('')
-    setDraftDuration('')
-    setDraftSetupTime('')
-    setOpen(true)
-  }
 
   function openEdit(pkg: EventPackage) {
     setEditingId(pkg.id)
@@ -214,9 +192,11 @@ export default function AdminSchedulingPackagesPage() {
             Manage tiered packages across all events and services.
           </p>
         </div>
-        <Button className="bg-accent text-accent-foreground hover:bg-accent/90" onClick={openCreate}>
-          New package
-        </Button>
+        <Link href="/admin/scheduling/packages/new">
+          <Button className="bg-accent text-accent-foreground hover:bg-accent/90">
+            New package
+          </Button>
+        </Link>
       </div>
 
       <Card>

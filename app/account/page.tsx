@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -28,7 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { bookings, orders, users } from "@/lib/mock-data";
+import { bookings, orders } from "@/lib/mock-data";
 import type { SchedulingServiceType } from "@/lib/types";
 import { BookingHistoryCard } from "@/components/customer/booking-history-card";
 import { CrudModal } from "@/components/admin/crud-modal";
@@ -39,8 +39,8 @@ import { CreditBalanceDisplay } from "@/components/customer/credit-balance-displ
 import { useClients } from "@/lib/client-store";
 import { useInventory } from "@/lib/inventory-store";
 import { formatPrice, isDocumentSignedAndValid } from "@/lib/utils";
-
-const currentUser = users.find((u) => u.role === "CUSTOMER")!;
+import { getCurrentUserProfile } from "@/lib/services/auth";
+import type { CurrentUserProfile } from "@/lib/types";
 
 const bookingStatusBadge: Record<string, { label: string; className: string }> =
   {
@@ -65,15 +65,69 @@ const orderStatusBadge: Record<string, { label: string; className: string }> = {
   CANCELLED: { label: "Cancelled", className: "bg-red-100 text-red-700" },
 };
 
+function getProfileErrorMessage(error: unknown): string {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "response" in error &&
+    typeof error.response === "object" &&
+    error.response !== null &&
+    "data" in error.response &&
+    typeof error.response.data === "object" &&
+    error.response.data !== null &&
+    "message" in error.response.data &&
+    typeof error.response.data.message === "string"
+  ) {
+    return error.response.data.message;
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return "Failed to load profile.";
+}
+
 export default function AccountPage() {
   const [activeTab, setActiveTab] = useState("overview");
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const [cancelBookingId, setCancelBookingId] = useState<string | null>(null);
+  const [authProfile, setAuthProfile] = useState<CurrentUserProfile | null>(
+    null,
+  );
+  const [authProfileError, setAuthProfileError] = useState<string | null>(null);
   const myBookings = bookings.slice(0, 4);
   const myOrders = orders.slice(0, 3);
   const { bookings: schedulingBookings, cancelBooking } = useScheduling();
   const { contacts: cmContacts, documents: clientDocs } = useClients();
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadCurrentUserProfile(): Promise<void> {
+      try {
+        const profile = await getCurrentUserProfile();
+        if (!isMounted) {
+          return;
+        }
+        setAuthProfile(profile);
+        setAuthProfileError(null);
+      } catch (error) {
+        if (!isMounted) {
+          return;
+        }
+        setAuthProfile(null);
+        setAuthProfileError(getProfileErrorMessage(error));
+      }
+    }
+
+    void loadCurrentUserProfile();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
   const { orders: shopOrders } = useInventory();
 
   const primaryContact =
@@ -86,11 +140,25 @@ export default function AccountPage() {
     (s) => s.status === "ACTIVE" || s.status === "TRIALING",
   );
 
-  const displayFirstName = primaryContact?.firstName ?? currentUser.firstName;
-  const displayLastName = primaryContact?.lastName ?? currentUser.lastName;
-  const displayEmail = primaryContact?.email ?? currentUser.email;
-  const displayAvatar =
-    primaryContact?.avatarUrl ?? currentUser.avatarUrl ?? undefined;
+  const displayEmail = authProfile?.email ?? "—";
+  const displayName = authProfile?.name?.trim() ?? "";
+  const displayInitial = displayName.charAt(0).toUpperCase();
+  const displayAvatar = primaryContact?.avatarUrl ?? undefined;
+  const memberSinceText = authProfile?.createdAt
+    ? new Date(authProfile.createdAt).toLocaleDateString("en-GB", {
+        month: "long",
+        year: "numeric",
+      })
+    : "—";
+  const profileNameParts = (authProfile?.name ?? "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  const firstNameFromProfile = profileNameParts[0] ?? "Not set";
+  const lastNameFromProfile =
+    profileNameParts.length > 1
+      ? profileNameParts.slice(1).join(" ")
+      : "Not set";
 
   const pendingDocumentsCount = primaryContact
     ? clientDocs.filter(
@@ -133,7 +201,9 @@ export default function AccountPage() {
     (b) => b.status !== "CANCELLED" && b.status !== "COMPLETED",
   );
   const past = mySchedulingBookings.filter((b) => b.status === "COMPLETED");
-  const cancelled = mySchedulingBookings.filter((b) => b.status === "CANCELLED");
+  const cancelled = mySchedulingBookings.filter(
+    (b) => b.status === "CANCELLED",
+  );
 
   function openCancelDialog(id: string) {
     setCancelBookingId(id);
@@ -149,46 +219,43 @@ export default function AccountPage() {
         <section className="bg-primary py-12">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center gap-6">
             <Avatar className="h-20 w-20 border-4 border-accent">
-              <AvatarImage src={displayAvatar} alt={displayFirstName} />
-              <AvatarFallback className="text-xl font-bold bg-accent text-accent-foreground">
-                {displayFirstName[0]}
-                {displayLastName[0]}
-              </AvatarFallback>
+              <AvatarImage src={displayAvatar} alt={displayName} />
+              {displayInitial ? (
+                <AvatarFallback className="text-xl font-bold bg-accent text-accent-foreground">
+                  {displayInitial}
+                </AvatarFallback>
+              ) : null}
             </Avatar>
             <div>
               <h1
                 className="text-2xl font-black text-white"
                 style={{ fontFamily: "var(--font-barlow)" }}
               >
-                {displayFirstName} {displayLastName}
+                {displayName}
               </h1>
               <p className="text-white/70 text-sm mt-1">{displayEmail}</p>
               <div className="flex items-center gap-3 mt-2">
                 <span className="text-xs text-white/60">
-                  Member since{" "}
-                  {new Date(currentUser.joinedAt).toLocaleDateString("en-GB", {
-                    month: "long",
-                    year: "numeric",
-                  })}
+                  Member since {memberSinceText}
                 </span>
-                <Badge className="bg-accent text-accent-foreground text-xs">
-                  Active Member
-                </Badge>
+                {authProfile?.isActive ? (
+                  <Badge className="bg-accent text-accent-foreground text-xs">
+                    Active Member
+                  </Badge>
+                ) : null}
               </div>
             </div>
             <div className="ml-auto hidden sm:flex gap-6">
               <div className="text-center">
                 <p className="text-2xl font-black text-accent">
-                  {currentUser.bookings}
+                  {mySchedulingBookings.length}
                 </p>
                 <p className="text-xs text-white/60 uppercase tracking-wider">
                   Bookings
                 </p>
               </div>
               <div className="text-center">
-                <p className="text-2xl font-black text-accent">
-                  £{currentUser.totalSpent.toLocaleString()}
-                </p>
+                <p className="text-2xl font-black text-accent">—</p>
                 <p className="text-xs text-white/60 uppercase tracking-wider">
                   Total Spent
                 </p>
@@ -240,7 +307,9 @@ export default function AccountPage() {
                       </p>
                       <p className="text-xs text-muted-foreground">
                         Credits {formatPrice(primaryCreditBalance)} ·{" "}
-                        {primarySubscription ? "Membership active" : "No membership"}
+                        {primarySubscription
+                          ? "Membership active"
+                          : "No membership"}
                       </p>
                     </div>
                   </CardContent>
@@ -314,7 +383,8 @@ export default function AccountPage() {
                   {
                     href: "/account/profile",
                     title: "Profile & Preferences",
-                    description: "Update your details and communication settings.",
+                    description:
+                      "Update your details and communication settings.",
                     icon: Settings,
                   },
                   {
@@ -511,10 +581,14 @@ export default function AccountPage() {
                   <TabsContent value="past" className="space-y-3 mt-4">
                     {past.length === 0 ? (
                       <div className="text-center py-16 border border-border rounded-xl bg-card">
-                        <p className="text-muted-foreground">No past bookings</p>
+                        <p className="text-muted-foreground">
+                          No past bookings
+                        </p>
                       </div>
                     ) : (
-                      past.map((b) => <BookingHistoryCard key={b.id} booking={b} />)
+                      past.map((b) => (
+                        <BookingHistoryCard key={b.id} booking={b} />
+                      ))
                     )}
                   </TabsContent>
 
@@ -526,7 +600,9 @@ export default function AccountPage() {
                         </p>
                       </div>
                     ) : (
-                      cancelled.map((b) => <BookingHistoryCard key={b.id} booking={b} />)
+                      cancelled.map((b) => (
+                        <BookingHistoryCard key={b.id} booking={b} />
+                      ))
                     )}
                   </TabsContent>
                 </Tabs>
@@ -681,12 +757,18 @@ export default function AccountPage() {
               <div className="max-w-lg space-y-6">
                 <h2 className="text-lg font-bold">Profile</h2>
                 <p className="text-sm text-muted-foreground">
-                  Your account uses the same contact record as reception and CRM. Full editing
-                  (address, preferences) lives on the profile editor page.
+                  Your account uses the same contact record as reception and
+                  CRM. Full editing (address, preferences) lives on the profile
+                  editor page.
                 </p>
                 <Card>
                   <CardContent className="pt-6 space-y-4">
-                    {primaryContact ? (
+                    {authProfileError ? (
+                      <p className="text-xs text-muted-foreground">
+                        {authProfileError}
+                      </p>
+                    ) : null}
+                    {authProfile ? (
                       <>
                         <div className="grid grid-cols-2 gap-4">
                           <div>
@@ -694,7 +776,7 @@ export default function AccountPage() {
                               First name
                             </label>
                             <p className="text-sm font-semibold mt-1">
-                              {primaryContact.firstName}
+                              {firstNameFromProfile}
                             </p>
                           </div>
                           <div>
@@ -702,7 +784,7 @@ export default function AccountPage() {
                               Last name
                             </label>
                             <p className="text-sm font-semibold mt-1">
-                              {primaryContact.lastName}
+                              {lastNameFromProfile}
                             </p>
                           </div>
                         </div>
@@ -712,16 +794,14 @@ export default function AccountPage() {
                             Email
                           </label>
                           <p className="text-sm font-semibold mt-1">
-                            {primaryContact.email ?? "Not set"}
+                            {displayEmail}
                           </p>
                         </div>
                         <div>
                           <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                             Phone
                           </label>
-                          <p className="text-sm font-semibold mt-1">
-                            {primaryContact.phone ?? "Not set"}
-                          </p>
+                          <p className="text-sm font-semibold mt-1">Not set</p>
                         </div>
                         <Separator />
                         <div className="flex gap-3">
@@ -742,14 +822,16 @@ export default function AccountPage() {
                     ) : (
                       <>
                         <p className="text-sm text-muted-foreground">
-                          No CRM contact is loaded in this demo. Open the editor to review the
-                          form.
+                          No CRM contact is loaded in this demo. Open the editor
+                          to review the form.
                         </p>
                         <Button
                           className="bg-accent text-accent-foreground hover:bg-accent/90 w-full"
                           asChild
                         >
-                          <Link href="/account/profile">Go to profile editor</Link>
+                          <Link href="/account/profile">
+                            Go to profile editor
+                          </Link>
                         </Button>
                       </>
                     )}
@@ -771,7 +853,11 @@ export default function AccountPage() {
         variant="delete"
         footer={
           <>
-            <Button type="button" variant="outline" onClick={() => setCancelOpen(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setCancelOpen(false)}
+            >
               Close
             </Button>
             <Button
@@ -779,7 +865,10 @@ export default function AccountPage() {
               variant="destructive"
               onClick={() => {
                 if (!cancelBookingId) return;
-                cancelBooking(cancelBookingId, cancelReason.trim() || "Cancelled by user");
+                cancelBooking(
+                  cancelBookingId,
+                  cancelReason.trim() || "Cancelled by user",
+                );
                 setCancelOpen(false);
               }}
               disabled={!cancelBookingId}
