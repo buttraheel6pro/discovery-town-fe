@@ -4,6 +4,7 @@
 import { useMemo, useState } from 'react'
 import { useEffect } from 'react'
 import type { ComponentType } from 'react'
+import Link from 'next/link'
 import { Building2, Cake, CalendarDays, Church, PartyPopper, School, Ticket, Users } from 'lucide-react'
 
 import { BookingFlowCouponSection } from '@/components/customer/booking-flow-coupon-section'
@@ -20,16 +21,21 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { useEventBookingForm } from '@/hooks/use-event-booking-form'
 import { useToast } from '@/hooks/use-toast'
 import { useClients } from '@/lib/client-store'
+import { useInventory } from '@/lib/inventory-store'
 import {
   eventPackageOptionalAddOnsMock,
   eventPackagesMock,
   sampleEventAddOns,
 } from '@/lib/mock-data'
+import {
+  buildEventCartBookingDescription,
+  EVENT_CART_BOOKING_META_KEY,
+} from '@/lib/play-cart'
 import { formatPrice } from '@/lib/utils'
-import type { EventOccasion } from '@/lib/types'
-import { useEventBookingForm } from '@/hooks/use-event-booking-form'
+import type { EventOccasion, EventPackage } from '@/lib/types'
 
 type Step = 1 | 2 | 3 | 4 | 5 | 6
 
@@ -90,6 +96,8 @@ function toIsoDate(date: Date): string {
 
 interface EventBookingWidgetProps {
   readonly serviceId?: string
+  /** When set (e.g. from `/events/[id]` parent), must match the same list as the page PackageSelector. */
+  readonly bookingPackages?: readonly EventPackage[]
   readonly embedded?: boolean
   readonly showOccasionStep?: boolean
   readonly showPackageStep?: boolean
@@ -113,6 +121,7 @@ interface EventBookingWidgetProps {
 
 export function EventBookingWidget({
   serviceId = 'svc-5',
+  bookingPackages: bookingPackagesProp,
   embedded = false,
   showOccasionStep = true,
   showPackageStep = true,
@@ -124,18 +133,40 @@ export function EventBookingWidget({
   onProgressChange,
 }: Readonly<EventBookingWidgetProps>) {
   const { toast } = useToast()
+  const { addCustomCartItem } = useInventory()
   const { contacts, subscriptions } = useClients()
   const [step, setStep] = useState<Step>(showOccasionStep ? 1 : showPackageStep ? 2 : 3)
   const [bookingComplete, setBookingComplete] = useState(false)
   const [weekOffset, setWeekOffset] = useState(0)
   const [customizeModalOpen, setCustomizeModalOpen] = useState(false)
 
-  const svcPackages = useMemo(
-    () => eventPackagesMock.filter((entry) => entry.serviceId === serviceId && entry.isActive),
-    [serviceId],
+  const svcPackagesFromMock = useMemo(() => {
+    const serviceIds = new Set<string>([serviceId])
+    if (serviceId === 'svc-5' || serviceId === 'svc-event-party-booking') {
+      serviceIds.add('svc-5')
+      serviceIds.add('svc-event-party-booking')
+    }
+    return eventPackagesMock.filter(
+      (entry) => serviceIds.has(entry.serviceId) && entry.isActive,
+    )
+  }, [serviceId])
+  const resolvedPackages = useMemo(
+    () => (bookingPackagesProp ? [...bookingPackagesProp] : svcPackagesFromMock),
+    [bookingPackagesProp, svcPackagesFromMock],
   )
-  const privateRoomPackages = useMemo(() => svcPackages.slice(0, 3), [svcPackages])
-  const wholeVenuePackages = useMemo(() => svcPackages.slice(3, 6), [svcPackages])
+  const privateRoomPackages = useMemo(() => resolvedPackages.filter((p) => !p.isWholeVenue), [
+    resolvedPackages,
+  ])
+  const wholeVenuePackages = useMemo(() => resolvedPackages.filter((p) => p.isWholeVenue), [
+    resolvedPackages,
+  ])
+  const defaultPackageIdForForm = useMemo(() => {
+    const preferred = 'pkg-svc5-vip'
+    if (resolvedPackages.some((entry) => entry.id === preferred)) {
+      return preferred
+    }
+    return resolvedPackages[0]?.id
+  }, [resolvedPackages])
   const primaryContact =
     contacts.find((entry) => entry.contactType === 'CUSTOMER') ?? contacts[0] ?? null
   const hasSubscriptionForCoupons = Boolean(
@@ -149,8 +180,8 @@ export function EventBookingWidget({
 
   const form = useEventBookingForm({
     serviceId,
-    packages: svcPackages,
-    defaultPackageId: 'pkg-svc5-vip',
+    packages: resolvedPackages,
+    defaultPackageId: defaultPackageIdForForm,
     defaultOccasion,
     defaultBirthdayName,
     defaultBirthdayAge,
@@ -212,7 +243,7 @@ export function EventBookingWidget({
   }
 
   function submit(): void {
-    const booking = form.submitBooking()
+    const booking = form.submitBooking({ persist: false })
     if (!booking) {
       toast({
         title: 'Missing details',
@@ -221,10 +252,30 @@ export function EventBookingWidget({
       })
       return
     }
+    const serviceName = form.service?.name ?? 'Event'
+    const occasionLabel =
+      OCCASION_OPTIONS.find((option) => option.id === form.occasion)?.label ?? null
+    addCustomCartItem({
+      type: 'booking',
+      name: serviceName,
+      description: buildEventCartBookingDescription(booking, {
+        packageName: form.selectedPackage?.name ?? null,
+        occasionLabel,
+        selectedDate: form.selectedDate,
+      }),
+      price: booking.totalAmount,
+      quantity: 1,
+      imageUrl: form.service?.imageUrl ?? undefined,
+      metadata: {
+        [EVENT_CART_BOOKING_META_KEY]: true,
+        serviceId: form.service?.id ?? serviceId,
+      },
+    })
     setBookingComplete(true)
     toast({
-      title: form.selectedPackage?.isWholeVenue ? 'Inquiry submitted' : 'Booking confirmed',
-      description: `Your ${form.selectedPackage?.name ?? 'party'} request has been received.`,
+      title: 'Added to cart',
+      description:
+        'Open Event bookings in your cart to review details or continue to checkout.',
     })
   }
 
@@ -312,11 +363,14 @@ export function EventBookingWidget({
       </div>
 
       {bookingComplete ? (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-6">
-          <p className="text-lg font-semibold text-emerald-700">Thanks, your request is complete.</p>
-          <p className="mt-2 text-sm text-emerald-700">
-            We have recorded your party details and will send confirmation shortly.
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-6 space-y-3 text-center">
+          <p className="text-lg font-semibold text-emerald-700">Added to cart</p>
+          <p className="text-sm text-emerald-700">
+            Your party details are saved as a cart line. Open Event bookings to complete checkout.
           </p>
+          <Button type="button" variant="outline" className="w-full bg-background" asChild>
+            <Link href="/cart">View cart</Link>
+          </Button>
         </div>
       ) : null}
 
@@ -711,7 +765,9 @@ export function EventBookingWidget({
             </p>
           </div>
           <Button type="button" className="w-full" onClick={submit} disabled={!form.canSubmit}>
-            {form.selectedPackage?.isWholeVenue ? 'Submit inquiry' : 'Pay and confirm'}
+            {form.selectedPackage?.isWholeVenue
+              ? 'Submit inquiry and add to cart'
+              : 'Confirm and add to cart'}
           </Button>
         </div>
       ) : null}

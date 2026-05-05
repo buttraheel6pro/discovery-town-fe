@@ -198,7 +198,9 @@ export function useBookingForm({
     return true
   }, [needsParticipant, participantName])
 
-  const submitBooking = useCallback((): SchedulingBooking => {
+  const submitBooking = useCallback(
+    (options?: { readonly persist?: boolean }): SchedulingBooking => {
+    const persist = options?.persist !== false
     const nowIso = new Date().toISOString()
     const addOnLines = toSchedulingBookingAddOnLines(
       service.addOns,
@@ -238,7 +240,10 @@ export function useBookingForm({
 
     let startAt: string | null = null
     let endAt: string | null = null
-    if (!slot && selectedWindow) {
+    if (slot) {
+      startAt = slot.startAt
+      endAt = slot.endAt
+    } else if (selectedWindow) {
       startAt = selectedWindow.startAt
       if (service.pricingModel === 'per_hour' && selectedDurationMinutes) {
         endAt = new Date(
@@ -248,7 +253,7 @@ export function useBookingForm({
       } else {
         endAt = selectedWindow.endAt
       }
-    } else if (!slot && service.startDate && service.startTime) {
+    } else if (service.startDate && service.startTime) {
       const datePart = service.startDate.includes('T')
         ? service.startDate.split('T')[0]
         : service.startDate
@@ -298,7 +303,9 @@ export function useBookingForm({
       actedByStaffId: actedByStaffId ?? null,
     }
 
-    addBooking(booking)
+    if (persist) {
+      addBooking(booking)
+    }
     return booking
   }, [
     addBooking,

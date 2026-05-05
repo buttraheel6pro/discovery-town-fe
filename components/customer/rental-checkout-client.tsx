@@ -4,6 +4,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { ExternalLink } from 'lucide-react'
 
 import { CouponPanel } from '@/components/customer/coupon-panel'
 import { Button } from '@/components/ui/button'
@@ -11,23 +12,18 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { useInventory } from '@/lib/inventory-store'
+import { collectRentalAcknowledgmentOptions } from '@/lib/rental-acknowledgments'
 import { formatPrice } from '@/lib/utils'
-import type { Coupon, RentalAcknowledgmentType } from '@/lib/types'
+import type { Coupon } from '@/lib/types'
 
 type CheckoutStep = 'fulfillment' | 'ack' | 'payment' | 'confirmation'
-
-const ACK_OPTIONS: { id: RentalAcknowledgmentType; label: string }[] = [
-  { id: 'MECHANICAL_BULL_SAFETY', label: 'Mechanical Bull: Safety acknowledgment' },
-  { id: 'GENERATOR_VENTILATION', label: 'Generator: Ventilation safety acknowledgment' },
-  { id: 'FOOD_EQUIPMENT_SANITATION', label: 'Food equipment: Sanitation acknowledgment' },
-  { id: 'DJ_CONTROLLER_DEPOSIT', label: 'DJ Controller: $200 refundable deposit notice' },
-]
 
 export function RentalCheckoutClient() {
   const router = useRouter()
   const {
     cart,
     products,
+    productCategories,
     setCouponDirect,
     removeCoupon,
     setFulfillmentMode,
@@ -58,6 +54,12 @@ export function RentalCheckoutClient() {
   }, [cart.items, products])
   const missingRequiredPerDayDates =
     hasPerDayRentalInCart && (!cart.rentalStartAt || !cart.rentalEndAt)
+
+  const acknowledgmentOptions = useMemo(
+    () =>
+      collectRentalAcknowledgmentOptions(cart.items, products, productCategories),
+    [cart.items, productCategories, products],
+  )
 
   function applyCoupon(coupon: Coupon | null, discount: number) {
     if (!coupon || discount <= 0) {
@@ -163,26 +165,51 @@ export function RentalCheckoutClient() {
       {step === 'ack' ? (
         <div className="space-y-3">
           <h2 className="text-xl font-bold">Acknowledgments</h2>
-          {ACK_OPTIONS.map((option) => {
-            const checked = (cart.acknowledgments ?? []).includes(option.id)
-            return (
-              <label key={option.id} className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={(event) => {
-                    const current = cart.acknowledgments ?? []
-                    if (event.target.checked) {
-                      setAcknowledgments([...current, option.id])
-                    } else {
-                      setAcknowledgments(current.filter((entry) => entry !== option.id))
-                    }
-                  }}
-                />
-                {option.label}
-              </label>
-            )
-          })}
+          {acknowledgmentOptions.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No acknowledgments are configured for the rental categories in your cart.
+            </p>
+          ) : (
+            acknowledgmentOptions.map((option) => {
+              const checked = (cart.acknowledgments ?? []).includes(option.id)
+              return (
+                <div
+                  key={option.id}
+                  className="flex flex-col gap-1.5 text-sm sm:flex-row sm:flex-wrap sm:items-center"
+                >
+                  <label className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      className="mt-1 shrink-0"
+                      checked={checked}
+                      onChange={(event) => {
+                        const current = cart.acknowledgments ?? []
+                        if (event.target.checked) {
+                          setAcknowledgments([...current, option.id])
+                        } else {
+                          setAcknowledgments(
+                            current.filter((entry) => entry !== option.id),
+                          )
+                        }
+                      }}
+                    />
+                    <span>{option.label}</span>
+                  </label>
+                  {option.detailUrl ? (
+                    <a
+                      href={option.detailUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-accent underline underline-offset-2 sm:ml-1"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                      Read details
+                    </a>
+                  ) : null}
+                </div>
+              )
+            })
+          )}
           <Button onClick={() => setStep('payment')}>Continue</Button>
         </div>
       ) : null}

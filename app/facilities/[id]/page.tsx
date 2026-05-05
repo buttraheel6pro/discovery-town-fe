@@ -21,11 +21,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useBookingForm } from '@/hooks/use-booking-form'
 import { BookingFlowCouponSection } from '@/components/customer/booking-flow-coupon-section'
 import { OpenBookingAvailabilitySection } from '@/components/customer/open-booking-availability-section'
 import { PackageSelector } from '@/components/customer/package-selector'
+import { useBookingForm } from '@/hooks/use-booking-form'
+import { useToast } from '@/hooks/use-toast'
 import { useClients } from '@/lib/client-store'
+import { useInventory } from '@/lib/inventory-store'
+import {
+  buildGymCartBookingDescription,
+  buildPlayCartBookingDescription,
+  GYM_CART_BOOKING_META_KEY,
+  isGymFacilityCartCheckoutService,
+  isPlayCartCheckoutService,
+  PLAY_CART_BOOKING_META_KEY,
+} from '@/lib/play-cart'
 import { useScheduling } from '@/lib/scheduling-store'
 import {
   formatPrice,
@@ -53,9 +63,36 @@ function getWeekDates(baseDate: Date) {
   return dates
 }
 
+function getFacilityCartCheckoutKind(
+  service: SchedulingService,
+): 'play' | 'gym' | null {
+  if (isPlayCartCheckoutService(service)) {
+    return 'play'
+  }
+  if (isGymFacilityCartCheckoutService(service)) {
+    return 'gym'
+  }
+  return null
+}
+
+function getFacilityConfirmButtonLabel(
+  hasSelectedWindow: boolean,
+  cartCheckoutKind: 'play' | 'gym' | null,
+): string {
+  if (!hasSelectedWindow) {
+    return 'Select a time slot'
+  }
+  if (cartCheckoutKind !== null) {
+    return 'Confirm and add to cart'
+  }
+  return 'Confirm booking'
+}
+
 function FacilityDetailContent({ service }: Readonly<{ service: SchedulingService }>) {
   const { contacts, subscriptions, documents } = useClients()
   const { packages } = useScheduling()
+  const { addCustomCartItem } = useInventory()
+  const { toast } = useToast()
   const primaryContact =
     contacts.find((c) => c.contactType === 'CUSTOMER') ?? contacts[0] ?? null
   const hasActiveMembership = Boolean(
@@ -77,6 +114,7 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
       ),
   )
   const membersOnlyBlocked = service.category.membersOnly === true && !hasActiveMembership
+  const facilityCartCheckoutKind = getFacilityCartCheckoutKind(service)
 
   const today = new Date()
   const todayStr = today.toISOString().split('T')[0]
@@ -87,6 +125,7 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
     service.minDurationMinutes ?? service.durationMinutes ?? 60,
   )
   const [bookedOk, setBookedOk] = useState(false)
+  const [addedToCartKind, setAddedToCartKind] = useState<null | 'play' | 'gym'>(null)
 
   const durationOptions = useMemo(() => {
     const min = service.minDurationMinutes
@@ -178,6 +217,54 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
   function handleConfirmBooking() {
     if (!selectedWindow) return
     if (!bookingForm.canSubmitDetails) return
+    if (facilityCartCheckoutKind === 'play') {
+      const booking = bookingForm.submitBooking({ persist: false })
+      addCustomCartItem({
+        type: 'booking',
+        name: service.name,
+        description: buildPlayCartBookingDescription(booking, {
+          packageName: selectedPackage?.name ?? null,
+        }),
+        price: booking.totalAmount,
+        quantity: 1,
+        imageUrl: service.imageUrl ?? undefined,
+        metadata: {
+          [PLAY_CART_BOOKING_META_KEY]: true,
+          serviceId: service.id,
+        },
+      })
+      setAddedToCartKind('play')
+      toast({
+        title: 'Added to cart',
+        description:
+          'Your play session is in the cart. Open Play bookings to review or checkout.',
+      })
+      return
+    }
+    if (facilityCartCheckoutKind === 'gym') {
+      const booking = bookingForm.submitBooking({ persist: false })
+      addCustomCartItem({
+        type: 'booking',
+        name: service.name,
+        description: buildGymCartBookingDescription(booking, {
+          packageName: selectedPackage?.name ?? null,
+        }),
+        price: booking.totalAmount,
+        quantity: 1,
+        imageUrl: service.imageUrl ?? undefined,
+        metadata: {
+          [GYM_CART_BOOKING_META_KEY]: true,
+          serviceId: service.id,
+        },
+      })
+      setAddedToCartKind('gym')
+      toast({
+        title: 'Added to cart',
+        description:
+          'Your court booking is in the cart. Open Gym bookings to review or checkout.',
+      })
+      return
+    }
     bookingForm.submitBooking()
     setBookedOk(true)
   }
@@ -299,18 +386,36 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
               <CardTitle className="text-lg font-bold">Book this facility</CardTitle>
             </CardHeader>
             <CardContent className="space-y-5">
-              {bookedOk ? (
+              {bookedOk || addedToCartKind !== null ? (
                 <div className="text-center py-6 space-y-3">
                   <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto" />
-                  <p className="font-bold text-lg">Booking Confirmed!</p>
-                  <p className="text-sm text-muted-foreground">
-                    {service.name} — thank you for your booking.
-                  </p>
-                  <Link href="/account/bookings">
-                    <Button variant="outline" className="w-full mt-2">
-                      View My Bookings
-                    </Button>
-                  </Link>
+                  {addedToCartKind !== null ? (
+                    <>
+                      <p className="font-bold text-lg">Added to cart</p>
+                      <p className="text-sm text-muted-foreground">
+                        {service.name} — open{' '}
+                        {addedToCartKind === 'play' ? 'Play bookings' : 'Gym bookings'} in your cart
+                        to complete checkout.
+                      </p>
+                      <Link href="/cart">
+                        <Button variant="outline" className="w-full mt-2">
+                          View cart
+                        </Button>
+                      </Link>
+                    </>
+                  ) : (
+                    <>
+                      <p className="font-bold text-lg">Booking Confirmed!</p>
+                      <p className="text-sm text-muted-foreground">
+                        {service.name} — thank you for your booking.
+                      </p>
+                      <Link href="/account/bookings">
+                        <Button variant="outline" className="w-full mt-2">
+                          View My Bookings
+                        </Button>
+                      </Link>
+                    </>
+                  )}
                 </div>
               ) : (
                 <>
@@ -647,7 +752,10 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
                       disabled={!selectedWindow || !bookingForm.canSubmitDetails || !waiversOk}
                       onClick={handleConfirmBooking}
                     >
-                      {!selectedWindow ? 'Select a time slot' : 'Confirm booking'}
+                      {getFacilityConfirmButtonLabel(
+                        Boolean(selectedWindow),
+                        facilityCartCheckoutKind,
+                      )}
                     </Button>
                   )}
                   <p className="text-xs text-center text-muted-foreground">

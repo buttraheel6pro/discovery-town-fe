@@ -15,6 +15,7 @@ import {
   Lock,
   MoreHorizontal,
   Plus,
+  Trash2,
 } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -104,6 +105,10 @@ import {
   plainTextFromHtml,
 } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import {
+  normalizeRentalAcknowledgmentFormRows,
+  rentalAcknowledgmentsToFormRows,
+} from "@/lib/rental-acknowledgments";
 import { StockAdjustmentModal } from "@/components/admin/stock-adjustment-modal";
 import type {
   SchedulingBookingMode,
@@ -377,6 +382,8 @@ function AdminSchedulingServicesPageContent() {
   >(null);
   const [editingProductSubCategoryId, setEditingProductSubCategoryId] =
     useState<string | null>(null);
+  const [productSubCategoryAcknowledgmentRows, setProductSubCategoryAcknowledgmentRows] =
+    useState<{ text: string; detailUrl: string }[]>([]);
   const [deleteProductSubCategoryId, setDeleteProductSubCategoryId] = useState<
     string | null
   >(null);
@@ -904,6 +911,14 @@ function AdminSchedulingServicesPageContent() {
   const productCategoryById = useMemo(() => {
     return new Map(productCategories.map((c) => [c.id, c]));
   }, [productCategories]);
+
+  const productSubCategoryModalParent = useMemo(() => {
+    if (!productSubCategoryParentId) return null;
+    return productCategoryById.get(productSubCategoryParentId) ?? null;
+  }, [productCategoryById, productSubCategoryParentId]);
+
+  const isRentalProductSubCategoryModal =
+    (productSubCategoryModalParent?.productType ?? "").toLowerCase() === "rentals";
 
   const productFormCategories = useMemo(() => {
     return productCategories
@@ -1542,18 +1557,29 @@ function AdminSchedulingServicesPageContent() {
   }
 
   function openProductSubCategoryCreate(parentId: string) {
+    const parentRow = productCategoryById.get(parentId) ?? null;
+    const isRentals =
+      (parentRow?.productType ?? "").toLowerCase() === "rentals";
     setProductSubCategoryParentId(parentId);
     setProductSubCategoryName("");
     setEditingProductSubCategoryId(null);
+    setProductSubCategoryAcknowledgmentRows(
+      isRentals ? [{ text: "", detailUrl: "" }] : [],
+    );
     setProductSubCategoryFormOpen(true);
   }
 
   function openProductSubCategoryEdit(categoryId: string) {
     const category = productCategoryById.get(categoryId) ?? null;
     if (!category) return;
+    const isRentals =
+      (category.productType ?? "").toLowerCase() === "rentals";
     setProductSubCategoryParentId(category.parentId ?? null);
     setProductSubCategoryName(category.name);
     setEditingProductSubCategoryId(category.id);
+    setProductSubCategoryAcknowledgmentRows(
+      isRentals ? rentalAcknowledgmentsToFormRows(category.rentalAcknowledgments) : [],
+    );
     setProductSubCategoryFormOpen(true);
   }
 
@@ -1565,12 +1591,22 @@ function AdminSchedulingServicesPageContent() {
     const parent = productCategoryById.get(productSubCategoryParentId) ?? null;
     if (!parent) return;
 
+    const isRentalSubCategory =
+      (parent.productType ?? "").toLowerCase() === "rentals";
+    const normalizedAcks = isRentalSubCategory
+      ? normalizeRentalAcknowledgmentFormRows(productSubCategoryAcknowledgmentRows)
+      : [];
+
     if (editingProductSubCategoryId) {
-      updateProductCategory(editingProductSubCategoryId, { name: trimmedName });
+      updateProductCategory(editingProductSubCategoryId, {
+        name: trimmedName,
+        ...(isRentalSubCategory ? { rentalAcknowledgments: normalizedAcks } : {}),
+      });
       setProductSubCategoryFormOpen(false);
       setProductSubCategoryName("");
       setProductSubCategoryParentId(null);
       setEditingProductSubCategoryId(null);
+      setProductSubCategoryAcknowledgmentRows([]);
       return;
     }
 
@@ -1578,12 +1614,14 @@ function AdminSchedulingServicesPageContent() {
       name: trimmedName,
       productType: parent.productType ?? "shop",
       parentId: productSubCategoryParentId,
+      ...(isRentalSubCategory ? { rentalAcknowledgments: normalizedAcks } : {}),
     });
 
     setProductSubCategoryFormOpen(false);
     setProductSubCategoryName("");
     setProductSubCategoryParentId(null);
     setEditingProductSubCategoryId(null);
+    setProductSubCategoryAcknowledgmentRows([]);
 
     setCatalogView("products");
     setSelectedProductMenuCategoryId(created.id);
@@ -2472,6 +2510,7 @@ function AdminSchedulingServicesPageContent() {
             setProductSubCategoryName("");
             setProductSubCategoryParentId(null);
             setEditingProductSubCategoryId(null);
+            setProductSubCategoryAcknowledgmentRows([]);
           }
         }}
         title={
@@ -2479,10 +2518,14 @@ function AdminSchedulingServicesPageContent() {
         }
         description={
           editingProductSubCategoryId
-            ? "Update sub-category name."
-            : "Create a sub-category under the selected category."
+            ? isRentalProductSubCategoryModal
+              ? "Update name and rental checkout acknowledgments."
+              : "Update sub-category name."
+            : isRentalProductSubCategoryModal
+              ? "Create a sub-category and optional checkout acknowledgments for rentals."
+              : "Create a sub-category under the selected category."
         }
-        size="sm"
+        size={isRentalProductSubCategoryModal ? "md" : "sm"}
         variant={editingProductSubCategoryId ? "edit" : "create"}
         footer={
           <>
@@ -2516,11 +2559,87 @@ function AdminSchedulingServicesPageContent() {
                 : "—"}
             </span>
           </p>
-          <Input
-            value={productSubCategoryName}
-            onChange={(event) => setProductSubCategoryName(event.target.value)}
-            placeholder="Sub-category name"
-          />
+          <div className="space-y-2">
+            <Label htmlFor="product-subcategory-name">Name</Label>
+            <Input
+              id="product-subcategory-name"
+              value={productSubCategoryName}
+              onChange={(event) => setProductSubCategoryName(event.target.value)}
+              placeholder="Sub-category name"
+            />
+          </div>
+          {isRentalProductSubCategoryModal ? (
+            <div className="space-y-2">
+              <Label>Rental checkout acknowledgments</Label>
+              <p className="text-xs text-muted-foreground">
+                Shown as checkboxes on the cart and rental checkout. Summary text is
+                required per row; add an optional link so customers can open the full
+                policy or waiver in a new tab.
+              </p>
+              <div className="space-y-3">
+                {productSubCategoryAcknowledgmentRows.map((row, index) => (
+                  <div
+                    key={index}
+                    className="flex flex-col gap-2 sm:flex-row sm:items-start"
+                  >
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <Input
+                        value={row.text}
+                        onChange={(event) => {
+                          const next = [...productSubCategoryAcknowledgmentRows];
+                          next[index] = { ...next[index], text: event.target.value };
+                          setProductSubCategoryAcknowledgmentRows(next);
+                        }}
+                        placeholder="e.g. Adult supervision required during use"
+                        aria-label={`Acknowledgment summary ${index + 1}`}
+                      />
+                      <Input
+                        value={row.detailUrl}
+                        onChange={(event) => {
+                          const next = [...productSubCategoryAcknowledgmentRows];
+                          next[index] = { ...next[index], detailUrl: event.target.value };
+                          setProductSubCategoryAcknowledgmentRows(next);
+                        }}
+                        placeholder="Optional detail link (https://…)"
+                        aria-label={`Acknowledgment detail URL ${index + 1}`}
+                      />
+                    </div>
+                    {productSubCategoryAcknowledgmentRows.length > 1 ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="shrink-0 self-start"
+                        onClick={() => {
+                          setProductSubCategoryAcknowledgmentRows((rows) =>
+                            rows.filter((_, i) => i !== index),
+                          );
+                        }}
+                        aria-label={`Remove acknowledgment ${index + 1}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    ) : null}
+                  </div>
+                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-1"
+                  onClick={() =>
+                    setProductSubCategoryAcknowledgmentRows((rows) => [
+                      ...rows,
+                      { text: "", detailUrl: "" },
+                    ])
+                  }
+                >
+                  <Plus className="h-4 w-4" />
+                  Add another
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </div>
       </CrudModal>
 

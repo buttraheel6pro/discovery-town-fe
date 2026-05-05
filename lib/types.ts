@@ -101,11 +101,25 @@ export type RentalProductFulfillment =
   | "SELF_OPERATED"
   | "DELIVERY_REQUIRED+STAFF";
 
-export type RentalAcknowledgmentType =
-  | "MECHANICAL_BULL_SAFETY"
-  | "GENERATOR_VENTILATION"
-  | "FOOD_EQUIPMENT_SANITATION"
-  | "DJ_CONTROLLER_DEPOSIT";
+/**
+ * Rental checkout acknowledgment key — short summary text, or `text + unit separator + url`
+ * when a detail link is configured (`rentalAcknowledgmentCartId` in `lib/rental-acknowledgments`).
+ */
+export type RentalAcknowledgmentType = string;
+
+/** One acknowledgment line for a rental product sub-category (summary + optional policy URL). */
+export interface RentalCategoryAcknowledgment {
+  readonly text: string;
+  /** Optional link to full waiver, PDF, or policy page. */
+  readonly detailUrl?: string | null;
+}
+
+/** Checkbox row built from category acknowledgments for cart / rental checkout UI. */
+export interface RentalAcknowledgmentCheckoutOption {
+  readonly id: string;
+  readonly label: string;
+  readonly detailUrl?: string;
+}
 
 export type PaymentStatus =
   | "PENDING"
@@ -950,6 +964,11 @@ export interface ProductCategory {
   productType?: string;
   /** When set, this category is nested under a top-level category. */
   parentId?: string | null;
+  /**
+   * Rentals-only: checkout acknowledgment lines for products in this category
+   * (unioned with other rental line items in the cart). Optional `detailUrl` per line.
+   */
+  rentalAcknowledgments?: RentalCategoryAcknowledgment[];
 }
 
 export interface Product {

@@ -150,10 +150,11 @@ export function useEventBookingForm({
     setCouponDiscount(Math.max(0, discountAmount))
   }
 
-  function submitBooking(): SchedulingBooking | null {
+  function submitBooking(options?: { readonly persist?: boolean }): SchedulingBooking | null {
     if (!selectedPackage || !selectedWindow || !selectedDate || !service) {
       return null
     }
+    const persist = options?.persist !== false
     const nowIso = new Date().toISOString()
     const booking: SchedulingBooking = {
       id: createBookingId(),
@@ -195,7 +196,9 @@ export function useEventBookingForm({
       couponCode: couponCode ?? null,
       actedByStaffId: null,
     }
-    addBooking(booking)
+    if (persist) {
+      addBooking(booking)
+    }
     return booking
   }
 

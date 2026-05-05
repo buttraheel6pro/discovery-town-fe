@@ -100,6 +100,7 @@ export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) 
 
   const title = PRODUCT_TYPE_LABELS[productType] ?? productType
   const isCafeAndFood = productType === 'cafe&food'
+  const isShopComingSoon = productType === 'shop'
   const productById = useMemo(() => new Map(products.map((product) => [product.id, product])), [products])
   const breadcrumbItems = useMemo(
     () =>
@@ -141,7 +142,16 @@ export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) 
               </div>
             ) : null}
 
-            {!isCafeAndFood ? (
+            {isShopComingSoon ? (
+              <div className="rounded-xl border border-border bg-card p-10 text-center">
+                <p className="text-sm font-semibold text-foreground">Coming soon</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Shop products will be available here shortly.
+                </p>
+              </div>
+            ) : null}
+
+            {!isCafeAndFood && !isShopComingSoon ? (
               <>
                 {sections.length === 0 ? (
                   <div className="rounded-xl border border-border bg-card p-10 text-center">

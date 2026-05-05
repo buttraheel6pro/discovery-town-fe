@@ -1328,6 +1328,13 @@ export const productCategories: ProductCategory[] = [
     displayOrder: 1,
     productType: 'rentals',
     parentId: 'pcat-rentals',
+    rentalAcknowledgments: [
+      {
+        text: 'Adult supervision required when inflatables are in use.',
+        detailUrl: 'https://example.com/docs/inflatable-safety',
+      },
+      { text: 'Follow manufacturer weight and occupancy limits.' },
+    ],
   },
   {
     id: 'pcat-rentals-trains-mechanicals',
@@ -1337,6 +1344,10 @@ export const productCategories: ProductCategory[] = [
     displayOrder: 2,
     productType: 'rentals',
     parentId: 'pcat-rentals',
+    rentalAcknowledgments: [
+      { text: 'Mechanical rides: operators must follow posted safety rules.' },
+      { text: 'Generator use requires adequate ventilation and clearance.' },
+    ],
   },
   {
     id: 'pcat-rentals-interactive-play',
@@ -1375,6 +1386,11 @@ export const productCategories: ProductCategory[] = [
     displayOrder: 6,
     productType: 'rentals',
     parentId: 'pcat-rentals',
+    rentalAcknowledgments: [
+      {
+        text: 'Food service equipment must be cleaned and sanitized before and after use.',
+      },
+    ],
   },
   {
     id: 'pcat-rentals-entertainers',

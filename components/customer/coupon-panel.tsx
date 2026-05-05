@@ -65,7 +65,7 @@ export function CouponPanel({
   externalDiscount,
 }: Readonly<CouponPanelProps>) {
   const [offersReady, setOffersReady] = useState(false)
-  const [offersOpen, setOffersOpen] = useState(true)
+  const [offersOpen, setOffersOpen] = useState(false)
   const [manualCode, setManualCode] = useState('')
   const [selectedOfferId, setSelectedOfferId] = useState<string | null>(null)
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null)

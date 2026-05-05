@@ -38,6 +38,7 @@ import type {
   Product,
   ProductCategory,
   RentalAcknowledgmentType,
+  RentalCategoryAcknowledgment,
   SavedPaymentMethod,
   StaffAssignment,
   StaffAssignmentStatus,
@@ -188,6 +189,7 @@ interface InventoryStore {
     productType?: string
     parentId?: string | null
     description?: string
+    rentalAcknowledgments?: RentalCategoryAcknowledgment[]
   }) => ProductCategory
   updateProductCategory: (id: string, patch: Partial<ProductCategory>) => void
   deleteProductCategory: (id: string) => DeleteProductCategoryResult
@@ -423,6 +425,7 @@ export function InventoryProvider({
       productType?: string
       parentId?: string | null
       description?: string
+      rentalAcknowledgments?: RentalCategoryAcknowledgment[]
     }): ProductCategory {
       const id = `pcat-${Date.now()}`
       const slugBase = slugifyCategoryName(input.name)
@@ -444,6 +447,16 @@ export function InventoryProvider({
         displayOrder: maxOrder + 1,
         productType: nextProductType,
         parentId: parentKey,
+        ...(Array.isArray(input.rentalAcknowledgments)
+          ? {
+              rentalAcknowledgments: input.rentalAcknowledgments.map((a) => {
+                const url = a.detailUrl?.trim()
+                return url && url.length > 0
+                  ? { text: a.text, detailUrl: url }
+                  : { text: a.text }
+              }),
+            }
+          : {}),
       }
       dispatch(addProductCategoryAction(created))
       return created

@@ -24,9 +24,17 @@ export default function PartyBookingPage() {
   )
   const servicePackages = useMemo(
     () =>
-      eventPackagesMock.filter(
-        (pkg) => pkg.serviceId === featuredServiceId && pkg.isActive,
-      ),
+      eventPackagesMock.filter((pkg) => {
+        if (!pkg.isActive) return false
+        if (pkg.serviceId === featuredServiceId) return true
+        if (
+          featuredServiceId === 'svc-5' &&
+          pkg.serviceId === 'svc-event-party-booking'
+        ) {
+          return true
+        }
+        return false
+      }),
     [featuredServiceId],
   )
   const privateRoomPackages = useMemo(

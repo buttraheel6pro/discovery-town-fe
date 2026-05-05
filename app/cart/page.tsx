@@ -12,13 +12,21 @@ import { CustomerNavbar } from '@/components/customer/navbar'
 import { RentalCartSidebar } from '@/components/customer/rental-cart-sidebar'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { useClients } from '@/lib/client-store'
 import { calcCartTotals, formatPrice } from '@/lib/utils'
 import { useInventory } from '@/lib/inventory-store'
 import { isGiftProduct } from '@/lib/gift-product'
+import {
+  isEventCartBookingMetadata,
+  isGymCartBookingMetadata,
+  isPlayCartBookingMetadata,
+} from '@/lib/play-cart'
+import { collectRentalAcknowledgmentOptions } from '@/lib/rental-acknowledgments'
 import { isRentalProduct } from '@/lib/rental-product'
-import type { Coupon } from '@/lib/types'
+import type { CartItem, Coupon } from '@/lib/types'
 
 interface GiftBundleItem {
   readonly productId: string
@@ -84,7 +92,7 @@ export default function CartPage() {
   const [showRentalDetails, setShowRentalDetails] = useState(false)
   const [showShopSummary, setShowShopSummary] = useState(false)
   const [selectedGrouping, setSelectedGrouping] = useState<
-    'rental' | 'request' | 'gift' | 'shop' | null
+    'rental' | 'request' | 'play' | 'gym' | 'event' | 'gift' | 'shop' | null
   >(null)
   const {
     cart,
@@ -123,6 +131,27 @@ export default function CartPage() {
       ),
     [cart.items],
   )
+  const playCartItems = useMemo(
+    () =>
+      cart.items.filter(
+        (item) => item.type === 'booking' && isPlayCartBookingMetadata(item.metadata),
+      ),
+    [cart.items],
+  )
+  const gymCartItems = useMemo(
+    () =>
+      cart.items.filter(
+        (item) => item.type === 'booking' && isGymCartBookingMetadata(item.metadata),
+      ),
+    [cart.items],
+  )
+  const eventCartItems = useMemo(
+    () =>
+      cart.items.filter(
+        (item) => item.type === 'booking' && isEventCartBookingMetadata(item.metadata),
+      ),
+    [cart.items],
+  )
   const standardItems = useMemo(
     () => cart.items.filter((item) => !groupedRequestItems.some((requestItem) => requestItem.id === item.id)),
     [cart.items, groupedRequestItems],
@@ -141,6 +170,11 @@ export default function CartPage() {
     () => rentalItems.reduce((sum, item) => sum + item.price * item.quantity, 0),
     [rentalItems],
   )
+  const rentalAcknowledgmentOptions = useMemo(
+    () =>
+      collectRentalAcknowledgmentOptions(rentalItems, products, productCategories),
+    [productCategories, products, rentalItems],
+  )
   const nonRentalItems = useMemo(
     () => standardItems.filter((item) => !rentalItems.some((rentalItem) => rentalItem.id === item.id)),
     [rentalItems, standardItems],
@@ -157,12 +191,95 @@ export default function CartPage() {
     })
   }, [nonRentalItems, productCategories, products])
   const shopCartItems = useMemo(
-    () => nonRentalItems.filter((item) => !giftCartItems.some((giftItem) => giftItem.id === item.id)),
-    [giftCartItems, nonRentalItems],
+    () =>
+      nonRentalItems.filter(
+        (item) =>
+          !giftCartItems.some((giftItem) => giftItem.id === item.id) &&
+          !playCartItems.some((playItem) => playItem.id === item.id) &&
+          !gymCartItems.some((gymItem) => gymItem.id === item.id) &&
+          !eventCartItems.some((eventItem) => eventItem.id === item.id),
+      ),
+    [eventCartItems, giftCartItems, gymCartItems, nonRentalItems, playCartItems],
   )
-  const nonRentalTotals = useMemo(() => calcCartTotals(nonRentalItems, cart.couponDiscount, 20), [
-    cart.couponDiscount,
-    nonRentalItems,
+  const shopCheckoutEligibleItems = useMemo(
+    () => [...groupedRequestItems, ...nonRentalItems],
+    [groupedRequestItems, nonRentalItems],
+  )
+  const shopSidebarLineItems = useMemo((): readonly CartItem[] => {
+    if (
+      !showShopSummary ||
+      selectedGrouping === null ||
+      selectedGrouping === 'rental'
+    ) {
+      return []
+    }
+    switch (selectedGrouping) {
+      case 'request':
+        return groupedRequestItems
+      case 'play':
+        return playCartItems
+      case 'gym':
+        return gymCartItems
+      case 'event':
+        return eventCartItems
+      case 'gift':
+        return giftCartItems
+      case 'shop':
+        return shopCartItems
+      default:
+        return []
+    }
+  }, [
+    eventCartItems,
+    giftCartItems,
+    groupedRequestItems,
+    gymCartItems,
+    playCartItems,
+    selectedGrouping,
+    shopCartItems,
+    showShopSummary,
+  ])
+  const shopCheckoutEligibleSubtotal = useMemo(
+    () =>
+      shopCheckoutEligibleItems.reduce((sum, item) => sum + item.price * item.quantity, 0),
+    [shopCheckoutEligibleItems],
+  )
+  const shopSidebarSubtotal = useMemo(
+    () => shopSidebarLineItems.reduce((sum, item) => sum + item.price * item.quantity, 0),
+    [shopSidebarLineItems],
+  )
+  const shopSidebarCouponShare = useMemo(() => {
+    if (cart.couponDiscount <= 0 || shopCheckoutEligibleSubtotal <= 0) {
+      return 0
+    }
+    const raw =
+      (cart.couponDiscount * shopSidebarSubtotal) / shopCheckoutEligibleSubtotal
+    return Math.round(raw * 100) / 100
+  }, [cart.couponDiscount, shopCheckoutEligibleSubtotal, shopSidebarSubtotal])
+  const shopSidebarTotals = useMemo(
+    () => calcCartTotals([...shopSidebarLineItems], shopSidebarCouponShare, 20),
+    [shopSidebarCouponShare, shopSidebarLineItems],
+  )
+  const giftCartDeliveryFee = useMemo(() => {
+    if (selectedGrouping !== 'gift' || cart.fulfillmentMode !== 'DELIVERY') {
+      return 0
+    }
+    return Math.max(0, cart.deliveryFee ?? 0)
+  }, [cart.deliveryFee, cart.fulfillmentMode, selectedGrouping])
+  const giftRentalStyleTotal = useMemo(() => {
+    const delivery =
+      selectedGrouping === 'gift' && cart.fulfillmentMode === 'DELIVERY'
+        ? Math.max(0, cart.deliveryFee ?? 0)
+        : 0
+    return (
+      Math.round((shopSidebarSubtotal + delivery + (cart.depositTotal ?? 0)) * 100) / 100
+    )
+  }, [
+    cart.depositTotal,
+    cart.deliveryFee,
+    cart.fulfillmentMode,
+    selectedGrouping,
+    shopSidebarSubtotal,
   ])
   const editingGiftCartItem = useMemo(() => {
     if (!editingGiftBundleItemId) return null
@@ -190,7 +307,9 @@ export default function CartPage() {
     setCouponDirect(coupon.code, discountAmount)
   }
 
-  function selectGrouping(grouping: 'rental' | 'request' | 'gift' | 'shop') {
+  function selectGrouping(
+    grouping: 'rental' | 'request' | 'play' | 'gym' | 'event' | 'gift' | 'shop',
+  ) {
     setSelectedGrouping(grouping)
     if (grouping === 'rental') {
       setShowRentalDetails(true)
@@ -392,6 +511,186 @@ export default function CartPage() {
                   </div>
                 ) : null}
 
+                {playCartItems.length > 0 ? (
+                  <div
+                    className="space-y-3 rounded-xl border border-border bg-card p-4 cursor-pointer"
+                    onClick={() => selectGrouping('play')}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground">
+                        Play bookings
+                      </h2>
+                      <label
+                        className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-foreground"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          selectGrouping('play')
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="checkout-grouping"
+                          checked={selectedGrouping === 'play'}
+                          onChange={() => selectGrouping('play')}
+                          className="h-4 w-4"
+                        />
+                        Open checkout details
+                      </label>
+                    </div>
+                    {playCartItems.map((item) => (
+                      <div
+                        key={item.id}
+                        className="rounded-lg border border-border bg-background p-3 text-sm cursor-pointer"
+                        onClick={() => {
+                          selectGrouping('play')
+                        }}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-semibold text-foreground">{item.name}</p>
+                            {item.description ? (
+                              <p className="text-xs whitespace-pre-line text-muted-foreground">
+                                {item.description}
+                              </p>
+                            ) : null}
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              removeFromCart(item.id)
+                            }}
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                        <p className="mt-2 font-semibold text-foreground">{formatPrice(item.price)}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {gymCartItems.length > 0 ? (
+                  <div
+                    className="space-y-3 rounded-xl border border-border bg-card p-4 cursor-pointer"
+                    onClick={() => selectGrouping('gym')}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground">
+                        Gym bookings
+                      </h2>
+                      <label
+                        className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-foreground"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          selectGrouping('gym')
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="checkout-grouping"
+                          checked={selectedGrouping === 'gym'}
+                          onChange={() => selectGrouping('gym')}
+                          className="h-4 w-4"
+                        />
+                        Open checkout details
+                      </label>
+                    </div>
+                    {gymCartItems.map((item) => (
+                      <div
+                        key={item.id}
+                        className="rounded-lg border border-border bg-background p-3 text-sm cursor-pointer"
+                        onClick={() => {
+                          selectGrouping('gym')
+                        }}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-semibold text-foreground">{item.name}</p>
+                            {item.description ? (
+                              <p className="text-xs whitespace-pre-line text-muted-foreground">
+                                {item.description}
+                              </p>
+                            ) : null}
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              removeFromCart(item.id)
+                            }}
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                        <p className="mt-2 font-semibold text-foreground">{formatPrice(item.price)}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {eventCartItems.length > 0 ? (
+                  <div
+                    className="space-y-3 rounded-xl border border-border bg-card p-4 cursor-pointer"
+                    onClick={() => selectGrouping('event')}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground">
+                        Event bookings
+                      </h2>
+                      <label
+                        className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-foreground"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          selectGrouping('event')
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="checkout-grouping"
+                          checked={selectedGrouping === 'event'}
+                          onChange={() => selectGrouping('event')}
+                          className="h-4 w-4"
+                        />
+                        Open checkout details
+                      </label>
+                    </div>
+                    {eventCartItems.map((item) => (
+                      <div
+                        key={item.id}
+                        className="rounded-lg border border-border bg-background p-3 text-sm cursor-pointer"
+                        onClick={() => {
+                          selectGrouping('event')
+                        }}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-semibold text-foreground">{item.name}</p>
+                            {item.description ? (
+                              <p className="text-xs whitespace-pre-line text-muted-foreground">
+                                {item.description}
+                              </p>
+                            ) : null}
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              removeFromCart(item.id)
+                            }}
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                        <p className="mt-2 font-semibold text-foreground">{formatPrice(item.price)}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
                 {giftCartItems.length > 0 ? (
                   <div
                     className="space-y-3 rounded-xl border border-border bg-card p-4 cursor-pointer"
@@ -574,6 +873,7 @@ export default function CartPage() {
                   <RentalCartSidebar
                     cart={cart}
                     rentalSubtotal={rentalSubtotal}
+                    acknowledgmentOptions={rentalAcknowledgmentOptions}
                     onSetFulfillmentMode={setFulfillmentMode}
                     onSetDeliveryFee={setDeliveryFee}
                     onSetAcknowledgments={setAcknowledgments}
@@ -594,9 +894,57 @@ export default function CartPage() {
                     <h2 className="font-bold text-lg">Shop order summary</h2>
                     <Separator />
 
+                    {selectedGrouping === 'gift' ? (
+                      <>
+                        <div className="space-y-3">
+                          <Label>Fulfillment</Label>
+                          <div className="flex gap-2">
+                            <Button
+                              type="button"
+                              variant={cart.fulfillmentMode === 'PICKUP' ? 'default' : 'outline'}
+                              onClick={() => setFulfillmentMode('PICKUP', null)}
+                              className="flex-1"
+                            >
+                              Pickup
+                            </Button>
+                            <Button
+                              type="button"
+                              variant={cart.fulfillmentMode === 'DELIVERY' ? 'default' : 'outline'}
+                              onClick={() => setFulfillmentMode('DELIVERY')}
+                              className="flex-1"
+                            >
+                              Delivery
+                            </Button>
+                          </div>
+                        </div>
+                        {cart.fulfillmentMode === 'DELIVERY' ? (
+                          <div className="space-y-3">
+                            <Label htmlFor="delivery-address">Delivery address</Label>
+                            <Input
+                              id="delivery-address"
+                              value={cart.deliveryAddress ?? ''}
+                              onChange={(event) =>
+                                setFulfillmentMode('DELIVERY', event.target.value)
+                              }
+                              placeholder="Street, city, postcode"
+                            />
+                            <Label htmlFor="delivery-fee">Delivery fee</Label>
+                            <Input
+                              id="delivery-fee"
+                              type="number"
+                              min={0}
+                              value={cart.deliveryFee ?? 0}
+                              onChange={(event) => setDeliveryFee(Number(event.target.value))}
+                            />
+                          </div>
+                        ) : null}
+                        <Separator />
+                      </>
+                    ) : null}
+
                     <CouponPanel
                       context="ORDER"
-                      subtotal={nonRentalTotals.subtotal}
+                      subtotal={shopSidebarSubtotal}
                       onCouponApplied={handleCouponApplied}
                       hasActiveSubscription={hasActiveSubscription}
                       contactId={cart.contactId ?? primaryContact?.id}
@@ -606,46 +954,83 @@ export default function CartPage() {
 
                     <Separator />
 
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between text-muted-foreground">
-                        <span>Subtotal</span>
-                        <span>{formatPrice(nonRentalTotals.subtotal)}</span>
+                    {shopSidebarLineItems.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        No lines in this grouping. Choose another section or add items to this group.
+                      </p>
+                    ) : selectedGrouping === 'gift' ? (
+                      <div className="space-y-1 text-sm">
+                        <p className="flex items-center justify-between text-muted-foreground">
+                          <span>Gift subtotal</span>
+                          <span>{formatPrice(shopSidebarSubtotal)}</span>
+                        </p>
+                        <p className="flex items-center justify-between text-muted-foreground">
+                          <span>Delivery fee</span>
+                          <span>{formatPrice(giftCartDeliveryFee)}</span>
+                        </p>
+                        <p className="flex items-center justify-between text-muted-foreground">
+                          <span>Deposit</span>
+                          <span>{formatPrice(cart.depositTotal ?? 0)}</span>
+                        </p>
+                        <Separator />
+                        <p className="flex items-center justify-between text-base font-black text-foreground">
+                          <span>Total</span>
+                          <span className="text-accent">{formatPrice(giftRentalStyleTotal)}</span>
+                        </p>
                       </div>
-                      {cart.couponDiscount > 0 ? (
-                        <div className="flex justify-between text-green-700">
-                          <span>Discount</span>
-                          <span>-{formatPrice(cart.couponDiscount)}</span>
+                    ) : (
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between text-muted-foreground">
+                          <span>Subtotal</span>
+                          <span>{formatPrice(shopSidebarTotals.subtotal)}</span>
                         </div>
-                      ) : null}
-                      <div className="flex justify-between text-muted-foreground">
-                        <span>VAT (20%)</span>
-                        <span>{formatPrice(nonRentalTotals.tax)}</span>
+                        {shopSidebarCouponShare > 0 ? (
+                          <div className="flex justify-between text-green-700">
+                            <span>Discount</span>
+                            <span>-{formatPrice(shopSidebarCouponShare)}</span>
+                          </div>
+                        ) : null}
+                        <div className="flex justify-between text-muted-foreground">
+                          <span>VAT (20%)</span>
+                          <span>{formatPrice(shopSidebarTotals.tax)}</span>
+                        </div>
+                        <Separator />
+                        <div className="flex justify-between font-black text-base">
+                          <span>Total</span>
+                          <span className="text-accent">{formatPrice(shopSidebarTotals.total)}</span>
+                        </div>
                       </div>
-                      <Separator />
-                      <div className="flex justify-between font-black text-base">
-                        <span>Total</span>
-                        <span className="text-accent">{formatPrice(nonRentalTotals.total)}</span>
-                      </div>
-                    </div>
+                    )}
 
-                    <Button
-                      className="w-full bg-accent text-accent-foreground hover:bg-accent/90 font-bold h-11"
-                      asChild
-                    >
-                      <Link href="/shop/checkout">Proceed to shop checkout</Link>
-                    </Button>
+                    {shopSidebarLineItems.length === 0 ? (
+                      <Button className="w-full font-bold h-11" type="button" disabled>
+                        Nothing to checkout in this grouping
+                      </Button>
+                    ) : (
+                      <Button
+                        className="h-11 w-full bg-accent font-bold text-accent-foreground hover:bg-accent/90"
+                        asChild
+                      >
+                        <Link href="/shop/checkout">Proceed to checkout</Link>
+                      </Button>
+                    )}
                   </div>
                 ) : null}
                 {!showRentalDetails && !showShopSummary ? (
                   <div className="rounded-xl border border-dashed border-border bg-card p-4 text-sm text-muted-foreground">
-                    To proceed with checkout, select a cart grouping (Rental, Request bundles, Gift
-                    items, or Shop & other items).
+                    To proceed with checkout, select a cart grouping (Rental, Request bundles, Play
+                    bookings, Gym bookings, Event bookings, Gift items, or Shop & other items).
                   </div>
                 ) : null}
-                {rentalItems.length > 0 && (giftCartItems.length > 0 || shopCartItems.length > 0) ? (
+                {rentalItems.length > 0 &&
+                (giftCartItems.length > 0 ||
+                  shopCartItems.length > 0 ||
+                  playCartItems.length > 0 ||
+                  gymCartItems.length > 0 ||
+                  eventCartItems.length > 0) ? (
                   <div className="rounded-xl border border-border bg-card p-4 text-xs text-muted-foreground">
-                    Rentals use a separate checkout from gift and shop items. Complete each flow when
-                    both are in your cart.
+                    Rentals use a separate checkout from play, gym, event, gift, and shop items.
+                    Complete each flow when both are in your cart.
                   </div>
                 ) : null}
               </aside>

@@ -38,7 +38,14 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useBookingForm } from '@/hooks/use-booking-form'
+import { useToast } from '@/hooks/use-toast'
 import { useClients } from '@/lib/client-store'
+import { useInventory } from '@/lib/inventory-store'
+import {
+  buildEventCartBookingDescription,
+  EVENT_CART_BOOKING_META_KEY,
+  isEventSlotCartCheckoutService,
+} from '@/lib/play-cart'
 import { useScheduling } from '@/lib/scheduling-store'
 import { formatPrice, isDocumentSignedAndValid } from '@/lib/utils'
 import type { EventOccasion, SchedulingService, SchedulingSlot } from '@/lib/types'
@@ -54,6 +61,23 @@ function formatLongDate(dateStr: string | undefined) {
   })
 }
 
+function getEventRegisterButtonLabel(
+  spotsLeft: number,
+  published: boolean,
+  eventSlotCartCheckout: boolean,
+): string {
+  if (spotsLeft === 0) {
+    return 'Sold Out'
+  }
+  if (!published) {
+    return 'Coming Soon'
+  }
+  if (eventSlotCartCheckout) {
+    return 'Confirm and add to cart'
+  }
+  return 'Register Now'
+}
+
 function EventDetailContent({
   service,
   eventSlotBase,
@@ -61,6 +85,8 @@ function EventDetailContent({
   const searchParams = useSearchParams()
   const { slots, packages } = useScheduling()
   const { contacts, subscriptions, documents } = useClients()
+  const { addCustomCartItem } = useInventory()
+  const { toast } = useToast()
 
   const primaryContact =
     contacts.find((c) => c.contactType === 'CUSTOMER') ?? contacts[0] ?? null
@@ -115,6 +141,7 @@ function EventDetailContent({
   }, [eventSlot, selectedPackage])
 
   const [registered, setRegistered] = useState(false)
+  const [addedEventToCart, setAddedEventToCart] = useState(false)
   const [waitlistOpen, setWaitlistOpen] = useState(false)
   const [privateSelectedPackageId, setPrivateSelectedPackageId] = useState<string | null>(null)
   const [privateFlowSummary, setPrivateFlowSummary] = useState<{
@@ -186,6 +213,8 @@ function EventDetailContent({
   const isPartyPackageFlow = service.serviceType === 'PARTY_PACKAGE'
   const isPrivateEventJourney =
     isPartyPackageFlow && searchParams.get('privateEvent') === '1'
+  const eventSlotRegistrationCartCheckout =
+    !isPrivateEventJourney && isEventSlotCartCheckoutService(service)
   const privateRoomPackages = activePackages.filter((entry) => !entry.isWholeVenue)
   const wholeVenuePackages = activePackages.filter((entry) => entry.isWholeVenue)
   const privateSelectedPackage =
@@ -198,6 +227,32 @@ function EventDetailContent({
     if (spotsLeft === 0) return
     if (!published) return
     if (!bookingForm.canSubmitDetails) return
+    if (eventSlotRegistrationCartCheckout) {
+      const booking = bookingForm.submitBooking({ persist: false })
+      addCustomCartItem({
+        type: 'booking',
+        name: service.name,
+        description: buildEventCartBookingDescription(booking, {
+          packageName: selectedPackage?.name ?? null,
+          occasionLabel: null,
+          selectedDate: null,
+        }),
+        price: booking.totalAmount,
+        quantity: 1,
+        imageUrl: service.imageUrl ?? undefined,
+        metadata: {
+          [EVENT_CART_BOOKING_META_KEY]: true,
+          serviceId: service.id,
+        },
+      })
+      setAddedEventToCart(true)
+      toast({
+        title: 'Added to cart',
+        description:
+          'Your event registration is in the cart. Open Event bookings to review or checkout.',
+      })
+      return
+    }
     bookingForm.submitBooking()
     setRegistered(true)
   }
@@ -423,6 +478,7 @@ function EventDetailContent({
                 <EventBookingWidget
                   key={privateSelectedPackageId ?? 'private-flow'}
                   serviceId={service.id}
+                  bookingPackages={activePackages}
                   embedded
                   showOccasionStep
                   showPackageStep={false}
@@ -430,19 +486,36 @@ function EventDetailContent({
                   canStart={Boolean(privateSelectedPackageId)}
                   onProgressChange={setPrivateFlowSummary}
                 />
-              ) : registered ? (
+              ) : registered || addedEventToCart ? (
                 <div className="text-center py-6 space-y-3">
                   <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto" />
-                  <p className="font-bold text-lg">You&apos;re Registered!</p>
-                  <p className="text-sm text-muted-foreground">
-                    {bookingForm.guestCount} ticket{bookingForm.guestCount > 1 ? 's' : ''} for{' '}
-                    {service.name}
-                  </p>
-                  <Link href="/account">
-                    <Button variant="outline" className="w-full mt-2">
-                      View My Events
-                    </Button>
-                  </Link>
+                  {addedEventToCart ? (
+                    <>
+                      <p className="font-bold text-lg">Added to cart</p>
+                      <p className="text-sm text-muted-foreground">
+                        {bookingForm.guestCount} ticket{bookingForm.guestCount > 1 ? 's' : ''} for{' '}
+                        {service.name} — open Event bookings in your cart to complete checkout.
+                      </p>
+                      <Link href="/cart">
+                        <Button variant="outline" className="w-full mt-2">
+                          View cart
+                        </Button>
+                      </Link>
+                    </>
+                  ) : (
+                    <>
+                      <p className="font-bold text-lg">You&apos;re Registered!</p>
+                      <p className="text-sm text-muted-foreground">
+                        {bookingForm.guestCount} ticket{bookingForm.guestCount > 1 ? 's' : ''} for{' '}
+                        {service.name}
+                      </p>
+                      <Link href="/account">
+                        <Button variant="outline" className="w-full mt-2">
+                          View My Events
+                        </Button>
+                      </Link>
+                    </>
+                  )}
                 </div>
               ) : (
                 <>
@@ -797,11 +870,11 @@ function EventDetailContent({
                       type="button"
                       onClick={handleRegister}
                     >
-                      {spotsLeft === 0
-                        ? 'Sold Out'
-                        : !published
-                          ? 'Coming Soon'
-                          : 'Register Now'}
+                      {getEventRegisterButtonLabel(
+                        spotsLeft,
+                        published,
+                        eventSlotRegistrationCartCheckout,
+                      )}
                     </Button>
                   )}
 

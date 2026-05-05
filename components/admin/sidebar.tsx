@@ -29,21 +29,21 @@ import { SidebarGroup, SidebarItem } from "./sidebar-group";
 import { useEventInquiriesCount } from "@/hooks/use-event-inquiries-count";
 
 const topLevelItems = [
-  {
-    label: "Dashboard",
-    href: "/admin",
-    icon: BarChart3,
-  },
-  {
-    label: "Bookings",
-    href: "/admin/bookings",
-    icon: ClipboardList,
-  },
-  {
-    label: "Staff",
-    href: "/admin/users",
-    icon: Users,
-  },
+  // {
+  //   label: "Dashboard",
+  //   href: "/admin",
+  //   icon: BarChart3,
+  // },
+  // {
+  //   label: "Bookings",
+  //   href: "/admin/bookings",
+  //   icon: ClipboardList,
+  // },
+  // {
+  //   label: "Staff",
+  //   href: "/admin/users",
+  //   icon: Users,
+  // },
   {
     label: "Memberships",
     href: "/admin/memberships",
@@ -66,23 +66,23 @@ const sidebarGroups = [
         href: "/admin/scheduling",
         icon: Timer,
       },
-      {
-        label: "Calendar",
-        href: "/admin/calendar",
-        icon: CalendarDays,
-      },
+      // {
+      //   label: "Calendar",
+      //   href: "/admin/calendar",
+      //   icon: CalendarDays,
+      // },
       {
         label: "Locations",
         href: "/admin/scheduling/locations",
         icon: Building2,
       },
+      // {
+      //   label: "Customer Locations",
+      //   href: "/admin/scheduling/locations/customer-crud",
+      //   icon: Users,
+      // },
       {
-        label: "Customer Locations",
-        href: "/admin/scheduling/locations/customer-crud",
-        icon: Users,
-      },
-      {
-        label: "Event Type",
+        label: "Event Management  ",
         href: "/admin/scheduling/services",
         icon: Timer,
       },
@@ -96,121 +96,121 @@ const sidebarGroups = [
         href: "/admin/scheduling/occasions",
         icon: CalendarDays,
       },
-      {
-        label: "Private Hire",
-        href: "/admin/calendar/private-hire",
-        icon: Building2,
-      },
+      // {
+      //   label: "Private Hire",
+      //   href: "/admin/calendar/private-hire",
+      //   icon: Building2,
+      // },
       {
         label: "Packages",
         href: "/admin/scheduling/packages",
         icon: Package,
       },
-      {
-        label: "Event Inquiries",
-        href: "/admin/scheduling/inquiries",
-        icon: Activity,
-      },
-      {
-        label: "Waivers",
-        href: "/admin/waivers",
-        icon: FileText,
-      },
-      {
-        label: "Class Packs",
-        href: "/admin/class-packs",
-        icon: CreditCard,
-      },
-      {
-        label: "Roles",
-        href: "/admin/scheduling/roles",
-        icon: Activity,
-      },
+      // {
+      //   label: "Event Inquiries",
+      //   href: "/admin/scheduling/inquiries",
+      //   icon: Activity,
+      // },
+      // {
+      //   label: "Waivers",
+      //   href: "/admin/waivers",
+      //   icon: FileText,
+      // },
+      // {
+      //   label: "Class Packs",
+      //   href: "/admin/class-packs",
+      //   icon: CreditCard,
+      // },
+      // {
+      //   label: "Roles",
+      //   href: "/admin/scheduling/roles",
+      //   icon: Activity,
+      // },
     ],
   },
-  {
-    label: "Inventory",
-    icon: Package,
-    items: [
-      {
-        label: "Overview",
-        href: "/admin/inventory",
-        icon: Package,
-      },
-      {
-        label: "Products",
-        href: "/admin/inventory/products",
-        icon: Package,
-      },
-      {
-        label: "Orders",
-        href: "/admin/orders",
-        icon: ShoppingCart,
-      },
-      {
-        label: "Staff Assignments",
-        href: "/admin/rentals/staff-assignments",
-        icon: Users2,
-      },
-      {
-        label: "POS",
-        href: "/admin/inventory/pos",
-        icon: Monitor,
-      },
-    ],
-  },
-  {
-    label: "Analytics",
-    icon: BarChart2,
-    items: [
-      {
-        label: "Dashboard",
-        href: "/admin/reports",
-        icon: LayoutDashboard,
-      },
-      {
-        label: "Revenue",
-        href: "/admin/reports/revenue",
-        icon: TrendingUp,
-      },
-      {
-        label: "Client Activity",
-        href: "/admin/reports/clients",
-        icon: Users,
-      },
-      {
-        label: "Referrals",
-        href: "/admin/reports/referrals",
-        icon: Share2,
-      },
-      {
-        label: "Staff Performance",
-        href: "/admin/reports/staff",
-        icon: Users2,
-      },
-      {
-        label: "Invoices",
-        href: "/admin/reports/invoices",
-        icon: FileText,
-      },
-    ],
-  },
-  {
-    label: "Customers",
-    icon: Users,
-    items: [
-      {
-        label: "Directory",
-        href: "/admin/clients",
-        icon: UserCircle,
-      },
-      {
-        label: "Labels & Tags",
-        href: "/admin/clients/tags",
-        icon: Tag,
-      },
-    ],
-  },
+  // {
+  //   label: "Inventory",
+  //   icon: Package,
+  //   items: [
+  //     {
+  //       label: "Overview",
+  //       href: "/admin/inventory",
+  //       icon: Package,
+  //     },
+  //     // {
+  //     //   label: "Products",
+  //     //   href: "/admin/inventory/products",
+  //     //   icon: Package,
+  //     // },
+  //     {
+  //       label: "Orders",
+  //       href: "/admin/orders",
+  //       icon: ShoppingCart,
+  //     },
+  //     {
+  //       label: "Staff Assignments",
+  //       href: "/admin/rentals/staff-assignments",
+  //       icon: Users2,
+  //     },
+  //     {
+  //       label: "POS",
+  //       href: "/admin/inventory/pos",
+  //       icon: Monitor,
+  //     },
+  //   ],
+  // },
+  // {
+  //   label: "Analytics",
+  //   icon: BarChart2,
+  //   items: [
+  //     {
+  //       label: "Dashboard",
+  //       href: "/admin/reports",
+  //       icon: LayoutDashboard,
+  //     },
+  //     {
+  //       label: "Revenue",
+  //       href: "/admin/reports/revenue",
+  //       icon: TrendingUp,
+  //     },
+  //     {
+  //       label: "Client Activity",
+  //       href: "/admin/reports/clients",
+  //       icon: Users,
+  //     },
+  //     {
+  //       label: "Referrals",
+  //       href: "/admin/reports/referrals",
+  //       icon: Share2,
+  //     },
+  //     {
+  //       label: "Staff Performance",
+  //       href: "/admin/reports/staff",
+  //       icon: Users2,
+  //     },
+  //     {
+  //       label: "Invoices",
+  //       href: "/admin/reports/invoices",
+  //       icon: FileText,
+  //     },
+  //   ],
+  // },
+  // {
+  //   label: "Customers",
+  //   icon: Users,
+  //   items: [
+  //     {
+  //       label: "Directory",
+  //       href: "/admin/clients",
+  //       icon: UserCircle,
+  //     },
+  //     {
+  //       label: "Labels & Tags",
+  //       href: "/admin/clients/tags",
+  //       icon: Tag,
+  //     },
+  //   ],
+  // },
 ];
 
 const SECTION_ROOTS = [

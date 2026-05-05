@@ -2,7 +2,7 @@
 'use client'
 
 import Link from 'next/link'
-import { X } from 'lucide-react'
+import { ExternalLink, X } from 'lucide-react'
 
 import { CouponPanel } from '@/components/customer/coupon-panel'
 import { Button } from '@/components/ui/button'
@@ -10,18 +10,18 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { formatPrice } from '@/lib/utils'
-import type { CartState, Coupon, RentalAcknowledgmentType } from '@/lib/types'
-
-const ACK_OPTIONS: { id: RentalAcknowledgmentType; label: string }[] = [
-  { id: 'MECHANICAL_BULL_SAFETY', label: 'Mechanical Bull safety' },
-  { id: 'GENERATOR_VENTILATION', label: 'Generator ventilation safety' },
-  { id: 'FOOD_EQUIPMENT_SANITATION', label: 'Food equipment sanitation' },
-  { id: 'DJ_CONTROLLER_DEPOSIT', label: 'DJ controller deposit notice' },
-]
+import type {
+  CartState,
+  Coupon,
+  RentalAcknowledgmentCheckoutOption,
+  RentalAcknowledgmentType,
+} from '@/lib/types'
 
 interface RentalCartSidebarProps {
   readonly cart: CartState
   readonly rentalSubtotal: number
+  /** From rental product sub-categories (`ProductCategory.rentalAcknowledgments`). */
+  readonly acknowledgmentOptions: readonly RentalAcknowledgmentCheckoutOption[]
   readonly onSetFulfillmentMode: (mode: 'PICKUP' | 'DELIVERY' | null, address?: string | null) => void
   readonly onSetDeliveryFee: (fee: number) => void
   readonly onSetAcknowledgments: (acknowledgments: RentalAcknowledgmentType[]) => void
@@ -31,11 +31,14 @@ interface RentalCartSidebarProps {
   readonly externalAppliedCode?: string | null
   readonly externalDiscount?: number
   readonly onClose: () => void
+  /** When true, rental lines are not selected for checkout — proceed is disabled. */
+  readonly checkoutDisabled?: boolean
 }
 
 export function RentalCartSidebar({
   cart,
   rentalSubtotal,
+  acknowledgmentOptions,
   onSetFulfillmentMode,
   onSetDeliveryFee,
   onSetAcknowledgments,
@@ -45,6 +48,7 @@ export function RentalCartSidebar({
   externalAppliedCode,
   externalDiscount,
   onClose,
+  checkoutDisabled = false,
 }: Readonly<RentalCartSidebarProps>) {
   const deliveryFee = cart.fulfillmentMode === 'DELIVERY' ? cart.deliveryFee ?? 0 : 0
   const total = rentalSubtotal + deliveryFee + (cart.depositTotal ?? 0)
@@ -115,28 +119,54 @@ export function RentalCartSidebar({
       ) : null}
       <div className="space-y-3">
         <Label>Acknowledgments</Label>
-        <div className="space-y-2">
-          {ACK_OPTIONS.map((option) => {
-            const checked = (cart.acknowledgments ?? []).includes(option.id)
-            return (
-              <label key={option.id} className="flex items-center gap-2 text-sm text-foreground">
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={(event) => {
-                    const current = cart.acknowledgments ?? []
-                    if (event.target.checked) {
-                      onSetAcknowledgments([...current, option.id])
-                    } else {
-                      onSetAcknowledgments(current.filter((entry) => entry !== option.id))
-                    }
-                  }}
-                />
-                {option.label}
-              </label>
-            )
-          })}
-        </div>
+        {acknowledgmentOptions.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            No acknowledgments are configured for these rental categories. Add them under
+            Admin → Scheduling → Services → Rentals when editing a sub-category.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {acknowledgmentOptions.map((option) => {
+              const checked = (cart.acknowledgments ?? []).includes(option.id)
+              return (
+                <div
+                  key={option.id}
+                  className="flex flex-col gap-1.5 text-sm text-foreground sm:flex-row sm:flex-wrap sm:items-center"
+                >
+                  <label className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      className="mt-1 shrink-0"
+                      checked={checked}
+                      onChange={(event) => {
+                        const current = cart.acknowledgments ?? []
+                        if (event.target.checked) {
+                          onSetAcknowledgments([...current, option.id])
+                        } else {
+                          onSetAcknowledgments(
+                            current.filter((entry) => entry !== option.id),
+                          )
+                        }
+                      }}
+                    />
+                    <span>{option.label}</span>
+                  </label>
+                  {option.detailUrl ? (
+                    <a
+                      href={option.detailUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-accent underline underline-offset-2 sm:ml-1"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                      Read details
+                    </a>
+                  ) : null}
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       <Separator />
@@ -170,15 +200,18 @@ export function RentalCartSidebar({
         </p>
       </div>
 
-      <Button
-        className="h-11 w-full bg-accent font-bold text-accent-foreground hover:bg-accent/90"
-        asChild
-      >
-        <Link href="/rentals/checkout">Proceed to rental checkout</Link>
-      </Button>
-      <p className="text-center text-xs text-muted-foreground">
-        Rental checkout follows the same checkout page as shop items.
-      </p>
+      {checkoutDisabled ? (
+        <Button className="h-11 w-full font-bold" type="button" disabled>
+          Select rental items to continue
+        </Button>
+      ) : (
+        <Button
+          className="h-11 w-full bg-accent font-bold text-accent-foreground hover:bg-accent/90"
+          asChild
+        >
+          <Link href="/shop/checkout">Proceed to checkout</Link>
+        </Button>
+      )}
     </div>
   )
 }

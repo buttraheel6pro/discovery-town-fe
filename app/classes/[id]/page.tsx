@@ -35,8 +35,18 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useBookingForm } from '@/hooks/use-booking-form'
-import { instructors } from '@/lib/mock-data'
+import { useToast } from '@/hooks/use-toast'
 import { useClients } from '@/lib/client-store'
+import { useInventory } from '@/lib/inventory-store'
+import { instructors } from '@/lib/mock-data'
+import {
+  buildEventCartBookingDescription,
+  buildGymCartBookingDescription,
+  EVENT_CART_BOOKING_META_KEY,
+  GYM_CART_BOOKING_META_KEY,
+  isEventSlotCartCheckoutService,
+  isGymClassCartCheckoutService,
+} from '@/lib/play-cart'
 import { useScheduling } from '@/lib/scheduling-store'
 import {
   formatPrice,
@@ -53,9 +63,28 @@ const levelColors: Record<string, string> = {
   'All Levels': 'bg-blue-100 text-blue-700',
 }
 
+function getClassEnrolButtonLabel(
+  selectedSlot: SchedulingSlot | undefined,
+  gymClassCartCheckout: boolean,
+  eventClassCartCheckout: boolean,
+): string {
+  if (!selectedSlot) {
+    return 'Select a session'
+  }
+  if (selectedSlot.status === 'FULL') {
+    return 'Class full'
+  }
+  if (gymClassCartCheckout || eventClassCartCheckout) {
+    return 'Confirm and add to cart'
+  }
+  return 'Enrol now'
+}
+
 function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }>) {
   const { slots, packages } = useScheduling()
   const { contacts, subscriptions, documents } = useClients()
+  const { addCustomCartItem } = useInventory()
+  const { toast } = useToast()
 
   const primaryContact =
     contacts.find((c) => c.contactType === 'CUSTOMER') ?? contacts[0] ?? null
@@ -78,6 +107,9 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
       ),
   )
   const membersOnlyBlocked = service.category.membersOnly === true && !hasActiveMembership
+  const gymClassCartCheckout = isGymClassCartCheckoutService(service)
+  const eventClassCartCheckout =
+    isEventSlotCartCheckoutService(service) && !gymClassCartCheckout
   const instructor: Instructors | undefined = service.instructorId
     ? instructors.find((i) => i.instructorId === service.instructorId || i.id === service.instructorId)
     : undefined
@@ -177,6 +209,7 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
   ])
 
   const [enrolled, setEnrolled] = useState(false)
+  const [classCartSuccessKind, setClassCartSuccessKind] = useState<null | 'gym' | 'event'>(null)
   const [waitlistOpen, setWaitlistOpen] = useState(false)
 
   const capacity = selectedSlot?.effectiveCapacity ?? service.capacity
@@ -190,6 +223,56 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
     if (!selectedSlot) return
     if (selectedSlot.status === 'FULL') return
     if (!bookingForm.canSubmitDetails) return
+    if (gymClassCartCheckout) {
+      const booking = bookingForm.submitBooking({ persist: false })
+      addCustomCartItem({
+        type: 'booking',
+        name: service.name,
+        description: buildGymCartBookingDescription(booking, {
+          packageName: selectedPackage?.name ?? null,
+        }),
+        price: booking.totalAmount,
+        quantity: 1,
+        imageUrl: service.imageUrl ?? undefined,
+        metadata: {
+          [GYM_CART_BOOKING_META_KEY]: true,
+          serviceId: service.id,
+        },
+      })
+      setClassCartSuccessKind('gym')
+      toast({
+        title: 'Added to cart',
+        description:
+          'Your class is in the cart. Open Gym bookings to review or checkout.',
+      })
+      return
+    }
+    if (eventClassCartCheckout) {
+      const booking = bookingForm.submitBooking({ persist: false })
+      addCustomCartItem({
+        type: 'booking',
+        name: service.name,
+        description: buildEventCartBookingDescription(booking, {
+          packageName: selectedPackage?.name ?? null,
+          occasionLabel: null,
+          selectedDate: null,
+        }),
+        price: booking.totalAmount,
+        quantity: 1,
+        imageUrl: service.imageUrl ?? undefined,
+        metadata: {
+          [EVENT_CART_BOOKING_META_KEY]: true,
+          serviceId: service.id,
+        },
+      })
+      setClassCartSuccessKind('event')
+      toast({
+        title: 'Added to cart',
+        description:
+          'Your session is in the cart. Open Event bookings to review or checkout.',
+      })
+      return
+    }
     bookingForm.submitBooking()
     setEnrolled(true)
   }
@@ -367,18 +450,46 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
               <CardTitle className="text-lg font-bold">Enrol in this Class</CardTitle>
             </CardHeader>
             <CardContent className="space-y-5">
-              {enrolled ? (
+              {enrolled || classCartSuccessKind !== null ? (
                 <div className="text-center py-6 space-y-3">
                   <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto" />
-                  <p className="font-bold text-lg">Enrolment Confirmed!</p>
-                  <p className="text-sm text-muted-foreground">
-                    You are booked for {service.name}.
-                  </p>
-                  <Link href="/account">
-                    <Button variant="outline" className="w-full mt-2">
-                      View My Bookings
-                    </Button>
-                  </Link>
+                  {classCartSuccessKind === 'gym' ? (
+                    <>
+                      <p className="font-bold text-lg">Added to cart</p>
+                      <p className="text-sm text-muted-foreground">
+                        {service.name} — open Gym bookings in your cart to complete checkout.
+                      </p>
+                      <Link href="/cart">
+                        <Button variant="outline" className="w-full mt-2">
+                          View cart
+                        </Button>
+                      </Link>
+                    </>
+                  ) : classCartSuccessKind === 'event' ? (
+                    <>
+                      <p className="font-bold text-lg">Added to cart</p>
+                      <p className="text-sm text-muted-foreground">
+                        {service.name} — open Event bookings in your cart to complete checkout.
+                      </p>
+                      <Link href="/cart">
+                        <Button variant="outline" className="w-full mt-2">
+                          View cart
+                        </Button>
+                      </Link>
+                    </>
+                  ) : (
+                    <>
+                      <p className="font-bold text-lg">Enrolment Confirmed!</p>
+                      <p className="text-sm text-muted-foreground">
+                        You are booked for {service.name}.
+                      </p>
+                      <Link href="/account">
+                        <Button variant="outline" className="w-full mt-2">
+                          View My Bookings
+                        </Button>
+                      </Link>
+                    </>
+                  )}
                 </div>
               ) : (
                 <>
@@ -730,11 +841,11 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
                       }
                       onClick={handleEnrol}
                     >
-                      {!selectedSlot
-                        ? 'Select a session'
-                        : selectedSlot.status === 'FULL'
-                          ? 'Class full'
-                          : 'Enrol now'}
+                      {getClassEnrolButtonLabel(
+                        selectedSlot,
+                        gymClassCartCheckout,
+                        eventClassCartCheckout,
+                      )}
                     </Button>
                   )}
 
