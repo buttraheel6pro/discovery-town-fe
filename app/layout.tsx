@@ -4,6 +4,7 @@ import { Analytics } from '@vercel/analytics/next'
 import { Toaster } from '@/components/ui/toaster'
 import { CalendarProvider } from '@/lib/calendar-store'
 import { ClientProvider } from '@/lib/client-store'
+import { CafeProvider } from '@/lib/cafe-store'
 import { InventoryProvider } from '@/lib/inventory-store'
 import { LocationProvider } from '@/lib/location-store'
 import { AppStoreProvider } from '@/lib/redux/provider'
@@ -56,13 +57,15 @@ export default function RootLayout({
         <AppStoreProvider>
           <SchedulingProvider>
             <InventoryProvider>
-              <ReportsProvider>
-                <LocationProvider>
-                  <CalendarProvider>
-                    <ClientProvider>{children}</ClientProvider>
-                  </CalendarProvider>
-                </LocationProvider>
-              </ReportsProvider>
+              <CafeProvider>
+                <ReportsProvider>
+                  <LocationProvider>
+                    <CalendarProvider>
+                      <ClientProvider>{children}</ClientProvider>
+                    </CalendarProvider>
+                  </LocationProvider>
+                </ReportsProvider>
+              </CafeProvider>
             </InventoryProvider>
           </SchedulingProvider>
         </AppStoreProvider>

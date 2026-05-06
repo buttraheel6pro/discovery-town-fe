@@ -53,6 +53,7 @@ export function RentalProductForm({
   }, [value.rentalBillingType])
 
   const tierRows = value.rentalHourlyTierPrices
+  const dailyTierRows = value.rentalDailyTierPrices
 
   async function onPickImageFile(file: File | null): Promise<void> {
     if (!file) return
@@ -152,37 +153,131 @@ export function RentalProductForm({
         </div>
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="rental-billing-type">Rental billing type</Label>
-        <Select
-          value={value.rentalBillingType}
-          onValueChange={(next) => set('rentalBillingType', next as RentalBillingType)}
-        >
-          <SelectTrigger id="rental-billing-type">
-            <SelectValue placeholder="Select billing type" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="PER_DAY">Per day</SelectItem>
-            <SelectItem value="PER_HALF_DAY">Per half day</SelectItem>
-            <SelectItem value="PER_HOUR">Per hour</SelectItem>
-            <SelectItem value="PER_EVENT">Per event</SelectItem>
-          </SelectContent>
-        </Select>
-        <p className="text-xs text-muted-foreground">{rentalPricingLabel}</p>
+      <div className="w-full space-y-2">
+        <div className="grid w-full grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="min-w-0 space-y-2">
+            <Label htmlFor="rental-billing-type">Rental billing type</Label>
+            <Select
+              value={value.rentalBillingType}
+              onValueChange={(next) => set('rentalBillingType', next as RentalBillingType)}
+            >
+              <SelectTrigger id="rental-billing-type" className="w-full">
+                <SelectValue placeholder="Select billing type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="PER_DAY">Per day</SelectItem>
+                <SelectItem value="PER_HALF_DAY">Per half day</SelectItem>
+                <SelectItem value="PER_HOUR">Per hour</SelectItem>
+                <SelectItem value="PER_EVENT">Per event</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">{rentalPricingLabel}</p>
+          </div>
+          <div className="min-w-0 space-y-2">
+            <Label htmlFor="rental-slot-increment">Slot increment</Label>
+            <Select
+              value={value.rentalSlotIncrementMinutes || '60'}
+              onValueChange={(next) => set('rentalSlotIncrementMinutes', next)}
+              disabled={value.rentalBillingType !== 'PER_HOUR'}
+            >
+              <SelectTrigger id="rental-slot-increment" className="w-full">
+                <SelectValue placeholder="Select slot increment" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="30">30 minutes</SelectItem>
+                <SelectItem value="60">60 minutes</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {(value.rentalBillingType === 'PER_DAY' || value.rentalBillingType === '') ? (
-          <div className="space-y-2">
-            <Label htmlFor="rental-price-day">Rental price per day</Label>
-            <Input
-              id="rental-price-day"
-              type="number"
-              inputMode="decimal"
-              step="0.01"
-              value={value.rentalPricePerDay}
-              onChange={(event) => set('rentalPricePerDay', event.target.value)}
-            />
+          <div className="space-y-4 md:col-span-2">
+            <div className="space-y-2">
+              <Label htmlFor="rental-price-day">Rental price per day</Label>
+              <Input
+                id="rental-price-day"
+                type="number"
+                inputMode="decimal"
+                step="0.01"
+                value={value.rentalPricePerDay}
+                onChange={(event) => set('rentalPricePerDay', event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Tiered day prices</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    set('rentalDailyTierPrices', [
+                      ...value.rentalDailyTierPrices,
+                      { days: '', price: '' },
+                    ])
+                  }
+                >
+                  <Plus className="mr-1 h-3.5 w-3.5" />
+                  Add tier
+                </Button>
+              </div>
+              {dailyTierRows.length > 0 ? (
+                <div className="space-y-2">
+                  {dailyTierRows.map((tier, index) => (
+                    <div key={index} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                      <Input
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="Days (2+)"
+                        value={tier.days}
+                        onChange={(event) => {
+                          const next = dailyTierRows.map((row, rowIndex) =>
+                            rowIndex === index ? { ...row, days: event.target.value } : row,
+                          )
+                          set('rentalDailyTierPrices', next)
+                        }}
+                      />
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="Price"
+                        value={tier.price}
+                        onChange={(event) => {
+                          const next = dailyTierRows.map((row, rowIndex) =>
+                            rowIndex === index ? { ...row, price: event.target.value } : row,
+                          )
+                          set('rentalDailyTierPrices', next)
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={() =>
+                          set(
+                            'rentalDailyTierPrices',
+                            dailyTierRows.filter((_, rowIndex) => rowIndex !== index),
+                          )
+                        }
+                        aria-label="Remove day tier"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                  <p className="text-xs text-muted-foreground">
+                    Example: 2 days = 2000, 3 days = 2800.
+                  </p>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Add custom prices for specific day durations.
+                </p>
+              )}
+            </div>
           </div>
         ) : null}
         {(value.rentalBillingType === 'PER_DAY' || value.rentalBillingType === 'PER_HALF_DAY') ? (
@@ -223,7 +318,7 @@ export function RentalProductForm({
                 placeholder="Overrides 1-hour price"
               />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2 md:col-span-2">
               <Label htmlFor="rental-min-hours">Minimum hours (optional)</Label>
               <Input
                 id="rental-min-hours"

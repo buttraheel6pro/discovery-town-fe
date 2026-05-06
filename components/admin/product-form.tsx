@@ -21,6 +21,11 @@ export interface HourlyTierDraft {
   price: string
 }
 
+export interface DailyTierDraft {
+  days: string
+  price: string
+}
+
 export type ProductDraft = {
   name: string
   sku: string
@@ -50,10 +55,12 @@ export type ProductDraft = {
   rentalPriceFirstHourPremium: string
   rentalMinHours: string
   rentalHourlyTierPrices: HourlyTierDraft[]
+  rentalDailyTierPrices: DailyTierDraft[]
   requiresDelivery: boolean
   requiresStaff: boolean
   setupMinutes: string
   maxRentalDays: string
+  rentalSlotIncrementMinutes: string
   depositAmount: string
 }
 
@@ -108,10 +115,16 @@ export function productToDraft(product: Product, categories: ProductCategory[]):
       hours: String(tier.hours),
       price: String(tier.price),
     })),
+    rentalDailyTierPrices: (product.rentalDailyTierPrices ?? []).map((tier) => ({
+      days: String(tier.days),
+      price: String(tier.price),
+    })),
     requiresDelivery: product.requiresDelivery ?? false,
     requiresStaff: product.requiresStaff ?? false,
     setupMinutes: product.setupMinutes != null ? String(product.setupMinutes) : '',
     maxRentalDays: product.maxRentalDays != null ? String(product.maxRentalDays) : '',
+    rentalSlotIncrementMinutes:
+      product.rentalSlotIncrementMinutes != null ? String(product.rentalSlotIncrementMinutes) : '',
     depositAmount: product.depositAmount != null ? String(product.depositAmount) : '',
   }
 }
@@ -138,10 +151,20 @@ export function draftToProductPatch(draft: ProductDraft): Partial<Product> {
       return { hours, price }
     })
     .filter((tier): tier is { hours: number; price: number } => Boolean(tier))
+  const rentalDailyTierPrices = draft.rentalDailyTierPrices
+    .map((tier) => {
+      const days = Number.parseInt(tier.days.trim(), 10)
+      const price = Number.parseFloat(tier.price.trim())
+      if (!Number.isFinite(days) || days < 2) return null
+      if (!Number.isFinite(price) || price < 0) return null
+      return { days, price }
+    })
+    .filter((tier): tier is { days: number; price: number } => Boolean(tier))
   const stockCount = Number.parseInt(draft.stockCount || '0', 10)
   const lowStockThreshold = Number.parseInt(draft.lowStockThreshold || '0', 10)
   const setupMinutes = Number.parseInt(draft.setupMinutes || '0', 10)
   const maxRentalDays = Number.parseInt(draft.maxRentalDays || '0', 10)
+  const rentalSlotIncrementMinutes = Number.parseInt(draft.rentalSlotIncrementMinutes || '0', 10)
 
   const base: Partial<Product> = {
     name: draft.name.trim(),
@@ -173,10 +196,17 @@ export function draftToProductPatch(draft: ProductDraft): Partial<Product> {
       Number.isFinite(rentalMinHours) && rentalMinHours > 0 ? rentalMinHours : undefined,
     rentalHourlyTierPrices:
       rentalHourlyTierPrices.length > 0 ? rentalHourlyTierPrices : undefined,
+    rentalDailyTierPrices:
+      rentalDailyTierPrices.length > 0 ? rentalDailyTierPrices : undefined,
     requiresDelivery: draft.requiresDelivery,
     requiresStaff: draft.requiresStaff,
     setupMinutes: Number.isFinite(setupMinutes) && setupMinutes > 0 ? setupMinutes : undefined,
     maxRentalDays: Number.isFinite(maxRentalDays) && maxRentalDays > 0 ? maxRentalDays : undefined,
+    rentalSlotIncrementMinutes:
+      Number.isFinite(rentalSlotIncrementMinutes) &&
+      (rentalSlotIncrementMinutes === 30 || rentalSlotIncrementMinutes === 60)
+        ? rentalSlotIncrementMinutes
+        : undefined,
     depositAmount: depositAmount ?? undefined,
   }
   if (draft.canBeAddOn) {

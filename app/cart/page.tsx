@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { useClients } from '@/lib/client-store'
+import { formatModifierSummary } from '@/lib/cafe-utils'
 import { calcCartTotals, formatPrice } from '@/lib/utils'
 import { useInventory } from '@/lib/inventory-store'
 import { isGiftProduct } from '@/lib/gift-product'
@@ -92,7 +93,7 @@ export default function CartPage() {
   const [showRentalDetails, setShowRentalDetails] = useState(false)
   const [showShopSummary, setShowShopSummary] = useState(false)
   const [selectedGrouping, setSelectedGrouping] = useState<
-    'rental' | 'request' | 'play' | 'gym' | 'event' | 'gift' | 'shop' | null
+    'rental' | 'request' | 'play' | 'gym' | 'event' | 'gift' | 'cafe' | 'shop' | null
   >(null)
   const {
     cart,
@@ -110,6 +111,7 @@ export default function CartPage() {
   const [editingGiftBundleItemId, setEditingGiftBundleItemId] = useState<string | null>(null)
   const [editingGiftPrimaryQty, setEditingGiftPrimaryQty] = useState(1)
   const [editingGiftAddOns, setEditingGiftAddOns] = useState<GiftBundleItem[]>([])
+  const [viewingCafeItemId, setViewingCafeItemId] = useState<string | null>(null)
 
   const primaryContact =
     contacts.find((c) => c.contactType === 'CUSTOMER') ?? contacts[0] ?? null
@@ -190,16 +192,33 @@ export default function CartPage() {
       return false
     })
   }, [nonRentalItems, productCategories, products])
+  const cafeCartItems = useMemo(() => {
+    return nonRentalItems.filter((item) => {
+      if (item.type !== 'product') return false
+      const productId = item.metadata?.productId
+      const isCafeByMetadata =
+        item.metadata &&
+        typeof item.metadata === 'object' &&
+        (item.metadata as { itemType?: string }).itemType === 'cafe'
+      if (isCafeByMetadata) return true
+      if (typeof productId !== 'string') return false
+      const product = products.find((row) => row.id === productId) ?? null
+      if (!product) return false
+      const category = productCategories.find((row) => row.id === product.categoryId) ?? null
+      return (category?.productType ?? '').toLowerCase() === 'cafe&food'
+    })
+  }, [nonRentalItems, productCategories, products])
   const shopCartItems = useMemo(
     () =>
       nonRentalItems.filter(
         (item) =>
           !giftCartItems.some((giftItem) => giftItem.id === item.id) &&
+          !cafeCartItems.some((cafeItem) => cafeItem.id === item.id) &&
           !playCartItems.some((playItem) => playItem.id === item.id) &&
           !gymCartItems.some((gymItem) => gymItem.id === item.id) &&
           !eventCartItems.some((eventItem) => eventItem.id === item.id),
       ),
-    [eventCartItems, giftCartItems, gymCartItems, nonRentalItems, playCartItems],
+    [cafeCartItems, eventCartItems, giftCartItems, gymCartItems, nonRentalItems, playCartItems],
   )
   const shopCheckoutEligibleItems = useMemo(
     () => [...groupedRequestItems, ...nonRentalItems],
@@ -224,6 +243,8 @@ export default function CartPage() {
         return eventCartItems
       case 'gift':
         return giftCartItems
+      case 'cafe':
+        return cafeCartItems
       case 'shop':
         return shopCartItems
       default:
@@ -231,6 +252,7 @@ export default function CartPage() {
     }
   }, [
     eventCartItems,
+    cafeCartItems,
     giftCartItems,
     groupedRequestItems,
     gymCartItems,
@@ -261,14 +283,18 @@ export default function CartPage() {
     [shopSidebarCouponShare, shopSidebarLineItems],
   )
   const giftCartDeliveryFee = useMemo(() => {
-    if (selectedGrouping !== 'gift' || cart.fulfillmentMode !== 'DELIVERY') {
+    if (
+      (selectedGrouping !== 'gift' && selectedGrouping !== 'cafe') ||
+      cart.fulfillmentMode !== 'DELIVERY'
+    ) {
       return 0
     }
     return Math.max(0, cart.deliveryFee ?? 0)
   }, [cart.deliveryFee, cart.fulfillmentMode, selectedGrouping])
   const giftRentalStyleTotal = useMemo(() => {
     const delivery =
-      selectedGrouping === 'gift' && cart.fulfillmentMode === 'DELIVERY'
+      (selectedGrouping === 'gift' || selectedGrouping === 'cafe') &&
+      cart.fulfillmentMode === 'DELIVERY'
         ? Math.max(0, cart.deliveryFee ?? 0)
         : 0
     return (
@@ -289,6 +315,34 @@ export default function CartPage() {
     () => parseGiftBundleMetadata(editingGiftCartItem?.metadata),
     [editingGiftCartItem?.metadata],
   )
+  const viewingCafeItem = useMemo(() => {
+    if (!viewingCafeItemId) return null
+    return cart.items.find((item) => item.id === viewingCafeItemId) ?? null
+  }, [cart.items, viewingCafeItemId])
+  const viewingCafeCustomerNote = useMemo(() => {
+    if (!viewingCafeItem?.metadata || typeof viewingCafeItem.metadata !== 'object') return ''
+    const note = (viewingCafeItem.metadata as { customerNote?: unknown }).customerNote
+    return typeof note === 'string' ? note.trim() : ''
+  }, [viewingCafeItem?.metadata])
+  const viewingCafeSelectedAttributes = useMemo(() => {
+    if (!viewingCafeItem?.metadata || typeof viewingCafeItem.metadata !== 'object') return []
+    const selectedAttributes = (
+      viewingCafeItem.metadata as {
+        selectedAttributes?: Array<{
+          groupName?: unknown
+          optionLabel?: unknown
+        }>
+      }
+    ).selectedAttributes
+    if (!Array.isArray(selectedAttributes)) return []
+    return selectedAttributes
+      .map((entry) =>
+        typeof entry.groupName === 'string' && typeof entry.optionLabel === 'string'
+          ? `${entry.groupName}: ${entry.optionLabel}`
+          : '',
+      )
+      .filter((entry) => entry.length > 0)
+  }, [viewingCafeItem?.metadata])
   const editingGiftTotal = useMemo(() => {
     if (!editingGiftMetadata) return 0
     const primaryTotal = editingGiftMetadata.primary.unitPrice * editingGiftPrimaryQty
@@ -308,7 +362,7 @@ export default function CartPage() {
   }
 
   function selectGrouping(
-    grouping: 'rental' | 'request' | 'play' | 'gym' | 'event' | 'gift' | 'shop',
+    grouping: 'rental' | 'request' | 'play' | 'gym' | 'event' | 'gift' | 'cafe' | 'shop',
   ) {
     setSelectedGrouping(grouping)
     if (grouping === 'rental') {
@@ -779,6 +833,65 @@ export default function CartPage() {
                   </div>
                 ) : null}
 
+                {cafeCartItems.length > 0 ? (
+                  <div
+                    className="space-y-3 rounded-xl border border-border bg-card p-4 cursor-pointer"
+                    onClick={() => selectGrouping('cafe')}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground">
+                        Cafe & Food items
+                      </h2>
+                      <label
+                        className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-foreground"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          selectGrouping('cafe')
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="checkout-grouping"
+                          checked={selectedGrouping === 'cafe'}
+                          onChange={() => selectGrouping('cafe')}
+                          className="h-4 w-4"
+                        />
+                        Open checkout details
+                      </label>
+                    </div>
+                    {cafeCartItems.map((item) => (
+                      <div key={item.id} className="rounded-lg border border-border bg-background p-3 text-sm">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-semibold text-foreground">{item.name}</p>
+                            {item.subtypeLabel?.trim() ? (
+                              <p className="text-xs text-muted-foreground">{item.subtypeLabel}</p>
+                            ) : null}
+                            <p className="mt-1 text-xs text-muted-foreground">Qty: {item.quantity}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setViewingCafeItemId(item.id)}
+                            >
+                              View details
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => removeFromCart(item.id)}>
+                              Remove
+                            </Button>
+                          </div>
+                        </div>
+                        <div className="mt-2 flex items-center justify-between">
+                          <p className="font-semibold text-foreground">
+                            {formatPrice(item.price * item.quantity)}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
                 {shopCartItems.length > 0 ? (
                   <div
                     className="space-y-3 rounded-xl border border-border bg-card p-4 cursor-pointer"
@@ -843,6 +956,45 @@ export default function CartPage() {
                               <div className="flex items-start justify-between gap-3">
                                 <div>
                                   <p className="font-semibold text-foreground">{item.name}</p>
+                                  {(() => {
+                                    const meta = item.metadata
+                                    const isCafe =
+                                      meta &&
+                                      typeof meta === 'object' &&
+                                      (meta as { itemType?: string }).itemType === 'cafe'
+                                    return (
+                                      <>
+                                        {isCafe && item.subtypeLabel?.trim() ? (
+                                          <p className="text-xs text-muted-foreground">{item.subtypeLabel}</p>
+                                        ) : null}
+                                        {isCafe && item.selectedModifiers?.length ? (
+                                          <p className="text-xs text-muted-foreground">
+                                            {formatModifierSummary(item.selectedModifiers)}
+                                          </p>
+                                        ) : null}
+                                        {isCafe
+                                          ? (() => {
+                                              const note =
+                                                item.metadata &&
+                                                typeof item.metadata === 'object' &&
+                                                typeof (
+                                                  item.metadata as { customerNote?: unknown }
+                                                ).customerNote === 'string'
+                                                  ? (
+                                                      (item.metadata as { customerNote?: string })
+                                                        .customerNote ?? ''
+                                                    ).trim()
+                                                  : ''
+                                              return note ? (
+                                                <p className="text-xs text-muted-foreground">
+                                                  Note: {note}
+                                                </p>
+                                              ) : null
+                                            })()
+                                          : null}
+                                      </>
+                                    )
+                                  })()}
                                   {item.description ? (
                                     <p className="text-xs whitespace-pre-line text-muted-foreground">
                                       {item.description}
@@ -894,7 +1046,7 @@ export default function CartPage() {
                     <h2 className="font-bold text-lg">Shop order summary</h2>
                     <Separator />
 
-                    {selectedGrouping === 'gift' ? (
+                    {selectedGrouping === 'gift' || selectedGrouping === 'cafe' ? (
                       <>
                         <div className="space-y-3">
                           <Label>Fulfillment</Label>
@@ -958,10 +1110,12 @@ export default function CartPage() {
                       <p className="text-sm text-muted-foreground">
                         No lines in this grouping. Choose another section or add items to this group.
                       </p>
-                    ) : selectedGrouping === 'gift' ? (
+                    ) : selectedGrouping === 'gift' || selectedGrouping === 'cafe' ? (
                       <div className="space-y-1 text-sm">
                         <p className="flex items-center justify-between text-muted-foreground">
-                          <span>Gift subtotal</span>
+                          <span>
+                            {selectedGrouping === 'gift' ? 'Gift subtotal' : 'Cafe subtotal'}
+                          </span>
                           <span>{formatPrice(shopSidebarSubtotal)}</span>
                         </p>
                         <p className="flex items-center justify-between text-muted-foreground">
@@ -1019,11 +1173,12 @@ export default function CartPage() {
                 {!showRentalDetails && !showShopSummary ? (
                   <div className="rounded-xl border border-dashed border-border bg-card p-4 text-sm text-muted-foreground">
                     To proceed with checkout, select a cart grouping (Rental, Request bundles, Play
-                    bookings, Gym bookings, Event bookings, Gift items, or Shop & other items).
+                    bookings, Gym bookings, Event bookings, Gift items, Cafe & Food items, or Shop & other items).
                   </div>
                 ) : null}
                 {rentalItems.length > 0 &&
                 (giftCartItems.length > 0 ||
+                  cafeCartItems.length > 0 ||
                   shopCartItems.length > 0 ||
                   playCartItems.length > 0 ||
                   gymCartItems.length > 0 ||
@@ -1139,6 +1294,63 @@ export default function CartPage() {
                 </Button>
                 <Button type="button" onClick={saveGiftBundleChanges}>
                   Save changes
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+      <Dialog open={viewingCafeItemId !== null} onOpenChange={(open) => !open && setViewingCafeItemId(null)}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Cafe item details</DialogTitle>
+            <DialogDescription>Review customisation and notes for this line item.</DialogDescription>
+          </DialogHeader>
+          {viewingCafeItem ? (
+            <div className="space-y-4">
+              <div className="flex items-start justify-between gap-3 rounded-lg border border-border bg-card p-3">
+                <div className="space-y-1">
+                  <p className="font-semibold text-foreground">{viewingCafeItem.name}</p>
+                  {viewingCafeItem.subtypeLabel?.trim() ? (
+                    <p className="text-xs text-muted-foreground">{viewingCafeItem.subtypeLabel}</p>
+                  ) : null}
+                  <p className="text-xs text-muted-foreground">Qty: {viewingCafeItem.quantity}</p>
+                </div>
+                <p className="font-semibold text-foreground">
+                  {formatPrice(viewingCafeItem.price * viewingCafeItem.quantity)}
+                </p>
+              </div>
+              {viewingCafeItem.selectedModifiers?.length ? (
+                <div className="space-y-1 rounded-lg border border-border bg-card p-3">
+                  <p className="text-sm font-semibold text-foreground">Selected options</p>
+                  <p className="text-sm text-muted-foreground">
+                    {formatModifierSummary(viewingCafeItem.selectedModifiers)}
+                  </p>
+                </div>
+              ) : null}
+              {viewingCafeSelectedAttributes.length > 0 ? (
+                <div className="space-y-1 rounded-lg border border-border bg-card p-3">
+                  <p className="text-sm font-semibold text-foreground">Selected attributes</p>
+                  <p className="text-sm text-muted-foreground">
+                    {viewingCafeSelectedAttributes.join(' • ')}
+                  </p>
+                </div>
+              ) : null}
+              {viewingCafeCustomerNote ? (
+                <div className="space-y-1 rounded-lg border border-border bg-card p-3">
+                  <p className="text-sm font-semibold text-foreground">Notes</p>
+                  <p className="text-sm text-muted-foreground">{viewingCafeCustomerNote}</p>
+                </div>
+              ) : null}
+              {viewingCafeItem.description ? (
+                <div className="space-y-1 rounded-lg border border-border bg-card p-3">
+                  <p className="text-sm font-semibold text-foreground">Details</p>
+                  <p className="text-sm text-muted-foreground">{viewingCafeItem.description}</p>
+                </div>
+              ) : null}
+              <div className="flex justify-end">
+                <Button type="button" onClick={() => setViewingCafeItemId(null)}>
+                  Close
                 </Button>
               </div>
             </div>

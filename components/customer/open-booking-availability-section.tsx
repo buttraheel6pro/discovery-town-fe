@@ -1,35 +1,34 @@
-/** Shared week strip, time grid, duration pills, and legend for open booking & private hire. */
+/** Open booking, private hire, and rental availability — shared entry; rental variants delegate. */
 'use client'
-
-import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import {
+  RentalPerDayCalendarSection,
+  type RentalPerDayCalendarSectionProps,
+} from '@/components/customer/rental-per-day-calendar-section'
+import { RentalWeekSlotPicker } from '@/components/customer/rental-week-slot-picker'
+import {
+  OpenBookingTimeWindowGrid,
+} from '@/components/customer/open-booking-time-window-grid'
+import {
+  formatOpenBookingDateDisplay,
+  getOpenBookingTodayIsoDate,
+  getOpenBookingWeekDatesFromOffset,
+  OpenBookingWeekDayButtonGrid,
+  OpenBookingWeekToolbar,
+} from '@/components/customer/open-booking-week-ui'
+import {
+  generateMockRentalHalfDayWindows,
+  generateMockRentalHourlyWindows,
+} from '@/lib/rental-calendar-helpers'
 import { generateOpenAvailability, generateOpenAvailabilityForDuration } from '@/lib/mock-data'
-import { cn, formatDurationLabel, formatSlotTime, formatSlotTimeRange } from '@/lib/utils'
+import { cn, formatDurationLabel } from '@/lib/utils'
 import type { AvailableWindow, SchedulingService } from '@/lib/types'
-
-function formatDateDisplay(dateStr: string) {
-  return new Date(`${dateStr}T12:00:00`).toLocaleDateString('en-GB', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  })
-}
-
-function getWeekDates(baseDate: Date) {
-  const dates: string[] = []
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(baseDate)
-    d.setDate(baseDate.getDate() + i)
-    dates.push(d.toISOString().split('T')[0])
-  }
-  return dates
-}
 
 export type OpenBookingAvailabilityMode = 'facility' | 'private_hire'
 
-export interface OpenBookingAvailabilitySectionProps {
+export interface OpenBookingServiceAvailabilitySectionProps {
   readonly title?: string
   readonly service: SchedulingService
   readonly weekOffset: number
@@ -49,7 +48,27 @@ export interface OpenBookingAvailabilitySectionProps {
   readonly maxAdvanceDate?: Date | null
 }
 
-export function OpenBookingAvailabilitySection({
+export type OpenBookingRentalPerDayVariantProps = Readonly<
+  { readonly variant: 'rental_per_day' } & RentalPerDayCalendarSectionProps
+>
+
+export type OpenBookingRentalSlotsVariantProps = Readonly<{
+  readonly variant: 'rental_slots'
+  readonly slotBilling: 'PER_HOUR' | 'PER_HALF_DAY'
+  readonly availabilityMap: ReadonlyMap<string, number>
+  readonly stockQuantity: number
+  readonly slotIncrementMinutes?: number | null
+  readonly selectedSlotStartAt: string
+  readonly selectedSlotEndAt: string
+  readonly onRentalSlotChange: (startIso: string, endIso: string) => void
+}>
+
+export type OpenBookingAvailabilitySectionProps =
+  | OpenBookingServiceAvailabilitySectionProps
+  | OpenBookingRentalPerDayVariantProps
+  | OpenBookingRentalSlotsVariantProps
+
+function OpenBookingServiceAvailabilitySection({
   title = 'Availability',
   service,
   weekOffset,
@@ -66,13 +85,9 @@ export function OpenBookingAvailabilitySection({
   onCheckAvailability,
   onResetAvailabilityCheck,
   maxAdvanceDate = null,
-}: Readonly<OpenBookingAvailabilitySectionProps>) {
-  const today = new Date()
-  const todayStr = today.toISOString().split('T')[0]
-
-  const baseDate = new Date(today)
-  baseDate.setDate(today.getDate() + weekOffset * 7)
-  const weekDates = getWeekDates(baseDate)
+}: Readonly<OpenBookingServiceAvailabilitySectionProps>) {
+  const todayStr = getOpenBookingTodayIsoDate()
+  const weekDates = getOpenBookingWeekDatesFromOffset(weekOffset)
 
   const availability = (() => {
     if (mode === 'private_hire' && !availabilityChecked) return null
@@ -97,10 +112,10 @@ export function OpenBookingAvailabilitySection({
 
   return (
     <section>
-      <h2 className="text-xl font-bold mb-4">{title}</h2>
+      <h2 className="mb-4 text-xl font-bold">{title}</h2>
 
       {mode === 'private_hire' && durationOptions.length > 0 ? (
-        <div className="space-y-2 mb-6">
+        <div className="mb-6 space-y-2">
           <Label>Duration</Label>
           <div className="flex flex-wrap gap-2">
             {durationOptions.map((m) => {
@@ -125,67 +140,24 @@ export function OpenBookingAvailabilitySection({
         </div>
       ) : null}
 
-      <div className="flex items-center justify-between mb-4">
-        <Button
-          variant="outline"
-          size="icon"
-          type="button"
-          onClick={() => onWeekOffsetChange(Math.max(0, weekOffset - 1))}
-          disabled={weekOffset === 0}
-          aria-label="Previous week"
-        >
-          <ChevronLeft className="w-4 h-4" />
-        </Button>
-        <span className="text-sm font-semibold text-muted-foreground">
-          {formatDateDisplay(weekDates[0])} – {formatDateDisplay(weekDates[6])}
-        </span>
-        <Button
-          variant="outline"
-          size="icon"
-          type="button"
-          onClick={() => onWeekOffsetChange(weekOffset + 1)}
-          aria-label="Next week"
-        >
-          <ChevronRight className="w-4 h-4" />
-        </Button>
-      </div>
+      <OpenBookingWeekToolbar
+        weekOffset={weekOffset}
+        onWeekOffsetChange={onWeekOffsetChange}
+        weekDates={weekDates}
+      />
 
-      <div className="grid grid-cols-7 gap-1 mb-6">
-        {weekDates.map((date) => {
-          const d = new Date(`${date}T12:00:00`)
-          const isSelected = date === selectedDate
-          const disabled = isDateOutOfRange(date)
-          return (
-            <button
-              key={date}
-              type="button"
-              onClick={() => {
-                if (disabled) return
-                onSelectedDateChange(date)
-                onSelectedWindowChange(null)
-                if (mode === 'private_hire') {
-                  onResetAvailabilityCheck?.()
-                }
-              }}
-              disabled={disabled}
-              className={cn(
-                'flex flex-col items-center py-3 px-1 rounded-lg text-xs font-semibold transition-colors border',
-                isSelected && 'bg-accent text-accent-foreground border-accent',
-                !isSelected &&
-                  !disabled &&
-                  'bg-card text-muted-foreground border-border hover:bg-secondary hover:text-foreground',
-                disabled && 'bg-muted text-muted-foreground border-border opacity-40 cursor-not-allowed',
-              )}
-              aria-pressed={isSelected}
-            >
-              <span className="text-[10px] uppercase tracking-wider">
-                {d.toLocaleDateString('en-GB', { weekday: 'short' })}
-              </span>
-              <span className="text-base mt-0.5">{d.getDate()}</span>
-            </button>
-          )
-        })}
-      </div>
+      <OpenBookingWeekDayButtonGrid
+        weekDates={weekDates}
+        isDateDisabled={isDateOutOfRange}
+        selectedDate={selectedDate}
+        onDayClick={(date) => {
+          onSelectedDateChange(date)
+          onSelectedWindowChange(null)
+          if (mode === 'private_hire') {
+            onResetAvailabilityCheck?.()
+          }
+        }}
+      />
 
       {mode === 'private_hire' ? (
         <div className="mb-4">
@@ -201,67 +173,26 @@ export function OpenBookingAvailabilitySection({
       ) : null}
 
       {availability && (mode === 'facility' || availabilityChecked) ? (
-        <>
-          <div className="flex items-center justify-between gap-3 mb-3">
-            <p className="text-sm font-semibold text-muted-foreground">
-              Available times for {formatDateDisplay(selectedDate)}
-            </p>
-            {mode === 'private_hire' && availabilityChecked && onResetAvailabilityCheck ? (
+        <OpenBookingTimeWindowGrid
+          headline={`Available times for ${formatOpenBookingDateDisplay(selectedDate)}`}
+          windows={availability.windows}
+          selectedWindow={selectedWindow}
+          onSelectedWindowChange={onSelectedWindowChange}
+          showTimeRange={showTimeRange}
+          resetSlot={
+            mode === 'private_hire' && availabilityChecked && onResetAvailabilityCheck ? (
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="text-muted-foreground shrink-0"
+                className="shrink-0 text-muted-foreground"
                 onClick={onResetAvailabilityCheck}
               >
                 Reset
               </Button>
-            ) : null}
-          </div>
-          <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-2">
-            {availability.windows.map((w) => {
-              const disabled = w.spotsRemaining <= 0
-              const isSelected =
-                selectedWindow?.startAt === w.startAt && selectedWindow?.endAt === w.endAt
-              return (
-                <button
-                  key={`${w.startAt}-${w.endAt}`}
-                  type="button"
-                  onClick={() => {
-                    if (disabled) return
-                    onSelectedWindowChange(isSelected ? null : w)
-                  }}
-                  disabled={disabled}
-                  className={cn(
-                    'py-2.5 text-xs font-semibold rounded-lg border transition-colors',
-                    disabled &&
-                      'bg-muted text-muted-foreground border-border cursor-not-allowed line-through opacity-50',
-                    !disabled &&
-                      !isSelected &&
-                      'bg-card text-foreground border-border hover:bg-secondary',
-                    !disabled && isSelected && 'bg-accent text-accent-foreground border-accent',
-                  )}
-                  aria-pressed={isSelected}
-                  aria-disabled={disabled}
-                >
-                  {showTimeRange
-                    ? formatSlotTimeRange(w.startAt, w.endAt)
-                    : formatSlotTime(w.startAt)}
-                </button>
-              )
-            })}
-          </div>
-          <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded bg-accent inline-block" aria-hidden />
-              Selected
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded bg-muted inline-block opacity-50" aria-hidden />
-              Unavailable
-            </span>
-          </div>
-        </>
+            ) : null
+          }
+        />
       ) : null}
 
       {mode === 'facility' && durationOptions.length > 0 && selectedWindow ? (
@@ -287,4 +218,57 @@ export function OpenBookingAvailabilitySection({
       ) : null}
     </section>
   )
+}
+
+export function OpenBookingAvailabilitySection(
+  props: Readonly<OpenBookingAvailabilitySectionProps>,
+) {
+  if ('variant' in props && props.variant === 'rental_per_day') {
+    return (
+      <RentalPerDayCalendarSection
+        availabilityMap={props.availabilityMap}
+        maxRentalDays={props.maxRentalDays}
+        onDateRangeChange={props.onDateRangeChange}
+        selectedFromDate={props.selectedFromDate}
+        selectedToDate={props.selectedToDate}
+        stockQuantity={props.stockQuantity}
+      />
+    )
+  }
+  if ('variant' in props && props.variant === 'rental_slots') {
+    const {
+      slotBilling,
+      availabilityMap,
+      stockQuantity,
+      slotIncrementMinutes,
+      selectedSlotStartAt,
+      selectedSlotEndAt,
+      onRentalSlotChange,
+    } = props
+    const isHourly = slotBilling === 'PER_HOUR'
+    return (
+      <RentalWeekSlotPicker
+        availabilityMap={availabilityMap}
+        generateWindows={(dateStr) =>
+          isHourly
+            ? generateMockRentalHourlyWindows(dateStr, {
+                slotIncrementMinutes,
+              })
+            : generateMockRentalHalfDayWindows(dateStr)
+        }
+        legendMode={isHourly ? 'hourly' : 'half-day'}
+        onRentalSlotChange={onRentalSlotChange}
+        selectedSlotEndAt={selectedSlotEndAt}
+        selectedSlotStartAt={selectedSlotStartAt}
+        stockQuantity={stockQuantity}
+        subtitle={
+          isHourly
+            ? 'Choose a day, then pick a start time window.'
+            : 'Choose a day, then pick morning or afternoon.'
+        }
+        title="Availability"
+      />
+    )
+  }
+  return <OpenBookingServiceAvailabilitySection {...props} />
 }

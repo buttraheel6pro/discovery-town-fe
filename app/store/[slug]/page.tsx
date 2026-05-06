@@ -9,7 +9,10 @@ import { HorizontalScrollSection } from '@/components/customer/horizontal-scroll
 import { CustomerNavbar } from '@/components/customer/navbar'
 import { PromoLinkGridSection } from '@/components/customer/promo-link-grid-section'
 import { ScrollableSectionBreadcrumbs } from '@/components/customer/scrollable-section-breadcrumbs'
+import { CafeStoreProductCard } from '@/components/customer/cafe-store-product-card'
 import { ShopProductCard } from '@/components/customer/shop-product-card'
+import { useCafe } from '@/lib/cafe-store'
+import { filterCafeProducts, mergedCafeProductsForCustomer } from '@/lib/cafe-utils'
 import { useInventory } from '@/lib/inventory-store'
 import type { ProductCategory } from '@/lib/types'
 
@@ -56,6 +59,7 @@ function fromSlug(value: string): string {
 export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) {
   const resolvedParams = use(params)
   const { products, productCategories } = useInventory()
+  const { cafeProducts, attributeGroups } = useCafe()
   const productType = fromSlug(resolvedParams.slug)
   if (productType === 'rentals') {
     redirect('/rentals')
@@ -81,11 +85,14 @@ export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) 
     return displayCategories
       .map((category) => {
         const directProducts = products
-          .filter((product) => product.isActive && product.categoryId === category.id)
+          .filter(
+            (product) =>
+              product.isActive && product.availableOnline !== false && product.categoryId === category.id,
+          )
           .map((product) => product.id)
         const childProducts = products
           .filter((product) => {
-            if (!product.isActive) {
+            if (!product.isActive || product.availableOnline === false) {
               return false
             }
             const childCategory = categoriesById.get(product.categoryId)
@@ -102,15 +109,45 @@ export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) 
   const isCafeAndFood = productType === 'cafe&food'
   const isShopComingSoon = productType === 'shop'
   const productById = useMemo(() => new Map(products.map((product) => [product.id, product])), [products])
-  const breadcrumbItems = useMemo(
-    () =>
-      sections.map((section) => ({
-        id: section.category.id,
-        label: section.category.name,
-        href: `#${section.category.slug || section.category.id}`,
-      })),
-    [sections],
+  const customerCafeProducts = useMemo(
+    () => mergedCafeProductsForCustomer(cafeProducts, products, productCategories),
+    [cafeProducts, productCategories, products],
   )
+  const cafeProductById = useMemo(
+    () => new Map(customerCafeProducts.map((product) => [product.id, product])),
+    [customerCafeProducts],
+  )
+  const cafeSections = useMemo(() => {
+    if (!isCafeAndFood) return []
+    const today = new Date().getDay()
+    const eligible = filterCafeProducts(customerCafeProducts, today)
+    const eligibleIdSet = new Set(
+      [...eligible.visible, ...eligible.soldOut].map((product) => product.id),
+    )
+    return sections
+      .map((section) => ({
+        id: section.category.id,
+        category: section.category.name,
+        slug: section.category.slug || section.category.id,
+        productIds: section.productIds.filter((productId) => eligibleIdSet.has(productId)),
+      }))
+      .filter((section) => section.productIds.length > 0)
+  }, [customerCafeProducts, isCafeAndFood, sections])
+
+  const breadcrumbItems = useMemo(() => {
+    if (isCafeAndFood) {
+      return cafeSections.map((section) => ({
+        id: section.id,
+        label: section.category,
+        href: `#${section.slug}`,
+      }))
+    }
+    return sections.map((section) => ({
+      id: section.category.id,
+      label: section.category.name,
+      href: `#${section.category.slug || section.category.id}`,
+    }))
+  }, [cafeSections, isCafeAndFood, sections])
 
   return (
     <>
@@ -133,15 +170,6 @@ export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) 
 
         <section className="bg-background py-10">
           <div className="mx-auto max-w-7xl space-y-10 px-4 sm:px-6 lg:px-8">
-            {isCafeAndFood ? (
-              <div className="rounded-xl border border-border bg-card p-10 text-center">
-                <p className="text-sm font-semibold text-foreground">Coming soon</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Cafe & Food products will be available here shortly.
-                </p>
-              </div>
-            ) : null}
-
             {isShopComingSoon ? (
               <div className="rounded-xl border border-border bg-card p-10 text-center">
                 <p className="text-sm font-semibold text-foreground">Coming soon</p>
@@ -151,7 +179,7 @@ export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) 
               </div>
             ) : null}
 
-            {!isCafeAndFood && !isShopComingSoon ? (
+            {!isShopComingSoon ? (
               <>
                 {sections.length === 0 ? (
                   <div className="rounded-xl border border-border bg-card p-10 text-center">
@@ -159,6 +187,41 @@ export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) 
                       No products available right now.
                     </p>
                   </div>
+                ) : isCafeAndFood ? (
+                  <>
+                    <section className="space-y-4">
+                      <h2 className="text-2xl font-black text-foreground">
+                        Browse {title.toLowerCase()} categories
+                      </h2>
+                      <ScrollableSectionBreadcrumbs items={breadcrumbItems} />
+                    </section>
+                    {cafeSections.map((section) => (
+                      <div key={section.id} id={section.slug} className="scroll-mt-32">
+                        <HorizontalScrollSection
+                          title={section.category}
+                          description="Cafe & Food"
+                          viewAllHref={`/cafe/${section.slug}`}
+                        >
+                          {section.productIds.map((productId) => {
+                            const product = cafeProductById.get(productId) ?? null
+                            if (!product) return null
+                            return (
+                              <div
+                                key={product.id}
+                                className="w-[280px] shrink-0 snap-start sm:w-[300px]"
+                              >
+                                <CafeStoreProductCard
+                                  product={product}
+                                  attributeGroups={attributeGroups}
+                                  className="h-full"
+                                />
+                              </div>
+                            )
+                          })}
+                        </HorizontalScrollSection>
+                      </div>
+                    ))}
+                  </>
                 ) : (
                   <>
                     <section className="space-y-4">
@@ -171,6 +234,7 @@ export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) 
                       <div
                         key={section.category.id}
                         id={section.category.slug || section.category.id}
+                        className="scroll-mt-32"
                       >
                         <HorizontalScrollSection
                           title={section.category.name}

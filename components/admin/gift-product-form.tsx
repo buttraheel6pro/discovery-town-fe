@@ -46,6 +46,8 @@ export interface GiftProductDraft {
   occasionId: string
   /** Auto-derived basket + add-on price ceiling; persisted as `giftPriceUpperLimit`. */
   giftPriceUpperLimit: string
+  /** Customer visibility only (does not remove from admin). */
+  isActive: boolean
 }
 
 interface GiftPickerOption {
@@ -698,6 +700,14 @@ export function GiftProductForm({
       />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="flex items-center justify-between rounded-lg border border-border p-3">
+          <Label htmlFor="gift-active">Is active</Label>
+          <Switch
+            id="gift-active"
+            checked={value.isActive}
+            onCheckedChange={(next) => set('isActive', next)}
+          />
+        </div>
         <div className="flex items-center justify-between rounded-lg border border-border p-3">
           <Label htmlFor="gift-perishable">Is perishable</Label>
           <Switch

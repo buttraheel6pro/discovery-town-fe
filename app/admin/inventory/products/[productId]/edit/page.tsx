@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 
+import { CafeProductEditor } from '@/components/admin/cafe-product-editor'
 import { GiftProductForm, type GiftProductDraft } from '@/components/admin/gift-product-form'
 import {
   ProductForm,
@@ -97,6 +98,7 @@ export default function AdminInventoryProductEditPage() {
     basketCapacity: '',
     occasionId: '',
     giftPriceUpperLimit: '0',
+    isActive: true,
   })
 
   const categoryById = useMemo(() => {
@@ -111,6 +113,11 @@ export default function AdminInventoryProductEditPage() {
     if (!product) return false
     const category = categoryById.get(product.categoryId) ?? null
     return (category?.productType ?? '').toLowerCase() === 'rentals'
+  }, [categoryById, product])
+  const isCafeAndFoodProduct = useMemo(() => {
+    if (!product) return false
+    const category = categoryById.get(product.categoryId) ?? null
+    return (category?.productType ?? '').toLowerCase() === 'cafe&food'
   }, [categoryById, product])
   const giftsRootCategory = useMemo(() => {
     return categories.find(
@@ -166,6 +173,7 @@ export default function AdminInventoryProductEditPage() {
       occasionId: product.giftOccasionId ?? '',
       giftPriceUpperLimit:
         product.giftPriceUpperLimit != null ? String(product.giftPriceUpperLimit) : '0',
+      isActive: product.availableOnline !== false,
     })
   }, [giftsSubCategories, isGiftProduct, product])
 
@@ -208,6 +216,7 @@ export default function AdminInventoryProductEditPage() {
         costPrice: toNumberOrUndefined(giftDraft.costPrice),
         taxable: giftDraft.taxable,
         taxRate: toNumberOrUndefined(giftDraft.taxRate) ?? 20,
+        availableOnline: giftDraft.isActive,
         giftProductIds: giftDraft.productIds,
         giftAddOnProductIds: giftDraft.addOnProductIds,
         giftVoucherCouponIds: giftDraft.couponIds,
@@ -293,6 +302,10 @@ export default function AdminInventoryProductEditPage() {
         </CardHeader>
       </Card>
     )
+  }
+
+  if (isCafeAndFoodProduct) {
+    return <CafeProductEditor mode="edit" productId={product.id} />
   }
 
   return (

@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 
+import { CafeProductEditor } from '@/components/admin/cafe-product-editor'
 import { GiftProductForm, type GiftProductDraft } from '@/components/admin/gift-product-form'
 import { ProductForm, type ProductDraft, draftToProductPatch, productToDraft } from '@/components/admin/product-form'
 import { RentalProductForm } from '@/components/admin/rental-product-form'
@@ -31,6 +32,7 @@ function AdminInventoryProductsNewPageInner() {
   const { productCategories, products, coupons, addProduct, promoteProductToAddOn } = useInventory()
   const { occasions } = useScheduling()
   const [returnTo, setReturnTo] = useState('/admin/inventory/products')
+  const isCafeAndFoodMode = searchParams.get('productType') === 'cafe&food'
   const isGiftsMode = searchParams.get('productType') === 'gifts'
   const isRentalsMode = searchParams.get('productType') === 'rentals'
   const requestedCategoryId = searchParams.get('categoryId')
@@ -131,6 +133,7 @@ function AdminInventoryProductsNewPageInner() {
     basketCapacity: '',
     occasionId: '',
     giftPriceUpperLimit: '0',
+    isActive: true,
   })
   const parsedGiftBasketCapacity = useMemo(
     () => toIntOrUndefined(giftDraft.basketCapacity),
@@ -214,7 +217,7 @@ function AdminInventoryProductsNewPageInner() {
         stockCount: 0,
         lowStockThreshold: 0,
         allowBackorders: false,
-        availableOnline: true,
+        availableOnline: giftDraft.isActive,
         availablePOS: true,
         isActive: true,
         isFeatured: false,
@@ -294,10 +297,12 @@ function AdminInventoryProductsNewPageInner() {
         priceFirstHourPremium: patch.priceFirstHourPremium,
         minHours: patch.minHours,
         rentalHourlyTierPrices: patch.rentalHourlyTierPrices,
+        rentalDailyTierPrices: patch.rentalDailyTierPrices,
         requiresDelivery: patch.requiresDelivery ?? false,
         requiresStaff: patch.requiresStaff ?? false,
         setupMinutes: patch.setupMinutes,
         maxRentalDays: patch.maxRentalDays,
+        rentalSlotIncrementMinutes: patch.rentalSlotIncrementMinutes,
         depositAmount: patch.depositAmount,
       }
       addProduct(created)
@@ -344,6 +349,10 @@ function AdminInventoryProductsNewPageInner() {
       }
     }
     router.push(returnTo)
+  }
+
+  if (isCafeAndFoodMode) {
+    return <CafeProductEditor mode="create" />
   }
 
   return (

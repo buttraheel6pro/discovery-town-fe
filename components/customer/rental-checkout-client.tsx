@@ -44,16 +44,19 @@ export function RentalCheckoutClient() {
   const deliveryFee = cart.fulfillmentMode === 'DELIVERY' ? cart.deliveryFee ?? 0 : 0
   const deposit = cart.depositTotal ?? 0
   const total = subtotal - cart.couponDiscount + deliveryFee + deposit
-  const hasPerDayRentalInCart = useMemo(() => {
+  const hasScheduledRentalInCart = useMemo(() => {
     return cart.items.some((item) => {
       const productId = typeof item.metadata?.productId === 'string' ? item.metadata.productId : null
       if (!productId) return false
       const product = products.find((entry) => entry.id === productId) ?? null
-      return product?.rentalBillingType === 'PER_DAY'
+      const billing = product?.rentalBillingType ?? ''
+      return (
+        billing === 'PER_DAY' || billing === 'PER_HOUR' || billing === 'PER_HALF_DAY'
+      )
     })
   }, [cart.items, products])
-  const missingRequiredPerDayDates =
-    hasPerDayRentalInCart && (!cart.rentalStartAt || !cart.rentalEndAt)
+  const missingRequiredRentalSchedule =
+    hasScheduledRentalInCart && (!cart.rentalStartAt || !cart.rentalEndAt)
 
   const acknowledgmentOptions = useMemo(
     () =>
@@ -70,7 +73,7 @@ export function RentalCheckoutClient() {
   }
 
   function placeOrder() {
-    if (!cardNumber || !expiry || !cvv || missingRequiredPerDayDates) {
+    if (!cardNumber || !expiry || !cvv || missingRequiredRentalSchedule) {
       return
     }
     const nowIso = new Date().toISOString()
@@ -121,9 +124,10 @@ export function RentalCheckoutClient() {
         <span>Step 4: Confirmation</span>
       </div>
 
-      {missingRequiredPerDayDates ? (
+      {missingRequiredRentalSchedule ? (
         <p className="rounded-md border border-border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
-          Rental dates are not set. Go back to the rental product page and select your from/to dates.
+          Rental schedule is not set. Go back to the product page and complete availability
+          (dates or day and time slot).
         </p>
       ) : null}
 
@@ -158,7 +162,9 @@ export function RentalCheckoutClient() {
               Pickup venue: 4821 Oak Tree Blvd, Carmel IN 46032. Pickup hours 9:00AM-7:00PM.
             </p>
           )}
-          <Button onClick={() => setStep('ack')}>Continue</Button>
+          <Button onClick={() => setStep('ack')} disabled={missingRequiredRentalSchedule}>
+            Continue
+          </Button>
         </div>
       ) : null}
 
@@ -232,7 +238,7 @@ export function RentalCheckoutClient() {
             </div>
           </div>
           <p className="text-sm text-muted-foreground">Total: {formatPrice(total)}</p>
-          <Button onClick={placeOrder} disabled={missingRequiredPerDayDates}>
+          <Button onClick={placeOrder} disabled={missingRequiredRentalSchedule}>
             Place rental order
           </Button>
         </div>

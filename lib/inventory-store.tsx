@@ -32,6 +32,7 @@ import { plainTextFromHtml } from '@/lib/utils'
 import type {
   AddOn,
   CartItem,
+  CartModifierSelection,
   CartState,
   Coupon,
   Order,
@@ -44,6 +45,21 @@ import type {
   StaffAssignmentStatus,
   StockMovement,
 } from '@/lib/types'
+
+/** Extended cart line payload for cafe and bespoke POS lines. */
+interface CustomCartLineInput {
+  type: CartItem['type']
+  name: string
+  description?: string
+  price: number
+  quantity?: number
+  imageUrl?: string
+  metadata?: Record<string, unknown>
+  subtypeLabel?: string
+  modifierTotal?: number
+  selectedModifiers?: CartModifierSelection[]
+  preparationTimeMinutes?: number
+}
 
 const SHOP_CART_STORAGE_KEY = 'dt_cart'
 const POS_CART_STORAGE_KEY = 'dt_pos_cart'
@@ -227,15 +243,7 @@ interface InventoryStore {
     product: Product
     quantity?: number
   }) => void
-  addCustomCartItem: (input: {
-    type: CartItem['type']
-    name: string
-    description?: string
-    price: number
-    quantity?: number
-    imageUrl?: string
-    metadata?: Record<string, unknown>
-  }) => void
+  addCustomCartItem: (input: CustomCartLineInput) => void
   removeFromCart: (cartItemId: string) => void
   updateCartItem: (cartItemId: string, updates: Partial<CartItem>) => void
   updateCartQuantity: (cartItemId: string, quantity: number) => void
@@ -256,6 +264,7 @@ interface InventoryStore {
     product: Product
     quantity?: number
   }) => void
+  addCustomPosCartItem: (input: CustomCartLineInput) => void
   removeFromPosCart: (cartItemId: string) => void
   updatePosCartQuantity: (cartItemId: string, quantity: number) => void
   applyPosCoupon: (code: string) => void
@@ -801,18 +810,10 @@ export function InventoryProvider({
       })
     }
 
-    function addCustomCartItem(input: {
-      type: CartItem['type']
-      name: string
-      description?: string
-      price: number
-      quantity?: number
-      imageUrl?: string
-      metadata?: Record<string, unknown>
-    }) {
+    function buildCustomLineItem(prefix: string, input: CustomCartLineInput): CartItem {
       const qty = Math.max(1, input.quantity ?? 1)
-      const item: CartItem = {
-        id: `cart-custom-${Date.now()}`,
+      return {
+        id: `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
         type: input.type,
         name: input.name,
         description: input.description,
@@ -820,8 +821,21 @@ export function InventoryProvider({
         quantity: qty,
         imageUrl: input.imageUrl,
         metadata: input.metadata,
+        subtypeLabel: input.subtypeLabel,
+        modifierTotal: input.modifierTotal,
+        selectedModifiers: input.selectedModifiers,
+        preparationTimeMinutes: input.preparationTimeMinutes,
       }
+    }
+
+    function addCustomCartItem(input: CustomCartLineInput) {
+      const item = buildCustomLineItem('cart-custom', input)
       setCart((prev) => ({ ...prev, items: [...prev.items, item] }))
+    }
+
+    function addCustomPosCartItem(input: CustomCartLineInput) {
+      const item = buildCustomLineItem('pos-cart-custom', input)
+      setPosCart((prev) => ({ ...prev, items: [...prev.items, item] }))
     }
 
     function removeFromCart(cartItemId: string) {
@@ -1002,6 +1016,7 @@ export function InventoryProvider({
       incrementRedemption,
       addToCart,
       addCustomCartItem,
+      addCustomPosCartItem,
       removeFromCart,
       updateCartItem,
       updateCartQuantity,

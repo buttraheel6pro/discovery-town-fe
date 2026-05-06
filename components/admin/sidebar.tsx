@@ -12,6 +12,7 @@ import {
   CalendarDays,
   ClipboardList,
   CreditCard,
+  ChefHat,
   FileText,
   LayoutDashboard,
   Monitor,
@@ -19,6 +20,7 @@ import {
   Share2,
   ShoppingCart,
   Tag,
+  Tags,
   Timer,
   TrendingUp,
   UserCircle,
@@ -106,6 +108,16 @@ const sidebarGroups = [
         href: "/admin/scheduling/packages",
         icon: Package,
       },
+      {
+        label: "Cafe Modifier Groups",
+        href: "/admin/cafe/modifiers",
+        icon: Tag,
+      },
+      {
+        label: "Cafe Rotation",
+        href: "/admin/cafe/rotation",
+        icon: CalendarDays,
+      },
       // {
       //   label: "Event Inquiries",
       //   href: "/admin/scheduling/inquiries",
@@ -128,37 +140,42 @@ const sidebarGroups = [
       // },
     ],
   },
-  // {
-  //   label: "Inventory",
-  //   icon: Package,
-  //   items: [
-  //     {
-  //       label: "Overview",
-  //       href: "/admin/inventory",
-  //       icon: Package,
-  //     },
-  //     // {
-  //     //   label: "Products",
-  //     //   href: "/admin/inventory/products",
-  //     //   icon: Package,
-  //     // },
-  //     {
-  //       label: "Orders",
-  //       href: "/admin/orders",
-  //       icon: ShoppingCart,
-  //     },
-  //     {
-  //       label: "Staff Assignments",
-  //       href: "/admin/rentals/staff-assignments",
-  //       icon: Users2,
-  //     },
-  //     {
-  //       label: "POS",
-  //       href: "/admin/inventory/pos",
-  //       icon: Monitor,
-  //     },
-  //   ],
-  // },
+  {
+    label: "Inventory",
+    icon: Package,
+    items: [
+      {
+        label: "Overview",
+        href: "/admin/inventory",
+        icon: Package,
+      },
+      // {
+      //   label: "Products",
+      //   href: "/admin/inventory/products",
+      //   icon: Package,
+      // },
+      {
+        label: "Orders",
+        href: "/admin/orders",
+        icon: ShoppingCart,
+      },
+      {
+        label: "Staff Assignments",
+        href: "/admin/rentals/staff-assignments",
+        icon: Users2,
+      },
+      {
+        label: "POS",
+        href: "/admin/inventory/pos",
+        icon: Monitor,
+      },
+      {
+        label: "Kitchen",
+        href: "/admin/kitchen",
+        icon: ChefHat,
+      },
+    ],
+  },
   // {
   //   label: "Analytics",
   //   icon: BarChart2,
@@ -219,6 +236,8 @@ const SECTION_ROOTS = [
   "/admin/calendar",
   "/admin/clients",
   "/admin/reports",
+  "/admin/cafe",
+  "/admin/kitchen",
   "/admin",
 ];
 

@@ -222,7 +222,7 @@ export interface CreateLocationPayload {
   phone?: string;
   email?: string;
   imageUrl?: string;
-  isActive: boolean;
+  isActive?: boolean;
   settings: Record<string, unknown>;
 }
 
@@ -1135,11 +1135,15 @@ export interface Product {
   minHours?: number;
   /** Optional fixed prices for specific hour durations (e.g. 2h => 250, 3h => 375). */
   rentalHourlyTierPrices?: Array<{ hours: number; price: number }>;
+  /** Optional fixed prices for specific day durations (e.g. 2d => 2000, 3d => 2800). */
+  rentalDailyTierPrices?: Array<{ days: number; price: number }>;
   rentalBillingType?: RentalBillingType;
   requiresDelivery?: boolean;
   requiresStaff?: boolean;
   setupMinutes?: number;
   maxRentalDays?: number;
+  /** Per-hour rentals: slot size in minutes (commonly 30 or 60). */
+  rentalSlotIncrementMinutes?: number;
   fulfillment?: RentalProductFulfillment;
   depositAmount?: number;
   requiresAcknowledgment?: RentalAcknowledgmentType[];
@@ -1581,6 +1585,13 @@ export interface CalendarEvent {
   };
 }
 
+/** Selected cafe modifier lines stored on cart items (optional extension). */
+export interface CartModifierSelection {
+  groupName: string;
+  modifierName: string;
+  priceDelta: number;
+}
+
 export interface CartItem {
   id: string;
   type: "product" | "booking" | "membership" | "class-pack";
@@ -1590,6 +1601,11 @@ export interface CartItem {
   quantity: number;
   imageUrl?: string;
   metadata?: Record<string, unknown>;
+  /** Cafe & Food — product subtype label for cart lines. */
+  subtypeLabel?: string;
+  modifierTotal?: number;
+  selectedModifiers?: CartModifierSelection[];
+  preparationTimeMinutes?: number;
 }
 
 export interface Cart {
@@ -2478,4 +2494,115 @@ export interface EventPackage {
   setupTime?: number;
   staffCount?: number;
   partyRooms?: number;
+}
+
+// ============================================
+// CAFE & FOOD MODULE
+// ============================================
+
+export type CafeCategory =
+  | "Coffee"
+  | "Cold Drinks"
+  | "Specialty"
+  | "Pizza"
+  | "Sandwiches"
+  | "Kids Corner"
+  | "Salads & Snacks"
+  | "Sweets"
+  | "Pastries";
+
+export interface CafeModifier {
+  id: string;
+  name: string;
+  priceDelta: number;
+  isDefault: boolean;
+}
+
+export interface ModifierGroup {
+  id: string;
+  name: string;
+  isRequired: boolean;
+  maxSelect: number;
+  modifiers: CafeModifier[];
+}
+
+export interface AttributeOption {
+  id: string;
+  label: string;
+  emoji: string;
+  color: string;
+}
+
+export interface AttributeGroup {
+  id: string;
+  name: string;
+  selectionType: "single" | "multiple";
+  maxSelect?: number;
+  isRequired: boolean;
+  options: AttributeOption[];
+  predefinedTemplate?: string;
+}
+
+export interface RotationGroup {
+  id: string;
+  name: string;
+  period: "daily" | "monthly" | "seasonal";
+  seasonalRange?: { start: string; end: string };
+  pool: string[];
+  activeProductId: string | null;
+  nextProductId?: string;
+  nextActivationAt?: string;
+  manualOverride: { productId: string; setAt: string } | null;
+}
+
+export interface CafeProduct {
+  id: string;
+  name: string;
+  sku?: string;
+  subtype?: string;
+  category: CafeCategory;
+  basePrice: number;
+  stockCount?: number;
+  description?: string;
+  notes?: string;
+  printNotesOnTicket: boolean;
+  preparationTimeMinutes?: number;
+  isActive: boolean;
+  isAvailable: boolean;
+  availableDaysOfWeek: number[];
+  rotatable: boolean;
+  rotationGroupId?: string;
+  isActiveInRotation?: boolean;
+  modifierGroupIds: string[];
+  attributeGroups: Record<string, string[]>;
+  imageUrl?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Pickup slot row for order-ahead UI (mock-backed until API exists). */
+export interface CafePickupSlot {
+  timeIso: string;
+  available: boolean;
+  label: string;
+}
+
+export type CafeKitchenColumn = "NEW" | "PREPARING" | "READY";
+
+export interface CafeKitchenOrderItem {
+  name: string;
+  modifierSummary: string;
+  preparationTimeMinutes?: number;
+}
+
+export interface CafeKitchenOrder {
+  id: string;
+  orderNumber: string;
+  channel: "POS" | "TAKEOUT" | "DELIVERY";
+  receivedAt: string;
+  items: CafeKitchenOrderItem[];
+  status: CafeKitchenColumn;
+  scheduledFor?: string | null;
+  deliveryAddress?: string | null;
+  cateringEventName?: string | null;
 }

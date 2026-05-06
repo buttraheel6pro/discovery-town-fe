@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { useToast } from '@/hooks/use-toast'
+import { formatModifierSummary, getMaxPrepTime } from '@/lib/cafe-utils'
 import { calcCartTotals, formatPrice } from '@/lib/utils'
 import { useInventory } from '@/lib/inventory-store'
 import { useClients } from '@/lib/client-store'
@@ -91,6 +92,8 @@ export function POSCartPanel({ onOrderComplete }: Readonly<POSCartPanelProps>) {
   const { subtotal, tax, total } = useMemo(() => {
     return calcCartTotals(posCart.items, posCart.couponDiscount, 20)
   }, [posCart.couponDiscount, posCart.items])
+
+  const estPrep = useMemo(() => getMaxPrepTime(posCart.items), [posCart.items])
 
   const discount = posCart.couponDiscount
 
@@ -274,6 +277,14 @@ export function POSCartPanel({ onOrderComplete }: Readonly<POSCartPanelProps>) {
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold text-foreground">{item.name}</p>
+                {item.subtypeLabel?.trim() ? (
+                  <p className="truncate text-xs text-muted-foreground">{item.subtypeLabel}</p>
+                ) : null}
+                {item.selectedModifiers?.length ? (
+                  <p className="truncate text-xs text-muted-foreground">
+                    {formatModifierSummary(item.selectedModifiers)}
+                  </p>
+                ) : null}
                 <p className="text-xs text-muted-foreground">{formatPrice(item.price)}</p>
                 <div className="mt-2 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
@@ -371,6 +382,9 @@ export function POSCartPanel({ onOrderComplete }: Readonly<POSCartPanelProps>) {
             <span>Total</span>
             <span>{formatPrice(total)}</span>
           </div>
+          {estPrep > 0 ? (
+            <p className="text-xs text-muted-foreground">Est. prep: ~{estPrep} min</p>
+          ) : null}
         </div>
 
         <div className="grid grid-cols-3 gap-2">

@@ -72,7 +72,8 @@ export function RentalCartSidebar({
 
       {!cart.rentalStartAt || !cart.rentalEndAt ? (
         <p className="text-xs text-muted-foreground">
-          Select rental dates on the product page before checkout.
+          Complete rental availability on the product page (dates, or day plus time slot) before
+          checkout.
         </p>
       ) : null}
 

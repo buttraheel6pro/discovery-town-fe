@@ -14,7 +14,7 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/h
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { useToast } from '@/hooks/use-toast'
-import { cn, formatPrice, getStockStatus } from '@/lib/utils'
+import { cn, formatPrice, formatSlotDate, formatSlotTimeRange, getStockStatus } from '@/lib/utils'
 import { useInventory } from '@/lib/inventory-store'
 import { isRentalProduct } from '@/lib/rental-product'
 import type { Product } from '@/lib/types'
@@ -30,6 +30,8 @@ export interface ShopProductDetailClientProps {
   readonly linkedCoupons?: Array<{ id: string; code: string; name: string; description?: string }>
   readonly rentalFromDate?: string
   readonly rentalToDate?: string
+  readonly rentalSlotStartAt?: string
+  readonly rentalSlotEndAt?: string
 }
 
 export function ShopProductDetailClient({
@@ -43,6 +45,8 @@ export function ShopProductDetailClient({
   linkedCoupons = [],
   rentalFromDate = '',
   rentalToDate = '',
+  rentalSlotStartAt = '',
+  rentalSlotEndAt = '',
 }: Readonly<ShopProductDetailClientProps>) {
   const router = useRouter()
   const { toast } = useToast()
@@ -60,6 +64,93 @@ export function ShopProductDetailClient({
 
   const perDayRangeComplete =
     rentalFromDate.trim().length > 0 && rentalToDate.trim().length > 0
+  const slotScheduleComplete =
+    rentalSlotStartAt.trim().length > 0 && rentalSlotEndAt.trim().length > 0
+  const defaultUnitPrice = product ? (product.memberPrice ?? product.price) : 0
+  const rentalBaseUnitPrice = product
+    ? product.rentalBillingType === 'PER_DAY'
+      ? (product.rentalPricePerDay ?? product.price)
+      : product.rentalBillingType === 'PER_HOUR'
+        ? (product.pricePerHour ?? product.price)
+        : product.rentalBillingType === 'PER_HALF_DAY'
+          ? (product.rentalPricePerHalfDay ?? product.price)
+          : product.price
+    : 0
+  const hourlyDurationHours = useMemo(() => {
+    if (
+      product?.rentalBillingType !== 'PER_HOUR' ||
+      rentalSlotStartAt.trim().length === 0 ||
+      rentalSlotEndAt.trim().length === 0
+    ) {
+      return null
+    }
+    const startMs = new Date(rentalSlotStartAt.trim()).getTime()
+    const endMs = new Date(rentalSlotEndAt.trim()).getTime()
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
+      return null
+    }
+    return (endMs - startMs) / 3_600_000
+  }, [product?.rentalBillingType, rentalSlotEndAt, rentalSlotStartAt])
+  const standardHourlyTotal = useMemo(() => {
+    if (product?.rentalBillingType !== 'PER_HOUR' || hourlyDurationHours == null) return null
+    const hourlyRate = product.pricePerHour ?? rentalBaseUnitPrice
+    return Math.round(hourlyRate * hourlyDurationHours * 100) / 100
+  }, [hourlyDurationHours, product?.pricePerHour, product?.rentalBillingType, rentalBaseUnitPrice])
+  const tierHourlyTotal = useMemo(() => {
+    if (product?.rentalBillingType !== 'PER_HOUR' || hourlyDurationHours == null) return null
+    if (!Number.isInteger(hourlyDurationHours)) return null
+    const tier = (product.rentalHourlyTierPrices ?? []).find((row) => row.hours === hourlyDurationHours)
+    return tier ? Math.round(tier.price * 100) / 100 : null
+  }, [hourlyDurationHours, product?.rentalBillingType, product?.rentalHourlyTierPrices])
+  const perDaySelectedDays = useMemo(() => {
+    if (product?.rentalBillingType !== 'PER_DAY') return null
+    const fromYmd = rentalFromDate.trim()
+    const toYmd = rentalToDate.trim()
+    if (!fromYmd || !toYmd) return null
+    const fromCheck = new Date(`${fromYmd}T12:00:00`)
+    const toCheck = new Date(`${toYmd}T12:00:00`)
+    if (!Number.isFinite(fromCheck.getTime()) || !Number.isFinite(toCheck.getTime())) return null
+    if (fromYmd > toYmd) return null
+    return getInclusiveRentalDays(fromYmd, toYmd)
+  }, [product?.rentalBillingType, rentalFromDate, rentalToDate])
+  const standardDailyTotal = useMemo(() => {
+    if (product?.rentalBillingType !== 'PER_DAY' || perDaySelectedDays == null) return null
+    const perDayRate = product.rentalPricePerDay ?? rentalBaseUnitPrice
+    return Math.round(perDayRate * perDaySelectedDays * 100) / 100
+  }, [perDaySelectedDays, product?.rentalBillingType, product?.rentalPricePerDay, rentalBaseUnitPrice])
+  const tierDailyTotal = useMemo(() => {
+    if (product?.rentalBillingType !== 'PER_DAY' || perDaySelectedDays == null) return null
+    const tier = (product.rentalDailyTierPrices ?? []).find((row) => row.days === perDaySelectedDays)
+    return tier ? Math.round(tier.price * 100) / 100 : null
+  }, [perDaySelectedDays, product?.rentalBillingType, product?.rentalDailyTierPrices])
+  const compareAt = useMemo(() => {
+    if (!product) return null
+    if (product.rentalBillingType === 'PER_HOUR' && tierHourlyTotal != null) {
+      return standardHourlyTotal
+    }
+    if (
+      product.rentalBillingType === 'PER_HOUR' &&
+      hourlyDurationHours != null &&
+      product.compareAtPrice != null
+    ) {
+      return Math.round(product.compareAtPrice * hourlyDurationHours * 100) / 100
+    }
+    if (product.rentalBillingType === 'PER_DAY' && tierDailyTotal != null) {
+      return standardDailyTotal
+    }
+    if (product.rentalBillingType === 'PER_DAY' && perDaySelectedDays != null && product.compareAtPrice != null) {
+      return Math.round(product.compareAtPrice * perDaySelectedDays * 100) / 100
+    }
+    return product.compareAtPrice ?? null
+  }, [
+    hourlyDurationHours,
+    perDaySelectedDays,
+    product,
+    standardDailyTotal,
+    standardHourlyTotal,
+    tierDailyTotal,
+    tierHourlyTotal,
+  ])
 
   if (!product) {
     return (
@@ -77,13 +168,40 @@ export function ShopProductDetailClient({
 
   const shopProduct = product
   const isRental = isRentalProduct(shopProduct)
-  const requiresPerDayDateRange = isRental && shopProduct.rentalBillingType === 'PER_DAY'
+  const rentalBilling = shopProduct.rentalBillingType ?? ''
+  const requiresRentalCalendar =
+    isRental &&
+    (rentalBilling === 'PER_DAY' ||
+      rentalBilling === 'PER_HOUR' ||
+      rentalBilling === 'PER_HALF_DAY')
 
   const status = getStockStatus(shopProduct)
-  const unitPrice = shopProduct.memberPrice ?? shopProduct.price
-  const compareAt = shopProduct.compareAtPrice ?? null
-  const savings = compareAt != null && compareAt > unitPrice ? compareAt - unitPrice : null
-  const totalPrice = unitPrice * qty
+  const dailyEffectiveTotal = tierDailyTotal ?? standardDailyTotal
+  const hourlyEffectiveTotal = tierHourlyTotal ?? standardHourlyTotal
+  const rentalBaseTimesPeriod =
+    shopProduct.rentalBillingType === 'PER_DAY' &&
+    perDaySelectedDays != null &&
+    tierDailyTotal == null
+      ? `${shopProduct.rentalPricePerDay ?? defaultUnitPrice}*${perDaySelectedDays}`
+      : shopProduct.rentalBillingType === 'PER_HOUR' &&
+          hourlyDurationHours != null &&
+          tierHourlyTotal == null
+        ? `${shopProduct.pricePerHour ?? defaultUnitPrice}*${hourlyDurationHours}`
+        : null
+  const selectedRentalUnitPrice =
+    shopProduct.rentalBillingType === 'PER_HOUR' && hourlyEffectiveTotal != null
+      ? hourlyEffectiveTotal
+      : shopProduct.rentalBillingType === 'PER_DAY' && dailyEffectiveTotal != null
+        ? dailyEffectiveTotal
+        : rentalBaseUnitPrice
+  const totalPrice = selectedRentalUnitPrice * qty
+  const heroUnitPrice =
+    isRental && (rentalBilling === 'PER_DAY' || rentalBilling === 'PER_HOUR' || rentalBilling === 'PER_HALF_DAY')
+      ? rentalBaseUnitPrice
+      : defaultUnitPrice
+  const heroCompareAt = shopProduct.compareAtPrice ?? null
+  const heroSavings =
+    heroCompareAt != null && heroCompareAt > heroUnitPrice ? heroCompareAt - heroUnitPrice : null
 
   const maxQty =
     shopProduct.allowBackorders || shopProduct.stockCount <= 0
@@ -100,22 +218,22 @@ export function ShopProductDetailClient({
     return { fromIso: fromDateTime.toISOString(), toIso: toDateTime.toISOString() }
   }
 
-  function getInclusiveRentalDays(fromIso: string, toIso: string): number {
-    const from = new Date(fromIso)
-    const to = new Date(toIso)
-    const fromDay = Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate())
-    const toDay = Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), to.getUTCDate())
+  function getInclusiveRentalDays(fromYmd: string, toYmd: string): number {
+    const from = new Date(`${fromYmd}T12:00:00`)
+    const to = new Date(`${toYmd}T12:00:00`)
+    const fromDay = Date.UTC(from.getFullYear(), from.getMonth(), from.getDate())
+    const toDay = Date.UTC(to.getFullYear(), to.getMonth(), to.getDate())
     return Math.floor((toDay - fromDay) / 86400000) + 1
   }
 
   function validateAndPersistPerDayDates(): boolean {
-    if (!requiresPerDayDateRange) return true
+    if (shopProduct.rentalBillingType !== 'PER_DAY') return true
 
     const isoRange = toIsoRange(rentalFromDate, rentalToDate)
     if (!isoRange) {
       toast({
         title: 'Select rental period first',
-        description: 'Please select From and To dates from the calendar below before adding to cart.',
+        description: 'Please select From and To dates in the availability section below before adding to cart.',
         variant: 'destructive',
       })
       return false
@@ -131,7 +249,7 @@ export function ShopProductDetailClient({
       return false
     }
 
-    const selectedDays = getInclusiveRentalDays(fromIso, toIso)
+    const selectedDays = getInclusiveRentalDays(rentalFromDate.trim(), rentalToDate.trim())
     const maxRentalDays = shopProduct.maxRentalDays ?? null
     if (maxRentalDays != null && selectedDays > maxRentalDays) {
       toast({
@@ -143,6 +261,31 @@ export function ShopProductDetailClient({
     }
 
     setRentalDates(fromIso, toIso)
+    return true
+  }
+
+  function validateAndPersistRentalSchedule(): boolean {
+    if (shopProduct.rentalBillingType === 'PER_DAY') {
+      return validateAndPersistPerDayDates()
+    }
+    if (
+      shopProduct.rentalBillingType === 'PER_HOUR' ||
+      shopProduct.rentalBillingType === 'PER_HALF_DAY'
+    ) {
+      const start = rentalSlotStartAt.trim()
+      const end = rentalSlotEndAt.trim()
+      if (!start || !end) {
+        toast({
+          title: 'Select rental slot',
+          description:
+            'Choose a day in the week strip, then pick a time or half-day block before adding to cart.',
+          variant: 'destructive',
+        })
+        return false
+      }
+      setRentalDates(start, end)
+      return true
+    }
     return true
   }
 
@@ -175,7 +318,7 @@ export function ShopProductDetailClient({
         })
         .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
       const totalPrice =
-        unitPrice * selectedGiftQuantity +
+        heroUnitPrice * selectedGiftQuantity +
         selectedAddOns.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0)
 
       addCustomCartItem({
@@ -191,7 +334,7 @@ export function ShopProductDetailClient({
             productId: shopProduct.id,
             name: shopProduct.name,
             imageUrl: shopProduct.imageUrl ?? '/placeholder.jpg',
-            unitPrice,
+            unitPrice: heroUnitPrice,
             quantity: selectedGiftQuantity,
           },
           addOns: selectedAddOns,
@@ -200,7 +343,50 @@ export function ShopProductDetailClient({
       return
     }
 
-    if (!validateAndPersistPerDayDates()) return
+    if (!validateAndPersistRentalSchedule()) return
+    if (shopProduct.rentalBillingType === 'PER_DAY') {
+      const isoRange = toIsoRange(rentalFromDate, rentalToDate)
+      if (!isoRange) return
+      addCustomCartItem({
+        type: 'product',
+        name: shopProduct.name,
+        description: `${shopProduct.sku ?? 'Rental'} · ${rentalFromDate.trim()} to ${rentalToDate.trim()}`,
+        price: selectedRentalUnitPrice,
+        quantity: qty,
+        imageUrl: shopProduct.imageUrl ?? '/placeholder.jpg',
+        metadata: {
+          productId: shopProduct.id,
+          rentalFromDate: rentalFromDate.trim(),
+          rentalToDate: rentalToDate.trim(),
+          rentalDays: perDaySelectedDays ?? undefined,
+          standardDailyTotal: standardDailyTotal ?? undefined,
+          tierDailyTotal: tierDailyTotal ?? undefined,
+        },
+      })
+      return
+    }
+    if (shopProduct.rentalBillingType === 'PER_HOUR') {
+      const start = rentalSlotStartAt.trim()
+      const end = rentalSlotEndAt.trim()
+      if (!start || !end) return
+      addCustomCartItem({
+        type: 'product',
+        name: shopProduct.name,
+        description: `${shopProduct.sku ?? 'Rental'} · ${formatSlotTimeRange(start, end)}`,
+        price: selectedRentalUnitPrice,
+        quantity: qty,
+        imageUrl: shopProduct.imageUrl ?? '/placeholder.jpg',
+        metadata: {
+          productId: shopProduct.id,
+          rentalSlotStartAt: start,
+          rentalSlotEndAt: end,
+          rentalHours: hourlyDurationHours ?? undefined,
+          standardHourlyTotal: standardHourlyTotal ?? undefined,
+          tierHourlyTotal: tierHourlyTotal ?? undefined,
+        },
+      })
+      return
+    }
     addToCart({ product: shopProduct, quantity: qty })
   }
 
@@ -224,8 +410,14 @@ export function ShopProductDetailClient({
     (sum, row) => sum + row.unitPrice * row.quantity,
     0,
   )
-  const selectedGiftTotal = unitPrice * selectedGiftQuantity
+  const selectedGiftTotal = heroUnitPrice * selectedGiftQuantity
   const grandTotal = isGiftProduct ? selectedGiftTotal + selectedRelatedTotal : totalPrice
+  const hasRentalSelection =
+    requiresRentalCalendar &&
+    ((rentalBilling === 'PER_DAY' && perDayRangeComplete) ||
+      ((rentalBilling === 'PER_HOUR' || rentalBilling === 'PER_HALF_DAY') && slotScheduleComplete))
+  const showInlineRentalControls = !isRental
+  const alignImageWithDetails = isGiftProduct || isRental
 
   function updateRelatedQuantity(productId: string, delta: number) {
     setSelectedRelatedQuantities((prev) => {
@@ -251,12 +443,12 @@ export function ShopProductDetailClient({
       <div
         className={cn(
           'lg:col-span-5',
-          isGiftProduct && 'flex min-h-[18rem] flex-col self-stretch lg:min-h-0',
+          alignImageWithDetails && 'flex min-h-[18rem] flex-col self-stretch lg:min-h-0',
         )}
       >
         <div
           className={cn(
-            isGiftProduct
+            alignImageWithDetails
               ? 'flex min-h-0 w-full flex-1 flex-col'
               : 'mx-auto max-w-2xl',
           )}
@@ -264,7 +456,7 @@ export function ShopProductDetailClient({
           <ShopImageGallery
             images={images}
             alt={shopProduct.name}
-            fillMainHeight={isGiftProduct}
+            fillMainHeight={alignImageWithDetails}
           />
         </div>
       </div>
@@ -302,20 +494,20 @@ export function ShopProductDetailClient({
                 className="text-3xl font-black text-foreground"
                 style={{ fontFamily: 'var(--font-barlow)' }}
               >
-                {formatPrice(unitPrice)}
+                {formatPrice(heroUnitPrice)}
               </p>
-              {compareAt != null ? (
+              {heroCompareAt != null ? (
                 <p className="text-sm text-muted-foreground line-through">
-                  {formatPrice(compareAt)}
+                  {formatPrice(heroCompareAt)}
                 </p>
               ) : null}
-              {savings != null ? (
+              {heroSavings != null ? (
                 <span className="inline-flex rounded-full bg-accent/15 px-3 py-1 text-xs font-semibold text-accent">
-                  Save {formatPrice(savings)}
+                  Save {formatPrice(heroSavings)}
                 </span>
               ) : null}
             </div>
-            {shopProduct.memberPrice != null ? (
+            {shopProduct.memberPrice != null && !isRental ? (
               <p className="text-sm font-semibold text-accent">
                 Member price: {formatPrice(shopProduct.memberPrice)}
               </p>
@@ -335,6 +527,69 @@ export function ShopProductDetailClient({
           ) : (
             <p className="text-sm text-muted-foreground">—</p>
           )}
+          {isRental &&
+          ((shopProduct.rentalBillingType === 'PER_HOUR' &&
+            (shopProduct.rentalHourlyTierPrices?.length ?? 0) > 0) ||
+            (shopProduct.rentalBillingType === 'PER_DAY' &&
+              (shopProduct.rentalDailyTierPrices?.length ?? 0) > 0)) ? (
+            <div className="rounded-lg border border-accent/30 bg-accent/10 px-3 py-3 text-xs">
+              <p className="text-sm font-bold text-foreground">Tier pricing</p>
+              {shopProduct.rentalBillingType === 'PER_HOUR' &&
+              shopProduct.rentalHourlyTierPrices?.length ? (
+                <div className="mt-2 space-y-1.5">
+                  <p className="font-semibold text-foreground">Hourly</p>
+                  {shopProduct.rentalHourlyTierPrices
+                    .slice()
+                    .sort((a, b) => a.hours - b.hours)
+                    .map((tier) => {
+                      const baseHourlyRate = shopProduct.pricePerHour ?? heroUnitPrice
+                      const regular = baseHourlyRate * tier.hours
+                      const savingsAmount = Math.max(0, regular - tier.price)
+                      return (
+                        <div
+                          key={`hourly-tier-${tier.hours}`}
+                          className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-accent/20 bg-background/80 px-2.5 py-1.5"
+                        >
+                          <span className="font-medium text-foreground">
+                            {tier.hours}h: {formatPrice(tier.price)}
+                          </span>
+                          <span className="font-semibold text-accent">
+                            You save {formatPrice(savingsAmount)}
+                          </span>
+                        </div>
+                      )
+                    })}
+                </div>
+              ) : null}
+              {shopProduct.rentalBillingType === 'PER_DAY' &&
+              shopProduct.rentalDailyTierPrices?.length ? (
+                <div className="mt-2 space-y-1.5">
+                  <p className="font-semibold text-foreground">Daily</p>
+                  {shopProduct.rentalDailyTierPrices
+                    .slice()
+                    .sort((a, b) => a.days - b.days)
+                    .map((tier) => {
+                      const baseDailyRate = shopProduct.rentalPricePerDay ?? heroUnitPrice
+                      const regular = baseDailyRate * tier.days
+                      const savingsAmount = Math.max(0, regular - tier.price)
+                      return (
+                        <div
+                          key={`daily-tier-${tier.days}`}
+                          className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-accent/20 bg-background/80 px-2.5 py-1.5"
+                        >
+                          <span className="font-medium text-foreground">
+                            {tier.days}d: {formatPrice(tier.price)}
+                          </span>
+                          <span className="font-semibold text-accent">
+                            You save {formatPrice(savingsAmount)}
+                          </span>
+                        </div>
+                      )
+                    })}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           {linkedProducts.length > 0 || linkedAddOnProducts.length > 0 || linkedCoupons.length > 0 ? (
             <div className="space-y-4 rounded-xl border border-border bg-card p-4">
@@ -423,73 +678,97 @@ export function ShopProductDetailClient({
             <>
               {isGiftProduct ? null : (
                 <>
-                  {requiresPerDayDateRange ? (
-                    perDayRangeComplete ? (
+                  {requiresRentalCalendar ? (
+                    rentalBilling === 'PER_DAY' ? (
+                      perDayRangeComplete ? (
+                        <div className="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs">
+                          <p className="font-semibold text-foreground">Rental period</p>
+                          <p className="mt-1 text-muted-foreground">
+                            <span className="font-medium text-foreground">From:</span>{' '}
+                            {rentalFromDate.trim()}
+                          </p>
+                          <p className="text-muted-foreground">
+                            <span className="font-medium text-foreground">To:</span>{' '}
+                            {rentalToDate.trim()}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                          <p className="font-medium text-foreground">
+                            Please select your rental period in the availability section below.
+                          </p>
+                          <p>Choose a start week day, then an end day (use week arrows if needed).</p>
+                        </div>
+                      )
+                    ) : slotScheduleComplete ? (
                       <div className="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs">
-                        <p className="font-semibold text-foreground">Rental period</p>
+                        <p className="font-semibold text-foreground">Rental slot</p>
                         <p className="mt-1 text-muted-foreground">
-                          <span className="font-medium text-foreground">From:</span>{' '}
-                          {rentalFromDate.trim()}
+                          {formatSlotDate(rentalSlotStartAt.trim())}
                         </p>
-                        <p className="text-muted-foreground">
-                          <span className="font-medium text-foreground">To:</span>{' '}
-                          {rentalToDate.trim()}
+                        <p className="mt-0.5 text-muted-foreground">
+                          {formatSlotTimeRange(rentalSlotStartAt.trim(), rentalSlotEndAt.trim())}
                         </p>
                       </div>
                     ) : (
                       <div className="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
                         <p className="font-medium text-foreground">
-                          Please select your rental period from the calendar below.
+                          Select a day, then{' '}
+                          {rentalBilling === 'PER_HOUR' ? 'a start time' : 'morning or afternoon'}{' '}
+                          in the availability section below.
                         </p>
-                        <p>Use first click for From date and second click for To date.</p>
                       </div>
                     )
                   ) : null}
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-semibold text-foreground">Quantity</p>
-                    <div className="flex items-center gap-2">
-                      <Button variant="outline" size="icon" className="h-9 w-9" onClick={dec} aria-label="Decrease quantity">
-                        <Minus className="h-4 w-4" />
-                      </Button>
-                      <Input
-                        value={qtyRaw}
-                        onChange={(e) => setQtyRaw(e.target.value)}
-                        className="h-9 w-20 text-center"
-                        inputMode="numeric"
-                        aria-label="Quantity"
-                      />
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-9 w-9"
-                        onClick={inc}
-                        aria-label="Increase quantity"
-                        disabled={maxQty != null && qty >= maxQty}
-                      >
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
+                  {showInlineRentalControls ? (
+                    <>
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-semibold text-foreground">Quantity</p>
+                        <div className="flex items-center gap-2">
+                          <Button variant="outline" size="icon" className="h-9 w-9" onClick={dec} aria-label="Decrease quantity">
+                            <Minus className="h-4 w-4" />
+                          </Button>
+                          <Input
+                            value={qtyRaw}
+                            onChange={(e) => setQtyRaw(e.target.value)}
+                            className="h-9 w-20 text-center"
+                            inputMode="numeric"
+                            aria-label="Quantity"
+                          />
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-9 w-9"
+                            onClick={inc}
+                            aria-label="Increase quantity"
+                            disabled={maxQty != null && qty >= maxQty}
+                          >
+                            <Plus className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
 
-                  <div
-                    className={cn(
-                      'grid grid-cols-1 gap-3',
-                      isRental ? '' : 'sm:grid-cols-2',
-                    )}
-                  >
-                    <Button
-                      className="bg-accent text-accent-foreground hover:bg-accent/90 font-semibold"
-                      onClick={add}
-                    >
-                      <ShoppingCart className="mr-2 h-4 w-4" />
-                      Add to cart
-                    </Button>
-                    {isRental ? null : (
-                      <Button variant="outline" className="font-semibold" onClick={buyNow}>
-                        Buy now
-                      </Button>
-                    )}
-                  </div>
+                      <div
+                        className={cn(
+                          'grid grid-cols-1 gap-3',
+                          isRental ? '' : 'sm:grid-cols-2',
+                        )}
+                      >
+                        <Button
+                          className="bg-accent text-accent-foreground hover:bg-accent/90 font-semibold"
+                          onClick={add}
+                        >
+                          <ShoppingCart className="mr-2 h-4 w-4" />
+                          Add to cart
+                        </Button>
+                        {isRental ? null : (
+                          <Button variant="outline" className="font-semibold" onClick={buyNow}>
+                            Buy now
+                          </Button>
+                        )}
+                      </div>
+                    </>
+                  ) : null}
                 </>
               )}
             </>
@@ -575,7 +854,7 @@ export function ShopProductDetailClient({
                   />
                 </div>
                 <div className="shrink-0 tabular-nums">
-                  <p className="text-sm font-semibold text-foreground">{formatPrice(unitPrice)}</p>
+                  <p className="text-sm font-semibold text-foreground">{formatPrice(heroUnitPrice)}</p>
                   <p className="text-xs text-muted-foreground">each</p>
                 </div>
                 <div className="ml-auto flex shrink-0 flex-col items-end gap-1.5">
@@ -683,11 +962,88 @@ export function ShopProductDetailClient({
       </div>
   )
 
+  const rentalCheckoutCard = hasRentalSelection ? (
+    <div className="w-full rounded-xl border border-border bg-card p-5">
+      <h3
+        className="text-lg font-black text-foreground"
+        style={{ fontFamily: 'var(--font-barlow)' }}
+      >
+        Cart & checkout
+      </h3>
+      <div className="translate-y-0 opacity-100 transition-all duration-300 ease-out">
+        <div className="mt-5 max-h-[420px] space-y-3 overflow-x-hidden overflow-y-auto pr-1">
+          <div className={giftLineRowClass} aria-label={`Rental: ${shopProduct.name}`}>
+            <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-border">
+              <Image
+                src={shopProduct.imageUrl ?? '/placeholder.jpg'}
+                alt=""
+                fill
+                className="object-cover"
+                sizes="56px"
+              />
+            </div>
+            <div className="shrink-0 tabular-nums">
+              <p className="text-sm font-semibold text-foreground">
+                {formatPrice(selectedRentalUnitPrice)}
+              </p>
+              {rentalBaseTimesPeriod ? <p className="text-xs text-muted-foreground">{rentalBaseTimesPeriod}</p> : null}
+            </div>
+            <div className="ml-auto flex shrink-0 flex-col items-end gap-1.5">
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="h-9 w-9"
+                  onClick={dec}
+                  aria-label="Decrease quantity"
+                >
+                  <Minus className="h-4 w-4" />
+                </Button>
+                <span className="min-w-[2rem] text-center text-sm font-semibold tabular-nums">
+                  {qty}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="h-9 w-9"
+                  onClick={inc}
+                  aria-label="Increase quantity"
+                  disabled={maxQty != null && qty >= maxQty}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+              <p className="text-right text-sm font-bold tabular-nums text-foreground">
+                {formatPrice(totalPrice)}
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="mt-5 rounded-lg border border-border bg-muted/20 px-4 py-3">
+          <div className="flex items-center justify-between text-sm">
+            <span className="font-medium text-foreground">Total</span>
+            <span className="font-bold tabular-nums text-foreground">{formatPrice(totalPrice)}</span>
+          </div>
+          <Button
+            className="mt-4 w-full bg-accent text-accent-foreground hover:bg-accent/90 font-semibold"
+            onClick={add}
+          >
+            <ShoppingCart className="mr-2 h-4 w-4" />
+            Add to cart
+          </Button>
+        </div>
+      </div>
+    </div>
+  ) : null
+
   return (
     <div
       className={cn(
         'space-y-12',
         isGiftProduct && selectedGiftQuantity > 0 && 'xl:pr-[460px] 2xl:pr-[480px]',
+        isRental && hasRentalSelection && 'xl:pr-[460px] 2xl:pr-[480px]',
       )}
     >
       {productDetailSection}
@@ -722,6 +1078,19 @@ export function ShopProductDetailClient({
             ))}
           </div>
         </section>
+      ) : null}
+
+      {isRental && hasRentalSelection ? (
+        <div className="relative">
+          <div className="mt-6 xl:hidden">
+            {rentalCheckoutCard}
+          </div>
+          <div className="hidden xl:block">
+            <div className="fixed right-[max(1rem,calc((100vw-88rem)/2+1rem))] top-24 z-40 w-[min(420px,calc(100vw-2rem))]">
+              {rentalCheckoutCard}
+            </div>
+          </div>
+        </div>
       ) : null}
     </div>
   )

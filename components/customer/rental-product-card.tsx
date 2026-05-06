@@ -23,6 +23,9 @@ function getPricingLabel(product: Product): string {
   if (product.rentalBillingType === 'PER_HOUR' && product.pricePerHour != null) {
     return `Per Hour: ${formatPrice(product.pricePerHour)}`
   }
+  if (product.rentalBillingType === 'PER_HALF_DAY' && product.rentalPricePerHalfDay != null) {
+    return `Per Half Day: ${formatPrice(product.rentalPricePerHalfDay)}`
+  }
   const tiers: string[] = []
   if (product.rentalPricePerHalfDay != null) {
     tiers.push(`Half Day: ${formatPrice(product.rentalPricePerHalfDay)}`)
@@ -36,7 +39,10 @@ function getPricingLabel(product: Product): string {
 export function RentalProductCard({ product, className }: Readonly<RentalProductCardProps>) {
   const { addToCart } = useInventory()
   const isAvailable = product.stockCount > 0
-  const requiresPerDayDateRange = product.rentalBillingType === 'PER_DAY'
+  const requiresRentalSchedule =
+    product.rentalBillingType === 'PER_DAY' ||
+    product.rentalBillingType === 'PER_HOUR' ||
+    product.rentalBillingType === 'PER_HALF_DAY'
 
   return (
     <article className={cn('overflow-hidden rounded-xl border border-border bg-card', className)}>
@@ -69,10 +75,12 @@ export function RentalProductCard({ product, className }: Readonly<RentalProduct
         <p className={cn('text-xs font-semibold', isAvailable ? 'text-green-700' : 'text-red-700')}>
           {isAvailable ? 'Available' : 'Fully booked'}
         </p>
-        {requiresPerDayDateRange ? (
+        {requiresRentalSchedule ? (
           <Button className="w-full" asChild>
             <Link href={`/shop/${product.id}#rental-dates`}>
-              Select rental dates
+              {product.rentalBillingType === 'PER_DAY'
+                ? 'Select rental dates'
+                : 'Select dates & slot'}
             </Link>
           </Button>
         ) : (

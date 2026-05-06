@@ -279,7 +279,7 @@ const CONSUMER_ALIGNED_CATEGORY_IDS = new Set<string>([
 ]);
 
 const EVENT_TYPE_PRODUCT_TYPE_MENU_ORDER = [
-  // { productType: "cafe&food", label: "Cafe & Food" },
+  { productType: "cafe&food", label: "Cafe & Food" },
   { productType: "gifts", label: "Gifts" },
   { productType: "rentals", label: "Rentals" },
   // { productType: "shop", label: "Shop" },
@@ -958,6 +958,9 @@ function AdminSchedulingServicesPageContent() {
     : `${products.filter((p) => p.isActive).length} products`;
   const isSelectedProductMenuGifts =
     (selectedProductMenuCategory?.productType ?? "").toLowerCase() === "gifts";
+  const isSelectedProductMenuCafeAndFood =
+    (selectedProductMenuCategory?.productType ?? "").toLowerCase() ===
+    "cafe&food";
   const isSelectedProductMenuRentals =
     (selectedProductMenuCategory?.productType ?? "").toLowerCase() === "rentals";
 
@@ -1994,6 +1997,8 @@ function AdminSchedulingServicesPageContent() {
                                   size="icon"
                                   className="h-7 w-7"
                                   aria-label={`${category.name} actions`}
+                                  onClick={(event) => event.stopPropagation()}
+                                  onPointerDown={(event) => event.stopPropagation()}
                                 >
                                   <MoreHorizontal className="h-4 w-4" />
                                 </Button>
@@ -2266,7 +2271,9 @@ function AdminSchedulingServicesPageContent() {
                   >
                     <Link
                       href={
-                        isSelectedProductMenuGifts
+                        isSelectedProductMenuCafeAndFood
+                          ? `/admin/inventory/products/new?productType=cafe%26food&categoryId=${encodeURIComponent(selectedProductMenuCategoryId ?? "")}&returnTo=${encodeURIComponent(contextualReturnTo)}`
+                          : isSelectedProductMenuGifts
                           ? `/admin/inventory/products/new?productType=gifts&categoryId=${encodeURIComponent(selectedProductMenuCategoryId ?? "")}&returnTo=${encodeURIComponent(contextualReturnTo)}`
                           : isSelectedProductMenuRentals
                             ? `/admin/inventory/products/new?productType=rentals&categoryId=${encodeURIComponent(selectedProductMenuCategoryId ?? "")}&returnTo=${encodeURIComponent(contextualReturnTo)}`
@@ -2378,7 +2385,11 @@ function AdminSchedulingServicesPageContent() {
                       productTypeKey as keyof typeof PRODUCT_TYPE_TO_MENU_LABEL
                     ] ?? productTypeKey;
                   const isGiftCardProduct = productTypeKey === "gifts";
+                  const isCafeAndFoodCardProduct = productTypeKey === "cafe&food";
                   const isRentalCardProduct = productTypeKey === "rentals";
+                  const editProductHref = isCafeAndFoodCardProduct
+                    ? `/admin/inventory/products/${product.id}/edit?returnTo=${encodeURIComponent(contextualReturnTo)}`
+                    : `/admin/inventory/products/${product.id}/edit?returnTo=${encodeURIComponent(contextualReturnTo)}`;
                   const displayCategoryName = parent
                     ? `${parent.name} › ${category?.name ?? "—"}`
                     : (category?.name ?? "—");
@@ -2422,7 +2433,7 @@ function AdminSchedulingServicesPageContent() {
                               ) : null}
                               <Button asChild variant="outline" size="sm">
                                 <Link
-                                  href={`/admin/inventory/products/${product.id}/edit?returnTo=${encodeURIComponent(contextualReturnTo)}`}
+                                  href={editProductHref}
                                 >
                                   Edit
                                 </Link>
