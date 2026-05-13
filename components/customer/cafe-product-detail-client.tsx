@@ -283,6 +283,11 @@ export function CafeProductDetailClient({
                     <p className="text-sm font-semibold text-foreground">{product.subtype}</p>
                   </div>
                 ) : null}
+                {product.description?.trim() ? (
+                  <p className="pt-2 text-sm font-normal leading-relaxed text-muted-foreground">
+                    {product.description}
+                  </p>
+                ) : null}
               </div>
 
               {chips.length > 0 ? (
@@ -309,12 +314,6 @@ export function CafeProductDetailClient({
                   <Badge variant="outline">Prep ~{prep} min</Badge>
                 ) : null}
               </div>
-
-              {product.description?.trim() ? (
-                <p className="text-sm leading-relaxed text-muted-foreground">
-                  {product.description}
-                </p>
-              ) : null}
 
               {notes.length > 0 ? (
                 <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm">

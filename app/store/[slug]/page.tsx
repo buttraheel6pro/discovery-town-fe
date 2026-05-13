@@ -107,7 +107,6 @@ export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) 
 
   const title = PRODUCT_TYPE_LABELS[productType] ?? productType
   const isCafeAndFood = productType === 'cafe&food'
-  const isShopComingSoon = productType === 'shop'
   const productById = useMemo(() => new Map(products.map((product) => [product.id, product])), [products])
   const customerCafeProducts = useMemo(
     () => mergedCafeProductsForCustomer(cafeProducts, products, productCategories),
@@ -170,18 +169,7 @@ export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) 
 
         <section className="bg-background py-10">
           <div className="mx-auto max-w-7xl space-y-10 px-4 sm:px-6 lg:px-8">
-            {isShopComingSoon ? (
-              <div className="rounded-xl border border-border bg-card p-10 text-center">
-                <p className="text-sm font-semibold text-foreground">Coming soon</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Shop products will be available here shortly.
-                </p>
-              </div>
-            ) : null}
-
-            {!isShopComingSoon ? (
-              <>
-                {sections.length === 0 ? (
+            {sections.length === 0 ? (
                   <div className="rounded-xl border border-border bg-card p-10 text-center">
                     <p className="text-sm font-semibold text-foreground">
                       No products available right now.
@@ -261,15 +249,13 @@ export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) 
                   </>
                 )}
 
-                {productType === 'cafe&food' ? (
-                  <PromoLinkGridSection
-                    eyebrow="Services"
-                    title="Take Out & Delivery"
-                    description="Need cafe items for an event? Choose pickup or full delivery and catering support."
-                    items={CAFE_SERVICE_LINK_ITEMS}
-                  />
-                ) : null}
-              </>
+            {productType === 'cafe&food' ? (
+              <PromoLinkGridSection
+                eyebrow="Services"
+                title="Take Out & Delivery"
+                description="Need cafe items for an event? Choose pickup or full delivery and catering support."
+                items={CAFE_SERVICE_LINK_ITEMS}
+              />
             ) : null}
           </div>
         </section>

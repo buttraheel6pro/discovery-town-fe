@@ -112,6 +112,7 @@ export default function CartPage() {
   const [editingGiftPrimaryQty, setEditingGiftPrimaryQty] = useState(1)
   const [editingGiftAddOns, setEditingGiftAddOns] = useState<GiftBundleItem[]>([])
   const [viewingCafeItemId, setViewingCafeItemId] = useState<string | null>(null)
+  const [viewingShopItemId, setViewingShopItemId] = useState<string | null>(null)
 
   const primaryContact =
     contacts.find((c) => c.contactType === 'CUSTOMER') ?? contacts[0] ?? null
@@ -343,6 +344,21 @@ export default function CartPage() {
       )
       .filter((entry) => entry.length > 0)
   }, [viewingCafeItem?.metadata])
+  const viewingShopItem = useMemo(() => {
+    if (!viewingShopItemId) return null
+    return cart.items.find((item) => item.id === viewingShopItemId) ?? null
+  }, [cart.items, viewingShopItemId])
+  const viewingShopSelectedAttributes = useMemo(() => {
+    if (!viewingShopItem?.selectedShopAttributes) return []
+    const grouped = viewingShopItem.shopAttributeGroupsSnapshot ?? []
+    return grouped
+      .map((group) => {
+        const labels = viewingShopItem.selectedShopAttributes?.[group.id] ?? []
+        if (labels.length === 0) return ''
+        return `${group.name}: ${labels.join(', ')}`
+      })
+      .filter((entry) => entry.length > 0)
+  }, [viewingShopItem?.selectedShopAttributes, viewingShopItem?.shopAttributeGroupsSnapshot])
   const editingGiftTotal = useMemo(() => {
     if (!editingGiftMetadata) return 0
     const primaryTotal = editingGiftMetadata.primary.unitPrice * editingGiftPrimaryQty
@@ -1002,9 +1018,21 @@ export default function CartPage() {
                                   ) : null}
                                   <p className="mt-1 text-xs text-muted-foreground">Qty: {item.quantity}</p>
                                 </div>
-                                <Button variant="ghost" size="sm" onClick={() => removeFromCart(item.id)}>
-                                  Remove
-                                </Button>
+                                <div className="flex items-center gap-2">
+                                  {item.selectedShopAttributes &&
+                                  Object.keys(item.selectedShopAttributes).length > 0 ? (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => setViewingShopItemId(item.id)}
+                                    >
+                                      View details
+                                    </Button>
+                                  ) : null}
+                                  <Button variant="ghost" size="sm" onClick={() => removeFromCart(item.id)}>
+                                    Remove
+                                  </Button>
+                                </div>
                               </div>
                               <div className="mt-2 flex items-center justify-between">
                                 <p className="font-semibold text-foreground">
@@ -1350,6 +1378,50 @@ export default function CartPage() {
               ) : null}
               <div className="flex justify-end">
                 <Button type="button" onClick={() => setViewingCafeItemId(null)}>
+                  Close
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+      <Dialog open={viewingShopItemId !== null} onOpenChange={(open) => !open && setViewingShopItemId(null)}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Shop item details</DialogTitle>
+            <DialogDescription>Review selected customisation options for this line item.</DialogDescription>
+          </DialogHeader>
+          {viewingShopItem ? (
+            <div className="space-y-4">
+              <div className="flex items-start justify-between gap-3 rounded-lg border border-border bg-card p-3">
+                <div className="space-y-1">
+                  <p className="font-semibold text-foreground">{viewingShopItem.name}</p>
+                  <p className="text-xs text-muted-foreground">Qty: {viewingShopItem.quantity}</p>
+                </div>
+                <p className="font-semibold text-foreground">
+                  {formatPrice(viewingShopItem.price * viewingShopItem.quantity)}
+                </p>
+              </div>
+              {viewingShopSelectedAttributes.length > 0 ? (
+                <div className="space-y-1 rounded-lg border border-border bg-card p-3">
+                  <p className="text-sm font-semibold text-foreground">Selected options</p>
+                  <p className="text-sm text-muted-foreground">
+                    {viewingShopSelectedAttributes.join(' • ')}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-1 rounded-lg border border-border bg-card p-3">
+                  <p className="text-sm text-muted-foreground">No selected customisation options.</p>
+                </div>
+              )}
+              {viewingShopItem.description ? (
+                <div className="space-y-1 rounded-lg border border-border bg-card p-3">
+                  <p className="text-sm font-semibold text-foreground">Details</p>
+                  <p className="text-sm text-muted-foreground">{viewingShopItem.description}</p>
+                </div>
+              ) : null}
+              <div className="flex justify-end">
+                <Button type="button" onClick={() => setViewingShopItemId(null)}>
                   Close
                 </Button>
               </div>

@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 
 import { CafeProductEditor } from '@/components/admin/cafe-product-editor'
+import { ShopProductEditor } from '@/components/admin/shop-product-editor'
 import { GiftProductForm, type GiftProductDraft } from '@/components/admin/gift-product-form'
 import { ProductForm, type ProductDraft, draftToProductPatch, productToDraft } from '@/components/admin/product-form'
 import { RentalProductForm } from '@/components/admin/rental-product-form'
@@ -33,6 +34,7 @@ function AdminInventoryProductsNewPageInner() {
   const { occasions } = useScheduling()
   const [returnTo, setReturnTo] = useState('/admin/inventory/products')
   const isCafeAndFoodMode = searchParams.get('productType') === 'cafe&food'
+  const isShopMode = searchParams.get('productType') === 'shop'
   const isGiftsMode = searchParams.get('productType') === 'gifts'
   const isRentalsMode = searchParams.get('productType') === 'rentals'
   const requestedCategoryId = searchParams.get('categoryId')
@@ -353,6 +355,10 @@ function AdminInventoryProductsNewPageInner() {
 
   if (isCafeAndFoodMode) {
     return <CafeProductEditor mode="create" />
+  }
+
+  if (isShopMode) {
+    return <ShopProductEditor mode="create" />
   }
 
   return (

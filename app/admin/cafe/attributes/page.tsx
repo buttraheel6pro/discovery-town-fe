@@ -32,33 +32,13 @@ import {
 } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
 import { useCafe } from '@/lib/cafe-store'
+import { useInventory } from '@/lib/inventory-store'
 import { newAdminEntityId } from '@/lib/scheduling-admin-builders'
 import { attributeGroupSchema } from '@/lib/schemas/cafe'
-import { countProductsUsingAttributeGroup } from '@/lib/services/attribute-groups'
 import type { AttributeGroup, AttributeOption } from '@/lib/types'
 
-const TEMPLATE_OPTIONS: Record<
-  string,
-  Omit<AttributeOption, 'id'>[]
-> = {
-  'common-allergens': [
-    { label: 'Peanuts', emoji: '⚠️', color: '#f44336' },
-    { label: 'Dairy', emoji: '🥛', color: '#9c27b0' },
-    { label: 'Eggs', emoji: '🥚', color: '#ff5722' },
-    { label: 'Gluten', emoji: '🌾', color: '#ff9800' },
-    { label: 'Shellfish', emoji: '🦐', color: '#e91e63' },
-  ],
-  'dietary-basics': [
-    { label: 'Vegan', emoji: '🌿', color: '#4caf50' },
-    { label: 'Vegetarian', emoji: '🥦', color: '#8bc34a' },
-    { label: 'Gluten-Free', emoji: '🌾', color: '#ff9800' },
-  ],
-  'availability-labels': [
-    { label: 'Today Only', emoji: '📋', color: '#607d8b' },
-    { label: 'Seasonal', emoji: '🍂', color: '#ff9800' },
-    { label: 'Specialty', emoji: '⭐', color: '#ffc107' },
-    { label: 'Kids Pick', emoji: '🧒', color: '#03a9f4' },
-  ],
+function isColorGroupName(name: string): boolean {
+  return name.trim().toLowerCase().includes('color')
 }
 
 function emptyGroup(): AttributeGroup {
@@ -66,12 +46,13 @@ function emptyGroup(): AttributeGroup {
     id: newAdminEntityId('ag'),
     name: '',
     selectionType: 'multiple',
-    isRequired: false,
+    isRequired: true,
+    maxSelect: 1,
     options: [
       {
         id: newAdminEntityId('ao'),
-        label: 'Option',
-        emoji: '⭐',
+        label: '',
+        emoji: '',
         color: '#607d8b',
       },
     ],
@@ -80,11 +61,22 @@ function emptyGroup(): AttributeGroup {
 
 export default function AdminCafeAttributesPage() {
   const { toast } = useToast()
-  const { attributeGroups, upsertAttributeGroup, deleteAttributeGroup } = useCafe()
+  const { cafeProducts, attributeGroups, upsertAttributeGroup, deleteAttributeGroup } = useCafe()
+  const { products } = useInventory()
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState<AttributeGroup>(() => emptyGroup())
 
   const sorted = [...attributeGroups].sort((a, b) => a.name.localeCompare(b.name))
+
+  function countProductsUsingAttributeGroup(groupId: string): number {
+    const cafeCount = cafeProducts.filter((product) =>
+      Object.hasOwn(product.attributeGroups, groupId),
+    ).length
+    const shopCount = products.filter((product) =>
+      (product.shopAttributeGroups ?? []).some((group) => group.id === groupId),
+    ).length
+    return cafeCount + shopCount
+  }
 
   function startCreate() {
     setDraft(emptyGroup())
@@ -97,19 +89,6 @@ export default function AdminCafeAttributesPage() {
       options: g.options.map((o) => ({ ...o })),
     })
     setOpen(true)
-  }
-
-  function applyTemplate(key: string) {
-    const preset = TEMPLATE_OPTIONS[key]
-    if (!preset) return
-    setDraft((d) => ({
-      ...d,
-      predefinedTemplate: key,
-      options: preset.map((row) => ({
-        ...row,
-        id: newAdminEntityId('ao'),
-      })),
-    }))
   }
 
   function saveDraft() {
@@ -144,8 +123,8 @@ export default function AdminCafeAttributesPage() {
         ...d.options,
         {
           id: newAdminEntityId('ao'),
-          label: 'New',
-          emoji: '✨',
+          label: '',
+          emoji: '',
           color: '#607d8b',
         },
       ],
@@ -243,7 +222,12 @@ export default function AdminCafeAttributesPage() {
               <Select
                 value={draft.selectionType}
                 onValueChange={(v) =>
-                  setDraft((d) => ({ ...d, selectionType: v as AttributeGroup['selectionType'] }))
+                  setDraft((d) => ({
+                    ...d,
+                    selectionType: v as AttributeGroup['selectionType'],
+                    maxSelect:
+                      v === 'multiple' ? Math.max(1, d.maxSelect ?? 1) : undefined,
+                  }))
                 }
               >
                 <SelectTrigger>
@@ -262,19 +246,24 @@ export default function AdminCafeAttributesPage() {
                 onCheckedChange={(v) => setDraft((d) => ({ ...d, isRequired: v }))}
               />
             </div>
-            <div className="space-y-2">
-              <Label>Load predefined template</Label>
-              <Select onValueChange={(v) => applyTemplate(v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose template…" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="common-allergens">Common Allergens</SelectItem>
-                  <SelectItem value="dietary-basics">Dietary Basics</SelectItem>
-                  <SelectItem value="availability-labels">Availability Labels</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {draft.selectionType === 'multiple' ? (
+              <div className="space-y-2">
+                <Label htmlFor="ag-max-select">Max selections</Label>
+                <Input
+                  id="ag-max-select"
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={draft.maxSelect ?? 1}
+                  onChange={(e) =>
+                    setDraft((d) => ({
+                      ...d,
+                      maxSelect: Math.max(1, Number.parseInt(e.target.value, 10) || 1),
+                    }))
+                  }
+                />
+              </div>
+            ) : null}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label>Options</Label>
@@ -295,20 +284,16 @@ export default function AdminCafeAttributesPage() {
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
-                    <div className="grid grid-cols-3 gap-2">
-                      <Input
-                        value={o.emoji}
-                        onChange={(e) => updateOption(idx, { emoji: e.target.value })}
-                        placeholder="Emoji"
-                      />
-                      <Input
-                        type="color"
-                        value={o.color.startsWith('#') ? o.color : '#607d8b'}
-                        onChange={(e) => updateOption(idx, { color: e.target.value })}
-                        className="h-10 p-1"
-                      />
-                      <span className="flex items-center text-xs text-muted-foreground">Preview</span>
-                    </div>
+                    {isColorGroupName(draft.name) ? (
+                      <div className="grid grid-cols-1 gap-2">
+                        <Input
+                          type="color"
+                          value={o.color.startsWith('#') ? o.color : '#607d8b'}
+                          onChange={(e) => updateOption(idx, { color: e.target.value })}
+                          className="h-10 p-1"
+                        />
+                      </div>
+                    ) : null}
                   </div>
                 ))}
               </div>

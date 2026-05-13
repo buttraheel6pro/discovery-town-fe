@@ -114,6 +114,11 @@ const sidebarGroups = [
         icon: Tag,
       },
       {
+        label: "Attribute Groups",
+        href: "/admin/cafe/attributes",
+        icon: Tags,
+      },
+      {
         label: "Cafe Rotation",
         href: "/admin/cafe/rotation",
         icon: CalendarDays,

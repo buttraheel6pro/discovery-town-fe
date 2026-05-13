@@ -1,9 +1,8 @@
 /** Cafe product admin form — card sections aligned with gifts/rentals layout. */
 'use client'
 
-import Link from 'next/link'
-import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -46,8 +45,6 @@ export interface CafeProductFormProps {
   readonly modifierGroups: ModifierGroup[]
   readonly attributeGroups: AttributeGroup[]
   readonly rotationGroups: RotationGroup[]
-  /** Optional updater to persist new attribute options created from this form. */
-  readonly onUpsertAttributeGroup?: (group: AttributeGroup) => void
   /** When set, attribute group ids listed here show inline validation messages. */
   readonly attributeErrors?: Record<string, string>
 }
@@ -61,23 +58,23 @@ export function CafeProductForm({
   modifierGroups,
   attributeGroups,
   rotationGroups,
-  onUpsertAttributeGroup,
   attributeErrors,
 }: Readonly<CafeProductFormProps>) {
   const [uploading, setUploading] = useState(false)
   const [singleModalOpen, setSingleModalOpen] = useState(false)
   const [multiModalOpen, setMultiModalOpen] = useState(false)
   const [showAttributeGroups, setShowAttributeGroups] = useState(false)
-  const [singleDraftName, setSingleDraftName] = useState('')
-  const [singleDraftOptions, setSingleDraftOptions] = useState<string[]>([''])
-  const [multiDraftName, setMultiDraftName] = useState('')
-  const [multiDraftOptions, setMultiDraftOptions] = useState<string[]>([''])
-  const [multiDraftMaxSelect, setMultiDraftMaxSelect] = useState('1')
   const [singleExistingGroupId, setSingleExistingGroupId] = useState('')
   const [multiExistingGroupId, setMultiExistingGroupId] = useState('')
-  const [showSingleNewGroupForm, setShowSingleNewGroupForm] = useState(false)
-  const [showMultiNewGroupForm, setShowMultiNewGroupForm] = useState(false)
+  const [singlePendingAddGroupIds, setSinglePendingAddGroupIds] = useState<string[]>([])
+  const [singlePendingRemoveGroupIds, setSinglePendingRemoveGroupIds] = useState<string[]>([])
+  const [multiPendingAddGroupIds, setMultiPendingAddGroupIds] = useState<string[]>([])
+  const [multiPendingRemoveGroupIds, setMultiPendingRemoveGroupIds] = useState<string[]>([])
   const [didAutoOpenAttributeGroups, setDidAutoOpenAttributeGroups] = useState(false)
+  const [modifierModalOpen, setModifierModalOpen] = useState(false)
+  const [modifierExistingGroupId, setModifierExistingGroupId] = useState('')
+  const [modifierPendingAddGroupIds, setModifierPendingAddGroupIds] = useState<string[]>([])
+  const [modifierPendingRemoveGroupIds, setModifierPendingRemoveGroupIds] = useState<string[]>([])
 
   const set = useCallback(
     <K extends keyof CafeProduct>(key: K, next: CafeProduct[K]) => {
@@ -98,38 +95,11 @@ export function CafeProductForm({
     return value.modifierGroupIds.map((id) => map.get(id)).filter(Boolean) as ModifierGroup[]
   }, [modifierGroups, value.modifierGroupIds])
 
-  const availableToAttach = useMemo(() => {
-    const attached = new Set(value.modifierGroupIds)
-    return modifierGroups.filter((g) => !attached.has(g.id))
-  }, [modifierGroups, value.modifierGroupIds])
-
   function toggleDay(day: number) {
     const cur = value.availableDaysOfWeek ?? []
     const has = cur.includes(day)
     const next = has ? cur.filter((d) => d !== day) : [...cur, day].sort((a, b) => a - b)
     set('availableDaysOfWeek', next)
-  }
-
-  function moveModifier(index: number, dir: -1 | 1) {
-    const ids = [...value.modifierGroupIds]
-    const j = index + dir
-    if (j < 0 || j >= ids.length) return
-    const t = ids[index]
-    ids[index] = ids[j]!
-    ids[j] = t!
-    set('modifierGroupIds', ids)
-  }
-
-  function attachModifierGroup(id: string) {
-    if (value.modifierGroupIds.includes(id)) return
-    set('modifierGroupIds', [...value.modifierGroupIds, id])
-  }
-
-  function detachModifierGroup(id: string) {
-    set(
-      'modifierGroupIds',
-      value.modifierGroupIds.filter((x) => x !== id),
-    )
   }
 
   const singleGroups = useMemo(
@@ -170,6 +140,29 @@ export function CafeProductForm({
       }),
     [multiGroups, value.attributeGroups],
   )
+  const selectedModifierGroupIds = useMemo(
+    () => modifierGroups.filter((group) => value.modifierGroupIds.includes(group.id)).map((group) => group.id),
+    [modifierGroups, value.modifierGroupIds],
+  )
+  const appliedModifierGroups = useMemo(
+    () => modifierGroups.filter((group) => selectedModifierGroupIds.includes(group.id)),
+    [modifierGroups, selectedModifierGroupIds],
+  )
+  const availableModifierGroups = useMemo(
+    () => modifierGroups.filter((group) => !selectedModifierGroupIds.includes(group.id)),
+    [modifierGroups, selectedModifierGroupIds],
+  )
+  const modifierAvailableSelectableGroups = useMemo(
+    () =>
+      availableModifierGroups.filter(
+        (group) => !modifierPendingAddGroupIds.includes(group.id),
+      ),
+    [availableModifierGroups, modifierPendingAddGroupIds],
+  )
+  const selectedAvailableModifierGroup = useMemo(
+    () => availableModifierGroups.find((group) => group.id === modifierExistingGroupId) ?? null,
+    [availableModifierGroups, modifierExistingGroupId],
+  )
   const selectedSingleGroupIds = useMemo(
     () =>
       singleGroups
@@ -184,138 +177,89 @@ export function CafeProductForm({
         .map((group) => group.id),
     [multiGroups, value.attributeGroups],
   )
-  const editingSingleExisting = selectedSingleGroupIds.length > 0
-  const editingMultiExisting = selectedMultiGroupIds.length > 0
-  const activeSingleExistingGroup = useMemo(
-    () => singleGroups.find((group) => group.id === singleExistingGroupId) ?? null,
-    [singleExistingGroupId, singleGroups],
+  const availableSingleGroups = useMemo(
+    () => singleGroups.filter((group) => !selectedSingleGroupIds.includes(group.id)),
+    [singleGroups, selectedSingleGroupIds],
   )
-  const activeMultiExistingGroup = useMemo(
-    () => multiGroups.find((group) => group.id === multiExistingGroupId) ?? null,
-    [multiExistingGroupId, multiGroups],
+  const availableMultiGroups = useMemo(
+    () => multiGroups.filter((group) => !selectedMultiGroupIds.includes(group.id)),
+    [multiGroups, selectedMultiGroupIds],
   )
-
-  function saveDraftAttributeGroup(selectionType: 'single' | 'multiple') {
-    if (!onUpsertAttributeGroup) return
-    const draftName = selectionType === 'single' ? singleDraftName : multiDraftName
-    const options = (selectionType === 'single' ? singleDraftOptions : multiDraftOptions)
-      .map((label) => label.trim())
-      .filter((label) => label.length > 0)
-    if (!draftName.trim() || options.length === 0) {
-      return
-    }
-    const groupId = `ag-${Date.now()}`
-    const optionIds = options.map((_, index) => `ao-${Date.now()}-${index}`)
-    const maxSelect =
-      selectionType === 'multiple'
-        ? Math.max(1, Number.parseInt(multiDraftMaxSelect, 10) || 1)
-        : undefined
-
-    const group: AttributeGroup = {
-      id: groupId,
-      name: draftName.trim(),
-      selectionType,
-      maxSelect,
-      isRequired: false,
-      options: options.map((label, index) => ({
-        id: optionIds[index],
-        label,
-        emoji: selectionType === 'single' ? '•' : '✓',
-        color: selectionType === 'single' ? '#94a3b8' : '#60a5fa',
-      })),
-    }
-    onUpsertAttributeGroup(group)
-    set('attributeGroups', {
-      ...value.attributeGroups,
-      [groupId]: optionIds,
-    })
-    if (selectionType === 'single') {
-      setSingleModalOpen(false)
-      setSingleDraftName('')
-      setSingleDraftOptions([''])
-      return
-    }
-    setMultiModalOpen(false)
-    setMultiDraftName('')
-    setMultiDraftOptions([''])
-    setMultiDraftMaxSelect('1')
-  }
-
-  function updateExistingGroupOptionLabel(groupId: string, optionId: string, label: string) {
-    if (!onUpsertAttributeGroup) return
-    const group = attributeGroups.find((entry) => entry.id === groupId)
-    if (!group) return
-    onUpsertAttributeGroup({
-      ...group,
-      options: group.options.map((option) =>
-        option.id === optionId ? { ...option, label } : option,
-      ),
-    })
-  }
-
-  function addExistingGroupOption(groupId: string, selectionType: 'single' | 'multiple') {
-    if (!onUpsertAttributeGroup) return
-    const group = attributeGroups.find((entry) => entry.id === groupId)
-    if (!group) return
-    const optionId = `ao-${Date.now()}`
-    onUpsertAttributeGroup({
-      ...group,
-      options: [
-        ...group.options,
-        {
-          id: optionId,
-          label: 'New option',
-          emoji: selectionType === 'single' ? '•' : '✓',
-          color: selectionType === 'single' ? '#94a3b8' : '#60a5fa',
-        },
-      ],
-    })
-    const current = value.attributeGroups[group.id] ?? []
-    set('attributeGroups', {
-      ...value.attributeGroups,
-      [group.id]: current.includes(optionId) ? current : [...current, optionId],
-    })
-  }
-
-  function removeExistingGroupOption(groupId: string, optionId: string) {
-    if (!onUpsertAttributeGroup) return
-    const group = attributeGroups.find((entry) => entry.id === groupId)
-    if (!group) return
-    onUpsertAttributeGroup({
-      ...group,
-      options: group.options.filter((option) => option.id !== optionId),
-    })
-    const current = value.attributeGroups[groupId] ?? []
-    const nextSelected = current.filter((id) => id !== optionId)
-    const nextMap = { ...value.attributeGroups }
-    if (nextSelected.length === 0) {
-      delete nextMap[groupId]
-    } else {
-      nextMap[groupId] = nextSelected
-    }
-    set('attributeGroups', nextMap)
-  }
-
+  const appliedSingleGroups = useMemo(
+    () => singleGroups.filter((group) => selectedSingleGroupIds.includes(group.id)),
+    [singleGroups, selectedSingleGroupIds],
+  )
+  const appliedMultiGroups = useMemo(
+    () => multiGroups.filter((group) => selectedMultiGroupIds.includes(group.id)),
+    [multiGroups, selectedMultiGroupIds],
+  )
+  const singleAvailableSelectableGroups = useMemo(
+    () => availableSingleGroups.filter((group) => !singlePendingAddGroupIds.includes(group.id)),
+    [availableSingleGroups, singlePendingAddGroupIds],
+  )
+  const multiAvailableSelectableGroups = useMemo(
+    () => availableMultiGroups.filter((group) => !multiPendingAddGroupIds.includes(group.id)),
+    [availableMultiGroups, multiPendingAddGroupIds],
+  )
+  const selectedAvailableSingleGroup = useMemo(
+    () => availableSingleGroups.find((group) => group.id === singleExistingGroupId) ?? null,
+    [availableSingleGroups, singleExistingGroupId],
+  )
+  const selectedAvailableMultiGroup = useMemo(
+    () => availableMultiGroups.find((group) => group.id === multiExistingGroupId) ?? null,
+    [availableMultiGroups, multiExistingGroupId],
+  )
   function closeSingleModal() {
-    const hasDraftData =
-      singleDraftName.trim().length > 0 ||
-      singleDraftOptions.some((option) => option.trim().length > 0)
-    if (hasDraftData) {
-      saveDraftAttributeGroup('single')
-      return
+    const addIds = singlePendingAddGroupIds.filter((id) => !selectedSingleGroupIds.includes(id))
+    const removeIds = singlePendingRemoveGroupIds.filter((id) => selectedSingleGroupIds.includes(id))
+    const nextAttributeGroups = { ...value.attributeGroups }
+    for (const groupId of removeIds) {
+      delete nextAttributeGroups[groupId]
     }
+    for (const groupId of addIds) {
+      const group = singleGroups.find((entry) => entry.id === groupId)
+      if (!group) continue
+      nextAttributeGroups[groupId] = group.options.map((option) => option.id)
+    }
+    set('attributeGroups', nextAttributeGroups)
+    setSinglePendingAddGroupIds([])
+    setSinglePendingRemoveGroupIds([])
     setSingleModalOpen(false)
   }
 
   function closeMultiModal() {
-    const hasDraftData =
-      multiDraftName.trim().length > 0 ||
-      multiDraftOptions.some((option) => option.trim().length > 0)
-    if (hasDraftData) {
-      saveDraftAttributeGroup('multiple')
-      return
+    const addIds = multiPendingAddGroupIds.filter((id) => !selectedMultiGroupIds.includes(id))
+    const removeIds = multiPendingRemoveGroupIds.filter((id) => selectedMultiGroupIds.includes(id))
+    const nextAttributeGroups = { ...value.attributeGroups }
+    for (const groupId of removeIds) {
+      delete nextAttributeGroups[groupId]
     }
+    for (const groupId of addIds) {
+      const group = multiGroups.find((entry) => entry.id === groupId)
+      if (!group) continue
+      nextAttributeGroups[groupId] = group.options.map((option) => option.id)
+    }
+    set('attributeGroups', nextAttributeGroups)
+    setMultiPendingAddGroupIds([])
+    setMultiPendingRemoveGroupIds([])
     setMultiModalOpen(false)
+  }
+
+  function saveModifierModal() {
+    const addIds = modifierPendingAddGroupIds.filter(
+      (id) => !selectedModifierGroupIds.includes(id),
+    )
+    const removeIds = modifierPendingRemoveGroupIds.filter((id) =>
+      selectedModifierGroupIds.includes(id),
+    )
+    const nextModifierGroupIds = [
+      ...value.modifierGroupIds.filter((id) => !removeIds.includes(id)),
+      ...addIds.filter((id) => !value.modifierGroupIds.includes(id)),
+    ]
+    set('modifierGroupIds', nextModifierGroupIds)
+    setModifierPendingAddGroupIds([])
+    setModifierPendingRemoveGroupIds([])
+    setModifierModalOpen(false)
   }
 
   async function onPickImage(file: File | null) {
@@ -575,136 +519,264 @@ export function CafeProductForm({
       </section>
 
       <section className="space-y-4">
-        <div>
-          <h3 className="text-base font-semibold text-foreground">Modifier groups</h3>
-          <p className="text-sm text-muted-foreground">
-            Order matches consumer customiser order.
-          </p>
-        </div>
-        <div className="space-y-4">
-          {/* <Link
-            href="/admin/cafe/modifiers"
-            className="inline-flex text-sm font-medium text-primary underline underline-offset-4"
-          >
-            + Create / manage Modifier Groups →
-          </Link> */}
-
-          <div className="space-y-2">
-            {attachedModifiers.map((g, index) => (
-              <div
-                key={g.id}
-                className="flex flex-wrap items-center gap-2 rounded-lg border border-border p-3 text-sm"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium">{g.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    <span className={g.isRequired ? 'text-amber-600' : ''}>
-                      {g.isRequired ? '(required)' : '(optional)'}
-                    </span>{' '}
-                    ·{' '}
-                    {g.maxSelect === 1 ? '(radio — pick one)' : `(checkboxes — up to ${g.maxSelect})`}
-                  </p>
-                </div>
-                <Button type="button" variant="ghost" size="icon" onClick={() => moveModifier(index, -1)}>
-                  <ChevronUp className="h-4 w-4" aria-label="Move up" />
-                </Button>
-                <Button type="button" variant="ghost" size="icon" onClick={() => moveModifier(index, 1)}>
-                  <ChevronDown className="h-4 w-4" aria-label="Move down" />
-                </Button>
-                <Button type="button" variant="ghost" size="icon" onClick={() => detachModifierGroup(g.id)}>
-                  <Trash2 className="h-4 w-4 text-destructive" aria-label="Remove" />
-                </Button>
-              </div>
-            ))}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1 space-y-1">
+            <h3 className="text-base font-semibold text-foreground">Modifier groups</h3>
+            <p className="text-sm text-muted-foreground">Order matches consumer customiser order.</p>
           </div>
-
-          {availableToAttach.length > 0 ? (
-            <div className="space-y-1">
-              <Label>Add group</Label>
-              <Select onValueChange={(id) => attachModifierGroup(id)}>
-                <SelectTrigger className="max-w-md">
-                  <SelectValue placeholder="Choose modifier group to attach…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableToAttach.map((g) => (
-                    <SelectItem key={g.id} value={g.id}>
-                      {g.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          ) : null}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            aria-label="Open modifier groups picker"
+            onClick={() => {
+              setModifierExistingGroupId(availableModifierGroups[0]?.id ?? '')
+              setModifierPendingAddGroupIds([])
+              setModifierPendingRemoveGroupIds([])
+              setModifierModalOpen(true)
+            }}
+          >
+            Manage modifiers
+          </Button>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {attachedModifiers.length === 0 ? (
+            <span className="text-xs text-muted-foreground">None attached</span>
+          ) : (
+            <>
+              {attachedModifiers.slice(0, 3).map((group) => (
+                <Badge key={group.id} variant="secondary" className="max-w-[10rem] truncate font-normal">
+                  {group.name}
+                </Badge>
+              ))}
+              {attachedModifiers.length > 3 ? (
+                <Badge variant="outline" className="font-normal">
+                  +{attachedModifiers.length - 3}
+                </Badge>
+              ) : null}
+              <Button type="button" size="sm" variant="ghost" onClick={() => set('modifierGroupIds', [])}>
+                Clear all
+              </Button>
+            </>
+          )}
         </div>
       </section>
+
+      <Dialog
+        open={modifierModalOpen}
+        onOpenChange={(open) => {
+          setModifierModalOpen(open)
+          if (!open) {
+            setModifierExistingGroupId('')
+            setModifierPendingAddGroupIds([])
+            setModifierPendingRemoveGroupIds([])
+          }
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-hidden sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Modifier groups</DialogTitle>
+            <DialogDescription>
+              Attach shared modifier groups from the cafe library (manage definitions under Cafe & Food).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[62vh] space-y-3 overflow-y-auto pr-1">
+            <div className="space-y-3 rounded-lg border border-border p-3">
+                <div className="space-y-2">
+                  {appliedModifierGroups.length > 0 ? (
+                    <div className="space-y-2">
+                      <Label>Already applied</Label>
+                      {appliedModifierGroups.map((group) => (
+                        <div
+                          key={group.id}
+                          className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2"
+                        >
+                          <span className="text-sm">{group.name}</span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              setModifierPendingRemoveGroupIds((prev) =>
+                                prev.includes(group.id)
+                                  ? prev.filter((id) => id !== group.id)
+                                  : [...prev, group.id],
+                              )
+                            }
+                          >
+                            {modifierPendingRemoveGroupIds.includes(group.id)
+                              ? 'Undo remove'
+                              : 'Remove'}
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  <Label>Select existing group</Label>
+                  {modifierAvailableSelectableGroups.length > 0 ? (
+                    <div className="space-y-3">
+                      <Select value={modifierExistingGroupId} onValueChange={setModifierExistingGroupId}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select group" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {modifierAvailableSelectableGroups.map((group) => (
+                            <SelectItem key={group.id} value={group.id}>
+                              {group.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {selectedAvailableModifierGroup ? (
+                        <div className="space-y-2">
+                          <Label>Options</Label>
+                          <div className="space-y-2">
+                            {selectedAvailableModifierGroup.modifiers.map((modifier) => (
+                              <div
+                                key={modifier.id}
+                                className="rounded-lg border border-border p-3 space-y-2"
+                              >
+                                <Input value={modifier.name} readOnly />
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">Price delta</Label>
+                                    <Input value={String(modifier.priceDelta)} readOnly />
+                                  </div>
+                                  <div className="flex items-end justify-between gap-2 pb-1">
+                                    <span className="text-xs text-muted-foreground">Default</span>
+                                    <Switch checked={modifier.isDefault} disabled />
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-9 w-full font-medium shadow-none"
+                        disabled={!modifierExistingGroupId}
+                        onClick={() => {
+                          if (!modifierExistingGroupId) return
+                          setModifierPendingAddGroupIds((prev) =>
+                            prev.includes(modifierExistingGroupId)
+                              ? prev
+                              : [...prev, modifierExistingGroupId],
+                          )
+                          const nextOptions = modifierAvailableSelectableGroups.filter(
+                            (group) => group.id !== modifierExistingGroupId,
+                          )
+                          setModifierExistingGroupId(nextOptions[0]?.id ?? '')
+                        }}
+                      >
+                        Add
+                      </Button>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">No more groups available to add.</p>
+                  )}
+                </div>
+                {modifierPendingAddGroupIds.length > 0 ? (
+                  <div className="space-y-2">
+                    <Label>Groups to add</Label>
+                    {modifierPendingAddGroupIds
+                      .map((groupId) => availableModifierGroups.find((group) => group.id === groupId))
+                      .filter((group): group is ModifierGroup => Boolean(group))
+                      .map((group) => (
+                        <div
+                          key={group.id}
+                          className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2"
+                        >
+                          <span className="text-sm">{group.name}</span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              setModifierPendingAddGroupIds((prev) =>
+                                prev.filter((groupId) => groupId !== group.id),
+                              )
+                            }
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      ))}
+                  </div>
+                ) : null}
+              </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setModifierModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={saveModifierModal}>
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <section className="space-y-4">
         <div className="flex items-center justify-between rounded-lg border border-border p-4">
           <div>
             <h3 className="text-base font-semibold text-foreground">Attribute groups</h3>
             <p className="text-sm text-muted-foreground">
-              Informational chips — single or multi-select per group rules.
+              Attach shared library groups to this menu item. Single = one choice per group; multi =
+              several.
             </p>
           </div>
           <Switch checked={showAttributeGroups} onCheckedChange={setShowAttributeGroups} />
         </div>
         {showAttributeGroups ? (
           <div className="space-y-6">
-          {/* <Link
-            href="/admin/cafe/attributes"
-            className="inline-flex text-sm font-medium text-primary underline underline-offset-4"
-          >
-            + Create / manage Attribute Groups →
-          </Link> */}
+          {/* <Link href="/admin/cafe/attributes" className="inline-flex text-sm font-medium text-primary underline underline-offset-4">+ Create / manage Attribute Groups →</Link> */}
           <div className="space-y-2 rounded-lg border border-border p-4">
-            <div className="space-y-1">
-              <p className="font-medium text-foreground">Single select attributes</p>
-              <p className="text-xs text-muted-foreground">
-                Search existing values or type a new value and press Enter.
-              </p>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full justify-between"
-              onClick={() => {
-                setSingleDraftName('')
-                setSingleDraftOptions([''])
-                setSingleExistingGroupId(selectedSingleGroupIds[0] ?? '')
-                setShowSingleNewGroupForm(!editingSingleExisting)
-                setSingleModalOpen(true)
-              }}
-            >
-              <span className="truncate text-left">
-                {selectedSingleOptions.length > 0
-                  ? `${selectedSingleOptions.length} selected`
-                  : 'Select single attribute'}
-              </span>
-              <span className="text-xs text-muted-foreground">Open</span>
-            </Button>
-            {selectedSingleOptions.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {selectedSingleOptions.map((entry) => (
-                  <Badge key={`${entry.groupId}-${entry.optionId}`} variant="secondary">
-                    {entry.display}
-                  </Badge>
-                ))}
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    const next = { ...value.attributeGroups }
-                    for (const group of singleGroups) {
-                      delete next[group.id]
-                    }
-                    set('attributeGroups', next)
-                  }}
-                >
-                  Clear
-                </Button>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1 space-y-1">
+                <p className="font-medium text-foreground">Single-select attributes</p>
+                <p className="text-xs text-muted-foreground">
+                  From <span className="font-medium text-foreground">Cafe & Food → Attributes</span>. Attach
+                  size, milk type, and other single-choice groups.
+                </p>
               </div>
-            ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                aria-label="Open single-select attribute picker"
+                onClick={() => {
+                  setSingleExistingGroupId('')
+                  setSinglePendingAddGroupIds([])
+                  setSinglePendingRemoveGroupIds([])
+                  setSingleModalOpen(true)
+                }}
+              >
+                Manage groups
+              </Button>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {appliedSingleGroups.length === 0 ? (
+                <span className="text-xs text-muted-foreground">None attached</span>
+              ) : (
+                <>
+                  {appliedSingleGroups.slice(0, 3).map((group) => (
+                    <Badge key={group.id} variant="secondary" className="max-w-[10rem] truncate font-normal">
+                      {group.name.trim() || 'Unnamed'}
+                    </Badge>
+                  ))}
+                  {appliedSingleGroups.length > 3 ? (
+                    <Badge variant="outline" className="font-normal">
+                      +{appliedSingleGroups.length - 3}
+                    </Badge>
+                  ) : null}
+                </>
+              )}
+            </div>
             {singleGroups.map((group) =>
               attributeErrors?.[group.id] ? (
                 <p key={group.id} className="text-sm text-destructive">
@@ -715,55 +787,47 @@ export function CafeProductForm({
           </div>
 
           <div className="space-y-2 rounded-lg border border-border p-4">
-            <div className="space-y-1">
-              <p className="font-medium text-foreground">Multiple select attributes</p>
-              <p className="text-xs text-muted-foreground">
-                Search existing values or type a new value and press Enter.
-              </p>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full justify-between"
-              onClick={() => {
-                setMultiDraftName('')
-                setMultiDraftOptions([''])
-                setMultiDraftMaxSelect('1')
-                setMultiExistingGroupId(selectedMultiGroupIds[0] ?? '')
-                setShowMultiNewGroupForm(!editingMultiExisting)
-                setMultiModalOpen(true)
-              }}
-            >
-              <span className="truncate text-left">
-                {selectedMultiOptions.length > 0
-                  ? `${selectedMultiOptions.length} selected`
-                  : 'Select multiple attributes'}
-              </span>
-              <span className="text-xs text-muted-foreground">Open</span>
-            </Button>
-            {selectedMultiOptions.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {selectedMultiOptions.map((entry) => (
-                  <Badge key={`${entry.groupId}-${entry.optionId}`} variant="secondary">
-                    {entry.display}
-                  </Badge>
-                ))}
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    const next = { ...value.attributeGroups }
-                    for (const group of multiGroups) {
-                      delete next[group.id]
-                    }
-                    set('attributeGroups', next)
-                  }}
-                >
-                  Clear
-                </Button>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1 space-y-1">
+                <p className="font-medium text-foreground">Multi-select attributes</p>
+                <p className="text-xs text-muted-foreground">
+                  Same library as single-select. Use when customers may pick several options per group.
+                </p>
               </div>
-            ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                aria-label="Open multi-select attribute picker"
+                onClick={() => {
+                  setMultiExistingGroupId('')
+                  setMultiPendingAddGroupIds([])
+                  setMultiPendingRemoveGroupIds([])
+                  setMultiModalOpen(true)
+                }}
+              >
+                Manage groups
+              </Button>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {appliedMultiGroups.length === 0 ? (
+                <span className="text-xs text-muted-foreground">None attached</span>
+              ) : (
+                <>
+                  {appliedMultiGroups.slice(0, 3).map((group) => (
+                    <Badge key={group.id} variant="secondary" className="max-w-[10rem] truncate font-normal">
+                      {group.name.trim() || 'Unnamed'}
+                    </Badge>
+                  ))}
+                  {appliedMultiGroups.length > 3 ? (
+                    <Badge variant="outline" className="font-normal">
+                      +{appliedMultiGroups.length - 3}
+                    </Badge>
+                  ) : null}
+                </>
+              )}
+            </div>
             {multiGroups.map((group) =>
               attributeErrors?.[group.id] ? (
                 <p key={group.id} className="text-sm text-destructive">
@@ -776,205 +840,145 @@ export function CafeProductForm({
         ) : null}
       </section>
 
-      <Dialog open={singleModalOpen} onOpenChange={setSingleModalOpen}>
-        <DialogContent className="max-h-[90vh] sm:max-w-xl">
+      <Dialog
+        open={singleModalOpen}
+        onOpenChange={(open) => {
+          setSingleModalOpen(open)
+          if (!open) {
+            setSingleExistingGroupId('')
+            setSinglePendingAddGroupIds([])
+            setSinglePendingRemoveGroupIds([])
+          }
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-hidden sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>Single select attributes</DialogTitle>
+            <DialogTitle>Single-select attributes</DialogTitle>
             <DialogDescription>
-              {editingSingleExisting
-                ? 'Select an existing group and add new options.'
-                : 'Add a new single-select group and its options.'}
+              Choose a library group, review options, tap <span className="font-medium text-foreground">Add</span>
+              , then <span className="font-medium text-foreground">Save</span> to attach it to this product.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 overflow-y-auto pr-1">
-            {editingSingleExisting && !showSingleNewGroupForm ? (
+          <div className="max-h-[62vh] space-y-3 overflow-y-auto pr-1">
+            {appliedSingleGroups.length > 0 || singleAvailableSelectableGroups.length > 0 ? (
               <div className="space-y-3 rounded-lg border border-border p-3">
-                <p className="text-sm font-semibold text-foreground">Existing group</p>
                 <div className="space-y-2">
-                  <Label>Group</Label>
-                  <Select value={singleExistingGroupId} onValueChange={setSingleExistingGroupId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select group" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {selectedSingleGroupIds.map((groupId) => {
-                        const group = singleGroups.find((entry) => entry.id === groupId)
-                        if (!group) return null
-                        return (
-                          <SelectItem key={group.id} value={group.id}>
-                            {group.name}
-                          </SelectItem>
-                        )
-                      })}
-                    </SelectContent>
-                  </Select>
-                </div>
-                {activeSingleExistingGroup ? (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label>Options</Label>
+                  {appliedSingleGroups.length > 0 ? (
+                    <div className="space-y-2">
+                      <Label>Already applied</Label>
+                      {appliedSingleGroups.map((group) => (
+                        <div
+                          key={group.id}
+                          className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2"
+                        >
+                          <span className="text-sm">{group.name}</span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              setSinglePendingRemoveGroupIds((prev) =>
+                                prev.includes(group.id)
+                                  ? prev.filter((id) => id !== group.id)
+                                  : [...prev, group.id],
+                              )
+                            }
+                          >
+                            {singlePendingRemoveGroupIds.includes(group.id)
+                              ? 'Undo remove'
+                              : 'Remove'}
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  <Label>Select existing group</Label>
+                  {singleAvailableSelectableGroups.length > 0 ? (
+                    <div className="space-y-3">
+                      <Select value={singleExistingGroupId} onValueChange={setSingleExistingGroupId}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select group" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {singleAvailableSelectableGroups.map((group) => (
+                            <SelectItem key={group.id} value={group.id}>
+                              {group.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {selectedAvailableSingleGroup ? (
+                        <div className="space-y-2">
+                          <Label>Group options</Label>
+                          <div className="space-y-2">
+                            {selectedAvailableSingleGroup.options.map((option) => (
+                              <div
+                                key={option.id}
+                                className="rounded-lg border p-3 text-sm font-medium"
+                              >
+                                {option.label}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
-                        onClick={() => addExistingGroupOption(activeSingleExistingGroup.id, 'single')}
+                        className="h-9 w-full font-medium shadow-none"
+                        disabled={!singleExistingGroupId}
+                        onClick={() => {
+                          if (!singleExistingGroupId) return
+                          setSinglePendingAddGroupIds((prev) =>
+                            prev.includes(singleExistingGroupId) ? prev : [...prev, singleExistingGroupId],
+                          )
+                          setSingleExistingGroupId('')
+                        }}
                       >
-                        Add option
+                        Add
                       </Button>
                     </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">No more groups available to add.</p>
+                  )}
+                </div>
+                {singlePendingAddGroupIds.length > 0 ? (
+                  <div className="space-y-2">
+                    <Label>Groups to add</Label>
                     <div className="space-y-2">
-                      {activeSingleExistingGroup.options.map((option) => (
-                        <div key={option.id} className="rounded-lg border p-3">
-                          <div className="flex items-center gap-2">
-                            <Input
-                              value={option.label}
-                              onChange={(event) =>
-                                updateExistingGroupOptionLabel(
-                                  activeSingleExistingGroup.id,
-                                  option.id,
-                                  event.target.value,
-                                )
-                              }
-                              placeholder="Option name"
-                            />
+                      {singlePendingAddGroupIds
+                        .map((groupId) => availableSingleGroups.find((group) => group.id === groupId))
+                        .filter((group): group is AttributeGroup => Boolean(group))
+                        .map((group) => (
+                          <div
+                            key={group.id}
+                            className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2"
+                          >
+                            <span className="text-sm">{group.name}</span>
                             <Button
                               type="button"
                               variant="ghost"
-                              size="icon"
+                              size="sm"
                               onClick={() =>
-                                removeExistingGroupOption(activeSingleExistingGroup.id, option.id)
+                                setSinglePendingAddGroupIds((prev) =>
+                                  prev.filter((groupId) => groupId !== group.id),
+                                )
                               }
                             >
-                              <Trash2 className="h-4 w-4" />
+                              Remove
                             </Button>
                           </div>
-                        </div>
-                      ))}
+                        ))}
                     </div>
                   </div>
                 ) : null}
               </div>
-            ) : null}
-            {!editingSingleExisting ? (
-              <div className="space-y-3 rounded-lg border border-border p-3">
-                <p className="text-sm font-semibold text-foreground">New group</p>
-                <div className="space-y-2">
-                  <Label htmlFor="single-group-name">Group name</Label>
-                  <Input
-                    id="single-group-name"
-                    value={singleDraftName}
-                    onChange={(event) => setSingleDraftName(event.target.value)}
-                    placeholder="e.g. Availability Label"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label>Options</Label>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setSingleDraftOptions((prev) => [...prev, ''])}
-                    >
-                      Add option
-                    </Button>
-                  </div>
-                </div>
-                <div className="max-h-72 space-y-2 overflow-y-auto">
-                  {singleDraftOptions.map((entry, index) => (
-                    <div key={`single-opt-${index}`} className="rounded-lg border p-3">
-                      <div className="flex items-center gap-2">
-                        <Input
-                          value={entry}
-                          onChange={(event) =>
-                            setSingleDraftOptions((prev) =>
-                              prev.map((value, idx) => (idx === index ? event.target.value : value)),
-                            )
-                          }
-                          placeholder="Option name"
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          disabled={singleDraftOptions.length <= 1}
-                          onClick={() =>
-                            setSingleDraftOptions((prev) => prev.filter((_, idx) => idx !== index))
-                          }
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : showSingleNewGroupForm ? (
-              <div className="space-y-3 rounded-lg border border-border p-3">
-                <p className="text-sm font-semibold text-foreground">New group</p>
-                <div className="space-y-2">
-                  <Label htmlFor="single-group-name">Group name</Label>
-                  <Input
-                    id="single-group-name"
-                    value={singleDraftName}
-                    onChange={(event) => setSingleDraftName(event.target.value)}
-                    placeholder="e.g. Availability Label"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label>Options</Label>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setSingleDraftOptions((prev) => [...prev, ''])}
-                    >
-                      Add option
-                    </Button>
-                  </div>
-                </div>
-                <div className="max-h-72 space-y-2 overflow-y-auto">
-                  {singleDraftOptions.map((entry, index) => (
-                    <div key={`single-opt-${index}`} className="rounded-lg border p-3">
-                      <div className="flex items-center gap-2">
-                        <Input
-                          value={entry}
-                          onChange={(event) =>
-                            setSingleDraftOptions((prev) =>
-                              prev.map((value, idx) => (idx === index ? event.target.value : value)),
-                            )
-                          }
-                          placeholder="Option name"
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          disabled={singleDraftOptions.length <= 1}
-                          onClick={() =>
-                            setSingleDraftOptions((prev) => prev.filter((_, idx) => idx !== index))
-                          }
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
             ) : (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setSingleDraftName('')
-                  setSingleDraftOptions([''])
-                  setShowSingleNewGroupForm(true)
-                }}
-              >
-                Add new group
-              </Button>
+              <p className="text-sm text-muted-foreground">
+                No single-select attribute groups in the library. Create them under Cafe & Food →
+                Attributes.
+              </p>
             )}
           </div>
           <DialogFooter>
@@ -988,246 +992,146 @@ export function CafeProductForm({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={multiModalOpen} onOpenChange={setMultiModalOpen}>
-        <DialogContent className="max-h-[90vh] sm:max-w-xl">
+      <Dialog
+        open={multiModalOpen}
+        onOpenChange={(open) => {
+          setMultiModalOpen(open)
+          if (!open) {
+            setMultiExistingGroupId('')
+            setMultiPendingAddGroupIds([])
+            setMultiPendingRemoveGroupIds([])
+          }
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-hidden sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>Multiple select attributes</DialogTitle>
+            <DialogTitle>Multi-select attributes</DialogTitle>
             <DialogDescription>
-              {editingMultiExisting
-                ? 'Select an existing group and add new options.'
-                : 'Add a new multi-select group, options, and max selections.'}
+              Same flow as single-select: pick a group, review options, tap{' '}
+              <span className="font-medium text-foreground">Add</span>, then{' '}
+              <span className="font-medium text-foreground">Save</span>.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 overflow-y-auto pr-1">
-            {editingMultiExisting && !showMultiNewGroupForm ? (
+          <div className="max-h-[62vh] space-y-3 overflow-y-auto pr-1">
+            {appliedMultiGroups.length > 0 || multiAvailableSelectableGroups.length > 0 ? (
               <div className="space-y-3 rounded-lg border border-border p-3">
-                <p className="text-sm font-semibold text-foreground">Existing group</p>
                 <div className="space-y-2">
-                  <Label>Group</Label>
-                  <Select value={multiExistingGroupId} onValueChange={setMultiExistingGroupId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select group" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {selectedMultiGroupIds.map((groupId) => {
-                        const group = multiGroups.find((entry) => entry.id === groupId)
-                        if (!group) return null
-                        return (
-                          <SelectItem key={group.id} value={group.id}>
-                            {group.name}
-                          </SelectItem>
-                        )
-                      })}
-                    </SelectContent>
-                  </Select>
-                </div>
-                {activeMultiExistingGroup ? (
-                  <>
+                  {appliedMultiGroups.length > 0 ? (
                     <div className="space-y-2">
-                      <Label htmlFor="multi-existing-max">Max selections</Label>
-                      <Input
-                        id="multi-existing-max"
-                        type="number"
-                        min={1}
-                        step={1}
-                        value={activeMultiExistingGroup.maxSelect ?? 1}
-                        onChange={(event) =>
-                          onUpsertAttributeGroup?.({
-                            ...activeMultiExistingGroup,
-                            maxSelect: Math.max(1, Number.parseInt(event.target.value, 10) || 1),
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <Label>Options</Label>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => addExistingGroupOption(activeMultiExistingGroup.id, 'multiple')}
+                      <Label>Already applied</Label>
+                      {appliedMultiGroups.map((group) => (
+                        <div
+                          key={group.id}
+                          className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2"
                         >
-                          Add option
-                        </Button>
-                      </div>
-                      <div className="space-y-2">
-                        {activeMultiExistingGroup.options.map((option) => (
-                          <div key={option.id} className="rounded-lg border p-3">
-                            <div className="flex items-center gap-2">
-                              <Input
-                                value={option.label}
-                                onChange={(event) =>
-                                  updateExistingGroupOptionLabel(
-                                    activeMultiExistingGroup.id,
-                                    option.id,
-                                    event.target.value,
-                                  )
-                                }
-                                placeholder="Option name"
-                              />
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                onClick={() =>
-                                  removeExistingGroupOption(activeMultiExistingGroup.id, option.id)
-                                }
+                          <span className="text-sm">{group.name}</span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              setMultiPendingRemoveGroupIds((prev) =>
+                                prev.includes(group.id)
+                                  ? prev.filter((id) => id !== group.id)
+                                  : [...prev, group.id],
+                              )
+                            }
+                          >
+                            {multiPendingRemoveGroupIds.includes(group.id)
+                              ? 'Undo remove'
+                              : 'Remove'}
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  <Label>Select existing group</Label>
+                  {multiAvailableSelectableGroups.length > 0 ? (
+                    <div className="space-y-3">
+                      <Select value={multiExistingGroupId} onValueChange={setMultiExistingGroupId}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select group" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {multiAvailableSelectableGroups.map((group) => (
+                            <SelectItem key={group.id} value={group.id}>
+                              {group.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {selectedAvailableMultiGroup ? (
+                        <div className="space-y-2">
+                          <Label>Group options</Label>
+                          <div className="space-y-2">
+                            {selectedAvailableMultiGroup.options.map((option) => (
+                              <div
+                                key={option.id}
+                                className="rounded-lg border p-3 text-sm font-medium"
                               >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
+                                {option.label}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-9 w-full font-medium shadow-none"
+                        disabled={!multiExistingGroupId}
+                        onClick={() => {
+                          if (!multiExistingGroupId) return
+                          setMultiPendingAddGroupIds((prev) =>
+                            prev.includes(multiExistingGroupId) ? prev : [...prev, multiExistingGroupId],
+                          )
+                          setMultiExistingGroupId('')
+                        }}
+                      >
+                        Add
+                      </Button>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">No more groups available to add.</p>
+                  )}
+                </div>
+                {multiPendingAddGroupIds.length > 0 ? (
+                  <div className="space-y-2">
+                    <Label>Groups to add</Label>
+                    <div className="space-y-2">
+                      {multiPendingAddGroupIds
+                        .map((groupId) => availableMultiGroups.find((group) => group.id === groupId))
+                        .filter((group): group is AttributeGroup => Boolean(group))
+                        .map((group) => (
+                          <div
+                            key={group.id}
+                            className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2"
+                          >
+                            <span className="text-sm">{group.name}</span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() =>
+                                setMultiPendingAddGroupIds((prev) =>
+                                  prev.filter((groupId) => groupId !== group.id),
+                                )
+                              }
+                            >
+                              Remove
+                            </Button>
                           </div>
                         ))}
-                      </div>
                     </div>
-                  </>
+                  </div>
                 ) : null}
               </div>
-            ) : null}
-            {!editingMultiExisting ? (
-              <div className="space-y-3 rounded-lg border border-border p-3">
-                <p className="text-sm font-semibold text-foreground">New group</p>
-                <div className="space-y-2">
-                  <Label htmlFor="multi-group-name">Group name</Label>
-                  <Input
-                    id="multi-group-name"
-                    value={multiDraftName}
-                    onChange={(event) => setMultiDraftName(event.target.value)}
-                    placeholder="e.g. Dietary"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="multi-max-select">Max selections</Label>
-                  <Input
-                    id="multi-max-select"
-                    type="number"
-                    min={1}
-                    step={1}
-                    value={multiDraftMaxSelect}
-                    onChange={(event) => setMultiDraftMaxSelect(event.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label>Options</Label>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setMultiDraftOptions((prev) => [...prev, ''])}
-                    >
-                      Add option
-                    </Button>
-                  </div>
-                </div>
-                <div className="max-h-72 space-y-2 overflow-y-auto">
-                  {multiDraftOptions.map((entry, index) => (
-                    <div key={`multi-opt-${index}`} className="rounded-lg border p-3">
-                      <div className="flex items-center gap-2">
-                        <Input
-                          value={entry}
-                          onChange={(event) =>
-                            setMultiDraftOptions((prev) =>
-                              prev.map((value, idx) => (idx === index ? event.target.value : value)),
-                            )
-                          }
-                          placeholder="Option name"
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          disabled={multiDraftOptions.length <= 1}
-                          onClick={() =>
-                            setMultiDraftOptions((prev) => prev.filter((_, idx) => idx !== index))
-                          }
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : showMultiNewGroupForm ? (
-              <div className="space-y-3 rounded-lg border border-border p-3">
-                <p className="text-sm font-semibold text-foreground">New group</p>
-                <div className="space-y-2">
-                  <Label htmlFor="multi-group-name">Group name</Label>
-                  <Input
-                    id="multi-group-name"
-                    value={multiDraftName}
-                    onChange={(event) => setMultiDraftName(event.target.value)}
-                    placeholder="e.g. Dietary"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="multi-max-select">Max selections</Label>
-                  <Input
-                    id="multi-max-select"
-                    type="number"
-                    min={1}
-                    step={1}
-                    value={multiDraftMaxSelect}
-                    onChange={(event) => setMultiDraftMaxSelect(event.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label>Options</Label>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setMultiDraftOptions((prev) => [...prev, ''])}
-                    >
-                      Add option
-                    </Button>
-                  </div>
-                </div>
-                <div className="max-h-72 space-y-2 overflow-y-auto">
-                  {multiDraftOptions.map((entry, index) => (
-                    <div key={`multi-opt-${index}`} className="rounded-lg border p-3">
-                      <div className="flex items-center gap-2">
-                        <Input
-                          value={entry}
-                          onChange={(event) =>
-                            setMultiDraftOptions((prev) =>
-                              prev.map((value, idx) => (idx === index ? event.target.value : value)),
-                            )
-                          }
-                          placeholder="Option name"
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          disabled={multiDraftOptions.length <= 1}
-                          onClick={() =>
-                            setMultiDraftOptions((prev) => prev.filter((_, idx) => idx !== index))
-                          }
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
             ) : (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setMultiDraftName('')
-                  setMultiDraftOptions([''])
-                  setMultiDraftMaxSelect('1')
-                  setShowMultiNewGroupForm(true)
-                }}
-              >
-                Add new group
-              </Button>
+              <p className="text-sm text-muted-foreground">
+                No multi-select attribute groups in the library. Create them under Cafe & Food →
+                Attributes.
+              </p>
             )}
           </div>
           <DialogFooter>

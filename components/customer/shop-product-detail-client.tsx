@@ -1,12 +1,11 @@
 /** Shop product detail client — quantity + add/buy actions, gallery, related products. */
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { Minus, Plus, ShoppingCart } from 'lucide-react'
 
-import { StockStatusBadge } from '@/components/admin/stock-status-badge'
 import { ShopImageGallery } from '@/components/customer/shop-image-gallery'
 import { ShopProductCard } from '@/components/customer/shop-product-card'
 import { Button } from '@/components/ui/button'
@@ -17,7 +16,8 @@ import { useToast } from '@/hooks/use-toast'
 import { cn, formatPrice, formatSlotDate, formatSlotTimeRange, getStockStatus } from '@/lib/utils'
 import { useInventory } from '@/lib/inventory-store'
 import { isRentalProduct } from '@/lib/rental-product'
-import type { Product } from '@/lib/types'
+import { resolveVariantDimensionGroups } from '@/lib/shop-utils'
+import type { AttributeGroup, Product, ShopProductVariant } from '@/lib/types'
 
 export interface ShopProductDetailClientProps {
   readonly product: Product | null
@@ -32,6 +32,56 @@ export interface ShopProductDetailClientProps {
   readonly rentalToDate?: string
   readonly rentalSlotStartAt?: string
   readonly rentalSlotEndAt?: string
+  /** Shop merchandising variants (size, colour, etc.). */
+  readonly shopAttributeGroups?: AttributeGroup[]
+}
+
+function isColorGroup(groupName: string): boolean {
+  return groupName.trim().toLowerCase().includes('color')
+}
+
+function normalizeHexColor(value: string): string | null {
+  const raw = value.trim()
+  if (/^#[0-9a-fA-F]{6}$/.test(raw)) return raw
+  if (/^#[0-9a-fA-F]{3}$/.test(raw)) {
+    return `#${raw[1]}${raw[1]}${raw[2]}${raw[2]}${raw[3]}${raw[3]}`
+  }
+  return null
+}
+
+/**
+ * Option ids for variant dimension `targetGroupId` that appear on an enabled variant matching
+ * every *other* variant dimension the shopper has already picked (order-independent).
+ */
+function collectAvailableOptionIdsForVariantDimension(
+  enabledVariants: readonly ShopProductVariant[],
+  variantDimensionGroups: readonly AttributeGroup[],
+  targetGroupId: string,
+  selectedByGroupId: Readonly<Record<string, string[]>>,
+): Set<string> {
+  const isDimension = variantDimensionGroups.some((g) => g.id === targetGroupId)
+  if (!isDimension) return new Set()
+  const out = new Set<string>()
+  for (const variant of enabledVariants) {
+    let matchesOtherPicks = true
+    for (const g of variantDimensionGroups) {
+      if (g.id === targetGroupId) continue
+      const picked = selectedByGroupId[g.id]?.[0]
+      if (!picked) continue
+      if (variant.optionValueIdsByGroupId[g.id] !== picked) {
+        matchesOtherPicks = false
+        break
+      }
+    }
+    if (!matchesOtherPicks) continue
+    const id = variant.optionValueIdsByGroupId[targetGroupId]
+    if (id) out.add(id)
+  }
+  return out
+}
+
+function isVariantEnabled(variant: ShopProductVariant): boolean {
+  return variant.isActive !== false
 }
 
 export function ShopProductDetailClient({
@@ -47,6 +97,7 @@ export function ShopProductDetailClient({
   rentalToDate = '',
   rentalSlotStartAt = '',
   rentalSlotEndAt = '',
+  shopAttributeGroups = [],
 }: Readonly<ShopProductDetailClientProps>) {
   const router = useRouter()
   const { toast } = useToast()
@@ -152,6 +203,90 @@ export function ShopProductDetailClient({
     tierHourlyTotal,
   ])
 
+  const variantGroups = useMemo(() => {
+    if (!product) return [] as AttributeGroup[]
+    const raw =
+      shopAttributeGroups.length > 0 ? shopAttributeGroups : product.shopAttributeGroups ?? []
+    const allGroups = raw.filter((group) => group.options.length > 0)
+    const variants = product.shopVariants ?? []
+    if (variants.length === 0) {
+      return allGroups
+    }
+    const enabledVariants = variants.filter(isVariantEnabled)
+    const variantsForAllowlist = enabledVariants.length > 0 ? enabledVariants : variants
+    return allGroups
+      .map((group) => {
+        if (group.selectionType !== 'single' || group.isVariantDimension !== true) {
+          return group
+        }
+        const allowedOptionIds = new Set(
+          variantsForAllowlist
+            .map((variant) => variant.optionValueIdsByGroupId[group.id])
+            .filter((optionId): optionId is string => Boolean(optionId)),
+        )
+        if (allowedOptionIds.size === 0) {
+          return group
+        }
+        return {
+          ...group,
+          options: group.options.filter((option) => allowedOptionIds.has(option.id)),
+        }
+      })
+      .filter((group) => group.options.length > 0)
+  }, [product, shopAttributeGroups])
+  const variantDimensionGroups = useMemo(
+    () => resolveVariantDimensionGroups(variantGroups),
+    [variantGroups],
+  )
+
+  const [selectedShopAttributes, setSelectedShopAttributes] = useState<Record<string, string[]>>(
+    {},
+  )
+  const [showShopOptions, setShowShopOptions] = useState(true)
+
+  useEffect(() => {
+    if (!product) return
+    const next: Record<string, string[]> = {}
+    for (const group of variantGroups) {
+      next[group.id] = []
+    }
+    setSelectedShopAttributes(next)
+    const needPick =
+      !isGiftProduct && !isRentalProduct(product) && variantGroups.length > 0
+    setShowShopOptions(!needPick)
+  }, [product, variantGroups, isGiftProduct])
+
+  useEffect(() => {
+    if (!product || variantDimensionGroups.length === 0) return
+    const enabled = (product.shopVariants ?? []).filter(isVariantEnabled)
+    if (enabled.length === 0) return
+    setSelectedShopAttributes((prev) => {
+      const next = { ...prev }
+      let changed = false
+      const maxPasses = variantDimensionGroups.length + 2
+      for (let pass = 0; pass < maxPasses; pass++) {
+        let passChanged = false
+        for (const g of variantDimensionGroups) {
+          const selected = next[g.id]?.[0]
+          if (!selected) continue
+          const allowed = collectAvailableOptionIdsForVariantDimension(
+            enabled,
+            variantDimensionGroups,
+            g.id,
+            next,
+          )
+          if (!allowed.has(selected)) {
+            next[g.id] = []
+            passChanged = true
+            changed = true
+          }
+        }
+        if (!passChanged) break
+      }
+      return changed ? next : prev
+    })
+  }, [product, variantDimensionGroups, selectedShopAttributes])
+
   if (!product) {
     return (
       <div className="rounded-xl border border-border bg-card p-10 text-center">
@@ -167,6 +302,9 @@ export function ShopProductDetailClient({
   }
 
   const shopProduct = product
+  const needsVariantPick =
+    !isGiftProduct && !isRentalProduct(shopProduct) && variantGroups.length > 0
+
   const isRental = isRentalProduct(shopProduct)
   const rentalBilling = shopProduct.rentalBillingType ?? ''
   const requiresRentalCalendar =
@@ -194,19 +332,109 @@ export function ShopProductDetailClient({
       : shopProduct.rentalBillingType === 'PER_DAY' && dailyEffectiveTotal != null
         ? dailyEffectiveTotal
         : rentalBaseUnitPrice
-  const totalPrice = selectedRentalUnitPrice * qty
+  const baseMaxQty =
+    shopProduct.allowBackorders || shopProduct.stockCount <= 0 ? undefined : Math.max(1, shopProduct.stockCount)
+
+  function buildSelectedShopLabels(): Record<string, string[]> {
+    const out: Record<string, string[]> = {}
+    for (const group of variantGroups) {
+      const ids = selectedShopAttributes[group.id] ?? []
+      const labels = ids
+        .map((id) => group.options.find((option) => option.id === id)?.label)
+        .filter((label): label is string => Boolean(label && label.length > 0))
+      if (labels.length > 0) {
+        out[group.id] = labels
+      }
+    }
+    return out
+  }
+
+  function shopSelectionsValid(): boolean {
+    for (const group of variantGroups) {
+      if (!group.isRequired) continue
+      const ids = selectedShopAttributes[group.id] ?? []
+      if (ids.length === 0) return false
+    }
+    return true
+  }
+
+  function resolveSelectedVariant() {
+    if (variantDimensionGroups.length === 0) return null
+    const variants = shopProduct.shopVariants ?? []
+    if (variants.length === 0) return null
+    const enabledVariants = variants.filter(isVariantEnabled)
+    const pool = enabledVariants.length > 0 ? enabledVariants : variants
+    const selectedOptionIdsByGroupId: Record<string, string> = {}
+    for (const group of variantDimensionGroups) {
+      const selected = selectedShopAttributes[group.id]?.[0]
+      if (!selected) return null
+      selectedOptionIdsByGroupId[group.id] = selected
+    }
+    return (
+      pool.find((variant) =>
+        Object.entries(selectedOptionIdsByGroupId).every(
+          ([groupId, optionId]) => variant.optionValueIdsByGroupId[groupId] === optionId,
+        ),
+      ) ?? null
+    )
+  }
+  const selectedVariant = resolveSelectedVariant()
+  const selectedShopUnitPrice =
+    !isGiftProduct && !isRental && selectedVariant?.priceOverride != null
+      ? selectedVariant.priceOverride
+      : defaultUnitPrice
+  const variantPriceRangeLabel = (() => {
+    if (isGiftProduct || isRental) return null
+    const variants = shopProduct.shopVariants ?? []
+    if (variants.length === 0) return null
+    const activeVariants = variants.filter(isVariantEnabled)
+    const source = activeVariants.length > 0 ? activeVariants : variants
+    const prices = source.map((variant) => variant.priceOverride ?? defaultUnitPrice)
+    if (prices.length === 0) return null
+    const minPrice = Math.min(...prices)
+    const maxPrice = Math.max(...prices)
+    if (minPrice === maxPrice) return null
+    return `${formatPrice(minPrice)} - ${formatPrice(maxPrice)}`
+  })()
+  const effectiveAllowBackorders = selectedVariant?.allowBackorders ?? shopProduct.allowBackorders
+  const effectiveStockCount = selectedVariant?.stockCount ?? shopProduct.stockCount
+  const effectiveLowStockThreshold =
+    selectedVariant?.lowStockThreshold ?? shopProduct.lowStockThreshold
+  const isOutOfStock = !effectiveAllowBackorders && effectiveStockCount <= 0
+  const isLowStock = !isOutOfStock && effectiveStockCount <= effectiveLowStockThreshold
+  const totalPrice = (isRental ? selectedRentalUnitPrice : selectedShopUnitPrice) * qty
   const heroUnitPrice =
     isRental && (rentalBilling === 'PER_DAY' || rentalBilling === 'PER_HOUR' || rentalBilling === 'PER_HALF_DAY')
       ? rentalBaseUnitPrice
-      : defaultUnitPrice
+      : selectedShopUnitPrice
   const heroCompareAt = shopProduct.compareAtPrice ?? null
   const heroSavings =
     heroCompareAt != null && heroCompareAt > heroUnitPrice ? heroCompareAt - heroUnitPrice : null
-
   const maxQty =
-    shopProduct.allowBackorders || shopProduct.stockCount <= 0
-      ? undefined
-      : Math.max(1, shopProduct.stockCount)
+    selectedVariant
+      ? (effectiveAllowBackorders ? undefined : Math.max(1, effectiveStockCount))
+      : baseMaxQty
+
+  function toggleShopAttribute(group: AttributeGroup, optionId: string) {
+    setSelectedShopAttributes((prev) => {
+      const current = prev[group.id] ?? []
+      if (group.selectionType === 'single') {
+        return { ...prev, [group.id]: [optionId] }
+      }
+      const cap = Math.max(1, (group.maxSelect ?? group.options.length) || 1)
+      if (!current.includes(optionId) && current.length >= cap) {
+        return prev
+      }
+      const nextIds = current.includes(optionId)
+        ? current.filter((id) => id !== optionId)
+        : [...current, optionId]
+      return { ...prev, [group.id]: nextIds }
+    })
+  }
+
+  function clearShopMulti(groupId: string) {
+    setSelectedShopAttributes((prev) => ({ ...prev, [groupId]: [] }))
+  }
 
   function toIsoRange(fromDate: string, toDate: string): { fromIso: string; toIso: string } | null {
     const fromTrimmed = fromDate.trim()
@@ -387,6 +615,55 @@ export function ShopProductDetailClient({
       })
       return
     }
+    if (needsVariantPick) {
+      if (!shopSelectionsValid()) {
+        toast({
+          title: 'Select options',
+          description: 'Choose all required options before adding to cart.',
+          variant: 'destructive',
+        })
+        return
+      }
+      if (variantDimensionGroups.length > 0 && !selectedVariant) {
+        toast({
+          title: 'Variant unavailable',
+          description: 'This combination is not available right now.',
+          variant: 'destructive',
+        })
+        return
+      }
+      if (selectedVariant && !isVariantEnabled(selectedVariant)) {
+        toast({
+          title: 'Variant unavailable',
+          description: 'This variant is currently inactive.',
+          variant: 'destructive',
+        })
+        return
+      }
+      if (
+        selectedVariant &&
+        !effectiveAllowBackorders &&
+        qty > effectiveStockCount
+      ) {
+        toast({
+          title: 'Limited stock',
+          description: `Only ${effectiveStockCount} item(s) available for this variant.`,
+          variant: 'destructive',
+        })
+        return
+      }
+      addToCart({
+        product: shopProduct,
+        quantity: qty,
+        selectedShopAttributes: buildSelectedShopLabels(),
+        shopAttributeGroupsSnapshot: variantGroups,
+        shopVariantId: selectedVariant?.id,
+        shopVariantSku: selectedVariant?.sku,
+        unitPrice: selectedVariant?.priceOverride ?? defaultUnitPrice,
+      })
+      return
+    }
+
     addToCart({ product: shopProduct, quantity: qty })
   }
 
@@ -396,9 +673,10 @@ export function ShopProductDetailClient({
   }
 
   const images = [
-    shopProduct.imageUrl ?? '',
+    selectedVariant?.imageUrl ?? '',
+    selectedVariant?.imageUrl ? '' : (shopProduct.imageUrl ?? ''),
     ...(shopProduct.galleryUrls ?? shopProduct.galleryImages ?? []),
-  ]
+  ].filter((image, index, list) => image.trim().length > 0 && list.indexOf(image) === index)
   const selectedRelatedRows = related
     .filter((row) => (selectedRelatedQuantities[row.id] ?? 0) > 0)
     .map((row) => ({
@@ -417,7 +695,8 @@ export function ShopProductDetailClient({
     ((rentalBilling === 'PER_DAY' && perDayRangeComplete) ||
       ((rentalBilling === 'PER_HOUR' || rentalBilling === 'PER_HALF_DAY') && slotScheduleComplete))
   const showInlineRentalControls = !isRental
-  const alignImageWithDetails = isGiftProduct || isRental
+  const alignImageWithDetails = true
+  const showPinnedStandardCheckout = !isGiftProduct && !isRental && needsVariantPick && showShopOptions
 
   function updateRelatedQuantity(productId: string, delta: number) {
     setSelectedRelatedQuantities((prev) => {
@@ -431,6 +710,130 @@ export function ShopProductDetailClient({
       }
       return out
     })
+  }
+
+  function renderVariantCustomiseSection() {
+    if (!(needsVariantPick && showShopOptions)) return null
+
+    return (
+      <div className="space-y-4 rounded-xl border border-border bg-card p-4 sm:p-5">
+        {variantGroups
+          .filter((group) => group.selectionType === 'single')
+          .map((group) => {
+            const selectedId = selectedShopAttributes[group.id]?.[0] ?? ''
+            const selectedLabel =
+              group.options.find((option) => option.id === selectedId)?.label ?? '—'
+            const isColor = isColorGroup(group.name)
+            const isVariantDimension = variantDimensionGroups.some((dim) => dim.id === group.id)
+            const enabledVariants = (shopProduct.shopVariants ?? []).filter(isVariantEnabled)
+            const allowedIdsForDim =
+              isVariantDimension && enabledVariants.length > 0
+                ? collectAvailableOptionIdsForVariantDimension(
+                    enabledVariants,
+                    variantDimensionGroups,
+                    group.id,
+                    selectedShopAttributes,
+                  )
+                : null
+            const optionsToShow =
+              allowedIdsForDim != null
+                ? group.options.filter((option) => allowedIdsForDim.has(option.id))
+                : group.options
+            return (
+              <div key={group.id} className="space-y-2">
+                <p className="text-sm font-semibold text-foreground">
+                  {group.name}: <span className="font-medium">{selectedLabel}</span>
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {optionsToShow.map((option) => {
+                    const selected = selectedShopAttributes[group.id]?.includes(option.id) ?? false
+                    const colorHex = isColor && option.color ? normalizeHexColor(option.color) : null
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => toggleShopAttribute(group, option.id)}
+                        className={cn(
+                          'inline-flex items-center justify-center rounded-md border text-sm transition-colors',
+                          selected
+                            ? 'border-foreground bg-foreground text-background'
+                            : 'border-border bg-background text-foreground hover:border-muted-foreground/40',
+                          colorHex ? 'h-8 w-8 p-0' : 'h-8 min-w-8 px-3',
+                        )}
+                        aria-label={`${group.name}: ${option.label}`}
+                        title={option.label}
+                      >
+                        {colorHex ? (
+                          <span
+                            className="h-5 w-5 rounded-sm border border-background/20"
+                            style={{ backgroundColor: colorHex }}
+                          />
+                        ) : (
+                          option.label
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+        {variantGroups.some((group) => group.selectionType === 'multiple') ? (
+          <div className="space-y-3 border-t border-border pt-3">
+            {variantGroups
+              .filter((group) => group.selectionType === 'multiple')
+              .map((group) => (
+                <div key={group.id} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-foreground">{group.name}</p>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => clearShopMulti(group.id)}
+                    >
+                      Clear
+                    </Button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {group.options.map((option) => {
+                      const selected = selectedShopAttributes[group.id]?.includes(option.id) ?? false
+                      const colorHex =
+                        isColorGroup(group.name) && option.color ? normalizeHexColor(option.color) : null
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => toggleShopAttribute(group, option.id)}
+                          className={cn(
+                            'inline-flex items-center justify-center rounded-md border text-sm transition-colors',
+                            selected
+                              ? 'border-foreground bg-foreground text-background'
+                              : 'border-border bg-background text-foreground hover:border-muted-foreground/40',
+                            colorHex ? 'h-8 w-8 p-0' : 'h-8 min-w-8 px-3',
+                          )}
+                          aria-label={`${group.name}: ${option.label}`}
+                          title={option.label}
+                        >
+                          {colorHex ? (
+                            <span
+                              className="h-5 w-5 rounded-sm border border-background/20"
+                              style={{ backgroundColor: colorHex }}
+                            />
+                          ) : (
+                            option.label
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+          </div>
+        ) : null}
+      </div>
+    )
   }
 
   const productDetailSection = (
@@ -462,7 +865,7 @@ export function ShopProductDetailClient({
       </div>
 
       <div className="flex min-h-0 flex-col lg:col-span-7">
-        <div className="space-y-5">
+        <div className="flex h-full min-h-0 flex-col space-y-5">
           <div className="space-y-2">
             <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
               {categoryName ?? 'Shop'}
@@ -473,19 +876,17 @@ export function ShopProductDetailClient({
             >
               {shopProduct.name}
             </h1>
-            <div className="flex flex-wrap items-center gap-2">
-              {shopProduct.sku ? (
-                <span className="inline-flex rounded-md bg-muted px-2 py-1 font-mono text-xs text-foreground">
-                  {shopProduct.sku}
-                </span>
-              ) : null}
-              <StockStatusBadge product={shopProduct} />
-              {status === 'LOW_STOCK' ? (
-                <span className="text-xs font-semibold text-amber-700">
-                  Only {shopProduct.stockCount} left
-                </span>
-              ) : null}
-            </div>
+            {shopProduct.description ? (
+              <div
+                className={cn(
+                  'max-w-none text-sm font-normal leading-relaxed text-muted-foreground',
+                  '[&_p]:m-0 [&_p]:text-sm [&_p]:font-normal [&_p]:leading-relaxed [&_p]:text-muted-foreground',
+                )}
+                dangerouslySetInnerHTML={{ __html: shopProduct.description }}
+              />
+            ) : (
+              <p className="text-sm text-muted-foreground">—</p>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -507,6 +908,11 @@ export function ShopProductDetailClient({
                 </span>
               ) : null}
             </div>
+            {/* {variantPriceRangeLabel ? (
+              <p className="text-base font-semibold text-foreground/85">
+                {variantPriceRangeLabel}
+              </p>
+            ) : null} */}
             {shopProduct.memberPrice != null && !isRental ? (
               <p className="text-sm font-semibold text-accent">
                 Member price: {formatPrice(shopProduct.memberPrice)}
@@ -519,14 +925,8 @@ export function ShopProductDetailClient({
             ) : null}
           </div>
 
-          {shopProduct.description ? (
-            <div
-              className={cn('prose prose-sm max-w-none dark:prose-invert')}
-              dangerouslySetInnerHTML={{ __html: shopProduct.description }}
-            />
-          ) : (
-            <p className="text-sm text-muted-foreground">—</p>
-          )}
+          {renderVariantCustomiseSection()}
+
           {isRental &&
           ((shopProduct.rentalBillingType === 'PER_HOUR' &&
             (shopProduct.rentalHourlyTierPrices?.length ?? 0) > 0) ||
@@ -665,12 +1065,46 @@ export function ShopProductDetailClient({
             </div>
           ) : null}
 
+          <div className="flex flex-wrap items-center gap-2">
+            {selectedVariant?.sku || shopProduct.sku ? (
+              <span className="inline-flex rounded-md bg-muted px-2 py-1 font-mono text-xs text-foreground">
+                {selectedVariant?.sku ?? shopProduct.sku}
+              </span>
+            ) : null}
+            {shopProduct.targetGender ? (
+              <span className="inline-flex rounded-md bg-muted px-2 py-1 text-xs text-foreground capitalize">
+                {shopProduct.targetGender}
+              </span>
+            ) : null}
+            {isOutOfStock ? (
+              <span className="rounded-md bg-destructive/10 px-2 py-1 text-xs font-semibold text-destructive">
+                Out of stock
+              </span>
+            ) : isLowStock ? (
+              <span className="text-xs font-semibold text-amber-700">
+                Only {effectiveStockCount} left
+              </span>
+            ) : (
+              <span className="rounded-md bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-800">
+                In stock: {effectiveStockCount}
+              </span>
+            )}
+          </div>
+
           <Separator />
 
           {isGiftProduct && selectedGiftQuantity <= 0 ? (
             <Button
               className="w-full bg-accent text-accent-foreground hover:bg-accent/90 font-semibold"
               onClick={() => setSelectedGiftQuantity(1)}
+            >
+              Select items
+            </Button>
+          ) : needsVariantPick && !showShopOptions ? (
+            <Button
+              className="w-full bg-accent text-accent-foreground hover:bg-accent/90 font-semibold"
+              type="button"
+              onClick={() => setShowShopOptions(true)}
             >
               Select items
             </Button>
@@ -720,7 +1154,7 @@ export function ShopProductDetailClient({
                       </div>
                     )
                   ) : null}
-                  {showInlineRentalControls ? (
+                  {showInlineRentalControls && !showPinnedStandardCheckout ? (
                     <>
                       <div className="flex items-center justify-between gap-3">
                         <p className="text-sm font-semibold text-foreground">Quantity</p>
@@ -773,6 +1207,7 @@ export function ShopProductDetailClient({
               )}
             </>
           )}
+
         </div>
       </div>
     </div>
@@ -975,7 +1410,7 @@ export function ShopProductDetailClient({
           <div className={giftLineRowClass} aria-label={`Rental: ${shopProduct.name}`}>
             <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-border">
               <Image
-                src={shopProduct.imageUrl ?? '/placeholder.jpg'}
+                src={selectedVariant?.imageUrl ?? shopProduct.imageUrl ?? '/placeholder.jpg'}
                 alt=""
                 fill
                 className="object-cover"
@@ -1038,12 +1473,87 @@ export function ShopProductDetailClient({
     </div>
   ) : null
 
+  const standardCheckoutCard = showPinnedStandardCheckout ? (
+    <div className="w-full rounded-xl border border-border bg-card p-5">
+      <h3
+        className="text-lg font-black text-foreground"
+        style={{ fontFamily: 'var(--font-barlow)' }}
+      >
+        Cart & checkout
+      </h3>
+      <div className="translate-y-0 opacity-100 transition-all duration-300 ease-out">
+        <div className="mt-5 max-h-[420px] space-y-3 overflow-x-hidden overflow-y-auto pr-1">
+          <div className={giftLineRowClass} aria-label={`Product: ${shopProduct.name}`}>
+            <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-border">
+              <Image
+                src={shopProduct.imageUrl ?? '/placeholder.jpg'}
+                alt=""
+                fill
+                className="object-cover"
+                sizes="56px"
+              />
+            </div>
+            <div className="shrink-0 tabular-nums">
+              <p className="text-sm font-semibold text-foreground">{formatPrice(heroUnitPrice)}</p>
+              <p className="text-xs text-muted-foreground">each</p>
+            </div>
+            <div className="ml-auto flex shrink-0 flex-col items-end gap-1.5">
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="h-9 w-9"
+                  onClick={dec}
+                  aria-label="Decrease quantity"
+                >
+                  <Minus className="h-4 w-4" />
+                </Button>
+                <span className="min-w-[2rem] text-center text-sm font-semibold tabular-nums">
+                  {qty}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="h-9 w-9"
+                  onClick={inc}
+                  aria-label="Increase quantity"
+                  disabled={maxQty != null && qty >= maxQty}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+              <p className="text-right text-sm font-bold tabular-nums text-foreground">
+                {formatPrice(totalPrice)}
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="mt-5 rounded-lg border border-border bg-muted/20 px-4 py-3">
+          <div className="flex items-center justify-between text-sm">
+            <span className="font-medium text-foreground">Total</span>
+            <span className="font-bold tabular-nums text-foreground">{formatPrice(totalPrice)}</span>
+          </div>
+          <Button
+            className="mt-4 w-full bg-accent text-accent-foreground hover:bg-accent/90 font-semibold"
+            onClick={add}
+          >
+            <ShoppingCart className="mr-2 h-4 w-4" />
+            Add to cart
+          </Button>
+        </div>
+      </div>
+    </div>
+  ) : null
+
   return (
     <div
       className={cn(
         'space-y-12',
         isGiftProduct && selectedGiftQuantity > 0 && 'xl:pr-[460px] 2xl:pr-[480px]',
         isRental && hasRentalSelection && 'xl:pr-[460px] 2xl:pr-[480px]',
+        showPinnedStandardCheckout && 'xl:pr-[460px] 2xl:pr-[480px]',
       )}
     >
       {productDetailSection}
@@ -1064,22 +1574,6 @@ export function ShopProductDetailClient({
         </div>
       ) : null}
 
-      {!isGiftProduct && related.length > 0 ? (
-        <section className="space-y-4">
-          <h2
-            className="text-xl font-black text-foreground"
-            style={{ fontFamily: 'var(--font-barlow)' }}
-          >
-            {relatedTitle}
-          </h2>
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {related.map((p) => (
-              <ShopProductCard key={p.id} product={p} />
-            ))}
-          </div>
-        </section>
-      ) : null}
-
       {isRental && hasRentalSelection ? (
         <div className="relative">
           <div className="mt-6 xl:hidden">
@@ -1088,6 +1582,17 @@ export function ShopProductDetailClient({
           <div className="hidden xl:block">
             <div className="fixed right-[max(1rem,calc((100vw-88rem)/2+1rem))] top-24 z-40 w-[min(420px,calc(100vw-2rem))]">
               {rentalCheckoutCard}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showPinnedStandardCheckout ? (
+        <div className="relative">
+          <div className="mt-6 xl:hidden">{standardCheckoutCard}</div>
+          <div className="hidden xl:block">
+            <div className="fixed right-[max(1rem,calc((100vw-88rem)/2+1rem))] top-24 z-40 w-[min(420px,calc(100vw-2rem))]">
+              {standardCheckoutCard}
             </div>
           </div>
         </div>

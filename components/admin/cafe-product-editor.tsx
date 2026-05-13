@@ -70,7 +70,6 @@ export function CafeProductEditor({ mode, productId = '' }: Readonly<CafeProduct
   const {
     cafeProducts,
     upsertCafeProduct,
-    upsertAttributeGroup,
     modifierGroups,
     attributeGroups,
     rotationGroups,
@@ -166,13 +165,7 @@ export function CafeProductEditor({ mode, productId = '' }: Readonly<CafeProduct
   }, [draft.availableDaysOfWeek])
 
   function handleSave() {
-    setAttrErrors(
-      Object.fromEntries(
-        attributeGroups
-          .filter((group) => group.isRequired && (draft.attributeGroups[group.id] ?? []).length === 0)
-          .map((group) => [group.id, `Select at least one option in ${group.name}.`]),
-      ),
-    )
+    setAttrErrors({})
     if ((draft.availableDaysOfWeek?.length ?? 0) === 0) {
       toast({
         title: 'Check availability',
@@ -180,17 +173,6 @@ export function CafeProductEditor({ mode, productId = '' }: Readonly<CafeProduct
         variant: 'destructive',
       })
       return
-    }
-    for (const group of attributeGroups) {
-      if (!group.isRequired) continue
-      if ((draft.attributeGroups[group.id] ?? []).length === 0) {
-        toast({
-          title: 'Attributes required',
-          description: `Select options for ${group.name}.`,
-          variant: 'destructive',
-        })
-        return
-      }
     }
     if (!selectedSubCategoryId) {
       toast({
@@ -306,7 +288,6 @@ export function CafeProductEditor({ mode, productId = '' }: Readonly<CafeProduct
             modifierGroups={modifierGroups}
             attributeGroups={attributeGroups}
             rotationGroups={rotationGroups}
-            onUpsertAttributeGroup={upsertAttributeGroup}
             attributeErrors={attrErrors as Partial<Record<AttributeGroup['id'], string>>}
           />
           <div className="flex items-center justify-end gap-2">

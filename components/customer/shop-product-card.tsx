@@ -4,7 +4,6 @@
 import { useMemo, useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { Check, Plus } from 'lucide-react'
 
 import { StockStatusBadge } from '@/components/admin/stock-status-badge'
 import { Badge } from '@/components/ui/badge'
@@ -23,14 +22,8 @@ export interface ShopProductCardProps {
 }
 
 export function ShopProductCard({ product, className }: Readonly<ShopProductCardProps>) {
-  const { addToCart, cart, productCategories } = useInventory()
+  const { productCategories } = useInventory()
   const [usePlaceholder, setUsePlaceholder] = useState(false)
-
-  const inCartQty = useMemo(() => {
-    return cart.items
-      .filter((i) => i.type === 'product' && i.metadata?.productId === product.id)
-      .reduce((s, i) => s + i.quantity, 0)
-  }, [cart.items, product.id])
 
   const imageSrc = usePlaceholder
     ? PLACEHOLDER_SRC
@@ -118,34 +111,9 @@ export function ShopProductCard({ product, className }: Readonly<ShopProductCard
           <StockStatusBadge product={product} />
         </div>
 
-        {isGiftProduct || isRental ? (
-          <Button asChild size="sm" className="w-full bg-accent text-accent-foreground hover:bg-accent/90">
-            <Link href={`/shop/${product.id}`}>View details</Link>
-          </Button>
-        ) : (
-          <Button
-            size="sm"
-            className={cn(
-              'w-full font-semibold transition-all',
-              inCartQty > 0
-                ? 'bg-green-600 text-white hover:bg-green-600'
-                : 'bg-accent text-accent-foreground hover:bg-accent/90',
-            )}
-            onClick={() => addToCart({ product })}
-          >
-            {inCartQty > 0 ? (
-              <>
-                <Check className="mr-1.5 h-3.5 w-3.5" />
-                Added ({inCartQty})
-              </>
-            ) : (
-              <>
-                <Plus className="mr-1.5 h-3.5 w-3.5" />
-                Add to cart
-              </>
-            )}
-          </Button>
-        )}
+        <Button asChild size="sm" className="w-full bg-accent text-accent-foreground hover:bg-accent/90">
+          <Link href={`/shop/${product.id}`}>View details</Link>
+        </Button>
       </div>
     </article>
   )

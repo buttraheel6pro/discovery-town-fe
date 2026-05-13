@@ -7,6 +7,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 
 import { CafeProductEditor } from '@/components/admin/cafe-product-editor'
+import { ShopProductEditor } from '@/components/admin/shop-product-editor'
 import { GiftProductForm, type GiftProductDraft } from '@/components/admin/gift-product-form'
 import {
   ProductForm,
@@ -118,6 +119,11 @@ export default function AdminInventoryProductEditPage() {
     if (!product) return false
     const category = categoryById.get(product.categoryId) ?? null
     return (category?.productType ?? '').toLowerCase() === 'cafe&food'
+  }, [categoryById, product])
+  const isShopProductType = useMemo(() => {
+    if (!product) return false
+    const category = categoryById.get(product.categoryId) ?? null
+    return (category?.productType ?? '').toLowerCase() === 'shop'
   }, [categoryById, product])
   const giftsRootCategory = useMemo(() => {
     return categories.find(
@@ -306,6 +312,10 @@ export default function AdminInventoryProductEditPage() {
 
   if (isCafeAndFoodProduct) {
     return <CafeProductEditor mode="edit" productId={product.id} />
+  }
+
+  if (isShopProductType) {
+    return <ShopProductEditor mode="edit" productId={product.id} />
   }
 
   return (

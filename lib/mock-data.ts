@@ -64,6 +64,7 @@ import type {
   StaffAssignment,
   RentalAvailabilityDay,
   AttributeGroup,
+  AttributeOption,
   CafeProduct,
   ModifierGroup,
   RotationGroup,
@@ -1644,6 +1645,141 @@ export const productCategories: ProductCategory[] = [
   },
 ]
 
+function mockShopOpt(id: string, label: string): AttributeOption {
+  return { id, label, emoji: '', color: 'muted' }
+}
+
+const MOCK_SHOP_ATTR_TOYS: AttributeGroup[] = [
+  {
+    id: 'sag-mock-toys-color',
+    name: 'Color',
+    selectionType: 'single',
+    isRequired: true,
+    options: [
+      mockShopOpt('opt-toy-c1', 'Red'),
+      mockShopOpt('opt-toy-c2', 'Blue'),
+      mockShopOpt('opt-toy-c3', 'Green'),
+      mockShopOpt('opt-toy-c4', 'Yellow'),
+      mockShopOpt('opt-toy-c5', 'Multi'),
+    ],
+  },
+  {
+    id: 'sag-mock-toys-size',
+    name: 'Size',
+    selectionType: 'single',
+    isRequired: true,
+    options: [
+      mockShopOpt('opt-toy-s1', 'Small'),
+      mockShopOpt('opt-toy-s2', 'Medium'),
+      mockShopOpt('opt-toy-s3', 'Large'),
+    ],
+  },
+]
+
+const MOCK_SHOP_ATTR_CLOTHES: AttributeGroup[] = [
+  {
+    id: 'sag-mock-clothes-size',
+    name: 'Size',
+    selectionType: 'single',
+    isRequired: true,
+    options: ['XS', 'S', 'M', 'L', 'XL', 'XXL'].map((label, i) =>
+      mockShopOpt(`opt-cloth-size-${i}`, label),
+    ),
+  },
+  {
+    id: 'sag-mock-clothes-color',
+    name: 'Color',
+    selectionType: 'single',
+    isRequired: true,
+    options: ['Black', 'White', 'Navy', 'Grey', 'Beige', 'Olive'].map((label, i) =>
+      mockShopOpt(`opt-cloth-col-${i}`, label),
+    ),
+  },
+  {
+    id: 'sag-mock-clothes-fit',
+    name: 'Fit Type',
+    selectionType: 'single',
+    isRequired: true,
+    options: ['Slim', 'Regular', 'Oversized'].map((label, i) =>
+      mockShopOpt(`opt-cloth-fit-${i}`, label),
+    ),
+  },
+  {
+    id: 'sag-mock-clothes-gender',
+    name: 'Gender',
+    selectionType: 'single',
+    isRequired: true,
+    options: ['Men', 'Women', 'Unisex'].map((label, i) =>
+      mockShopOpt(`opt-cloth-gen-${i}`, label),
+    ),
+  },
+  {
+    id: 'sag-mock-clothes-material',
+    name: 'Material',
+    selectionType: 'multiple',
+    maxSelect: 3,
+    isRequired: true,
+    options: ['Cotton', 'Polyester', 'Wool', 'Denim', 'Linen'].map((label, i) =>
+      mockShopOpt(`opt-cloth-mat-${i}`, label),
+    ),
+  },
+  {
+    id: 'sag-mock-clothes-season',
+    name: 'Season',
+    selectionType: 'single',
+    isRequired: true,
+    options: ['Summer', 'Winter', 'All-season'].map((label, i) =>
+      mockShopOpt(`opt-cloth-sea-${i}`, label),
+    ),
+  },
+]
+
+const MOCK_SHOP_ATTR_FURNITURE: AttributeGroup[] = [
+  {
+    id: 'sag-mock-furn-dim',
+    name: 'Dimensions',
+    selectionType: 'single',
+    isRequired: true,
+    options: ['Compact', 'Standard', 'Large'].map((label, i) =>
+      mockShopOpt(`opt-furn-dim-${i}`, label),
+    ),
+  },
+  {
+    id: 'sag-mock-furn-mat',
+    name: 'Material',
+    selectionType: 'single',
+    isRequired: true,
+    options: ['Wood', 'Metal', 'Glass', 'Plastic', 'Mixed'].map((label, i) =>
+      mockShopOpt(`opt-furn-mat-${i}`, label),
+    ),
+  },
+  {
+    id: 'sag-mock-furn-finish',
+    name: 'Color / Finish',
+    selectionType: 'single',
+    isRequired: true,
+    options: ['Oak', 'Walnut', 'Matte black', 'White', 'Grey'].map((label, i) =>
+      mockShopOpt(`opt-furn-fin-${i}`, label),
+    ),
+  },
+  {
+    id: 'sag-mock-furn-weight',
+    name: 'Weight capacity',
+    selectionType: 'single',
+    isRequired: true,
+    options: ['Up to 50 kg', 'Up to 100 kg', 'Up to 150 kg', 'Heavy duty'].map((label, i) =>
+      mockShopOpt(`opt-furn-wt-${i}`, label),
+    ),
+  },
+  {
+    id: 'sag-mock-furn-assembly',
+    name: 'Assembly required',
+    selectionType: 'single',
+    isRequired: true,
+    options: ['Yes', 'No'].map((label, i) => mockShopOpt(`opt-furn-asm-${i}`, label)),
+  },
+]
+
 export const products: Product[] = [
   {
     id: 'prod-shop-toys-stem-lab-kit',
@@ -1661,6 +1797,7 @@ export const products: Product[] = [
     imageUrl: 'https://images.unsplash.com/photo-1516627145497-ae6968895b74?w=1200&q=80',
     isActive: true,
     isFeatured: true,
+    shopAttributeGroups: MOCK_SHOP_ATTR_TOYS,
     createdAt: '2024-01-01T00:00:00Z',
     updatedAt: '2024-01-01T00:00:00Z',
   },
@@ -1680,6 +1817,7 @@ export const products: Product[] = [
     imageUrl: 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=1200&q=80',
     isActive: true,
     isFeatured: true,
+    shopAttributeGroups: MOCK_SHOP_ATTR_TOYS,
     createdAt: '2024-01-01T00:00:00Z',
     updatedAt: '2024-01-01T00:00:00Z',
   },
@@ -1698,6 +1836,7 @@ export const products: Product[] = [
     imageUrl: 'https://images.unsplash.com/photo-1558679908-541bcf1249ff?w=1200&q=80',
     isActive: true,
     isFeatured: true,
+    shopAttributeGroups: MOCK_SHOP_ATTR_CLOTHES,
     createdAt: '2024-01-01T00:00:00Z',
     updatedAt: '2024-01-01T00:00:00Z',
   },
@@ -1716,6 +1855,7 @@ export const products: Product[] = [
     imageUrl: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=1200&q=80',
     isActive: true,
     isFeatured: false,
+    shopAttributeGroups: MOCK_SHOP_ATTR_CLOTHES,
     createdAt: '2024-01-01T00:00:00Z',
     updatedAt: '2024-01-01T00:00:00Z',
   },
@@ -1734,6 +1874,7 @@ export const products: Product[] = [
     imageUrl: 'https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?w=1200&q=80',
     isActive: true,
     isFeatured: false,
+    shopAttributeGroups: MOCK_SHOP_ATTR_FURNITURE,
     createdAt: '2024-01-01T00:00:00Z',
     updatedAt: '2024-01-01T00:00:00Z',
   },
@@ -1752,6 +1893,7 @@ export const products: Product[] = [
     imageUrl: 'https://images.unsplash.com/photo-1493666438817-866a91353ca9?w=1200&q=80',
     isActive: true,
     isFeatured: true,
+    shopAttributeGroups: MOCK_SHOP_ATTR_FURNITURE,
     createdAt: '2024-01-01T00:00:00Z',
     updatedAt: '2024-01-01T00:00:00Z',
   },

@@ -282,7 +282,7 @@ const EVENT_TYPE_PRODUCT_TYPE_MENU_ORDER = [
   { productType: "cafe&food", label: "Cafe & Food" },
   { productType: "gifts", label: "Gifts" },
   { productType: "rentals", label: "Rentals" },
-  // { productType: "shop", label: "Shop" },
+  { productType: "shop", label: "Shop" },
 ] as const;
 
 const PRODUCT_TYPE_TO_MENU_LABEL: Record<
@@ -963,6 +963,8 @@ function AdminSchedulingServicesPageContent() {
     "cafe&food";
   const isSelectedProductMenuRentals =
     (selectedProductMenuCategory?.productType ?? "").toLowerCase() === "rentals";
+  const isSelectedProductMenuShop =
+    (selectedProductMenuCategory?.productType ?? "").toLowerCase() === "shop";
 
   const catalogTitle = useMemo(() => {
     if (serviceCategoryFilterId === "ALL") {
@@ -2277,6 +2279,8 @@ function AdminSchedulingServicesPageContent() {
                           ? `/admin/inventory/products/new?productType=gifts&categoryId=${encodeURIComponent(selectedProductMenuCategoryId ?? "")}&returnTo=${encodeURIComponent(contextualReturnTo)}`
                           : isSelectedProductMenuRentals
                             ? `/admin/inventory/products/new?productType=rentals&categoryId=${encodeURIComponent(selectedProductMenuCategoryId ?? "")}&returnTo=${encodeURIComponent(contextualReturnTo)}`
+                          : isSelectedProductMenuShop
+                            ? `/admin/inventory/products/new?productType=shop&categoryId=${encodeURIComponent(selectedProductMenuCategoryId ?? "")}&returnTo=${encodeURIComponent(contextualReturnTo)}`
                           : `/admin/inventory/products/new?returnTo=${encodeURIComponent(contextualReturnTo)}`
                       }
                     >

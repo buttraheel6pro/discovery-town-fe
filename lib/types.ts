@@ -1164,6 +1164,12 @@ export interface Product {
   giftPriceUpperLimit?: number | null;
   /** Gifts-only linked occasion id. */
   giftOccasionId?: string | null;
+  /** Shop merch — variant attribute groups (size/color/etc.). */
+  shopAttributeGroups?: AttributeGroup[];
+  /** Shop merch — generated sellable combinations with per-variant stock. */
+  shopVariants?: ShopProductVariant[];
+  /** Shop merch — catalog applicability, distinct from customer-selectable attributes. */
+  targetGender?: "men" | "women" | "unisex";
 }
 
 export interface StockMovement {
@@ -1606,6 +1612,13 @@ export interface CartItem {
   modifierTotal?: number;
   selectedModifiers?: CartModifierSelection[];
   preparationTimeMinutes?: number;
+  /** Shop — selected option labels keyed by attribute group id. */
+  selectedShopAttributes?: Record<string, string[]>;
+  /** Shop — snapshot of groups used when item was added (for cart display). */
+  shopAttributeGroupsSnapshot?: AttributeGroup[];
+  /** Shop — selected concrete variant for this cart line. */
+  shopVariantId?: string;
+  shopVariantSku?: string;
 }
 
 export interface Cart {
@@ -2539,8 +2552,30 @@ export interface AttributeGroup {
   selectionType: "single" | "multiple";
   maxSelect?: number;
   isRequired: boolean;
+  /** Shop-only: include this group when building stock variants. */
+  isVariantDimension?: boolean;
   options: AttributeOption[];
   predefinedTemplate?: string;
+}
+
+export interface ShopProductVariant {
+  id: string;
+  sku: string;
+  optionValueIdsByGroupId: Record<string, string>;
+  optionLabelsByGroupId: Record<string, string>;
+  stockCount: number;
+  lowStockThreshold: number;
+  isActive: boolean;
+  priceOverride?: number;
+  imageUrl?: string;
+  allowBackorders?: boolean;
+  weightKg?: number;
+  dimensionsCm?: {
+    length?: number;
+    width?: number;
+    height?: number;
+  };
+  description?: string;
 }
 
 export interface RotationGroup {

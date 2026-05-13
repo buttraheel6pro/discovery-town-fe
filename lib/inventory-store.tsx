@@ -31,6 +31,7 @@ import {
 import { plainTextFromHtml } from '@/lib/utils'
 import type {
   AddOn,
+  AttributeGroup,
   CartItem,
   CartModifierSelection,
   CartState,
@@ -59,6 +60,10 @@ interface CustomCartLineInput {
   modifierTotal?: number
   selectedModifiers?: CartModifierSelection[]
   preparationTimeMinutes?: number
+  selectedShopAttributes?: Record<string, string[]>
+  shopAttributeGroupsSnapshot?: AttributeGroup[]
+  shopVariantId?: string
+  shopVariantSku?: string
 }
 
 const SHOP_CART_STORAGE_KEY = 'dt_cart'
@@ -84,6 +89,34 @@ function emptyCart(): CartState {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
+}
+
+function shopVariantLineKey(
+  productId: string,
+  variantId?: string,
+  selected?: Record<string, string[]>,
+): string {
+  if (variantId && variantId.trim().length > 0) {
+    return `${productId}::${variantId}`
+  }
+  if (!selected || Object.keys(selected).length === 0) {
+    return productId
+  }
+  const parts = Object.keys(selected)
+    .sort()
+    .map((groupId) => {
+      const labels = selected[groupId] ?? []
+      return `${groupId}:${[...labels].sort().join('\u0001')}`
+    })
+  return `${productId}::${parts.join('|')}`
+}
+
+function hashStringToBase36(input: string): string {
+  let h = 0
+  for (let i = 0; i < input.length; i += 1) {
+    h = (Math.imul(31, h) + input.charCodeAt(i)) | 0
+  }
+  return Math.abs(h).toString(36)
 }
 
 function loadCartFromStorage(storageKey: string): CartState {
@@ -242,6 +275,11 @@ interface InventoryStore {
   addToCart: (input: {
     product: Product
     quantity?: number
+    selectedShopAttributes?: Record<string, string[]>
+    shopAttributeGroupsSnapshot?: AttributeGroup[]
+    shopVariantId?: string
+    shopVariantSku?: string
+    unitPrice?: number
   }) => void
   addCustomCartItem: (input: CustomCartLineInput) => void
   removeFromCart: (cartItemId: string) => void
@@ -750,12 +788,37 @@ export function InventoryProvider({
       setCoupons((prev) => prev.filter((c) => c.id !== id))
     }
 
-    function addToCart(input: { product: Product; quantity?: number }) {
+    function addToCart(input: {
+      product: Product
+      quantity?: number
+      selectedShopAttributes?: Record<string, string[]>
+      shopAttributeGroupsSnapshot?: AttributeGroup[]
+      shopVariantId?: string
+      shopVariantSku?: string
+      unitPrice?: number
+    }) {
       const qty = Math.max(1, input.quantity ?? 1)
+      const variantKey = shopVariantLineKey(
+        input.product.id,
+        input.shopVariantId,
+        input.selectedShopAttributes,
+      )
+      const lineId =
+        variantKey === input.product.id
+          ? `cart-${input.product.id}`
+          : `cart-${input.product.id}-v${hashStringToBase36(variantKey)}`
       setCart((prev) => {
-        const existing = prev.items.find(
-          (i) => i.type === 'product' && i.metadata?.productId === input.product.id,
-        )
+        const existing = prev.items.find((i) => {
+          if (i.type !== 'product' || i.metadata?.productId !== input.product.id) {
+            return false
+          }
+          const existingKey = shopVariantLineKey(
+            input.product.id,
+            i.shopVariantId,
+            i.selectedShopAttributes,
+          )
+          return existingKey === variantKey
+        })
         if (existing) {
           return {
             ...prev,
@@ -766,14 +829,18 @@ export function InventoryProvider({
         }
 
         const item: CartItem = {
-          id: `cart-${input.product.id}`,
+          id: lineId,
           type: 'product',
           name: input.product.name,
-          description: input.product.sku,
-          price: input.product.memberPrice ?? input.product.price,
+          description: input.shopVariantSku ?? input.product.sku,
+          price: input.unitPrice ?? input.product.memberPrice ?? input.product.price,
           quantity: qty,
           imageUrl: input.product.imageUrl,
           metadata: { productId: input.product.id },
+          selectedShopAttributes: input.selectedShopAttributes,
+          shopAttributeGroupsSnapshot: input.shopAttributeGroupsSnapshot,
+          shopVariantId: input.shopVariantId,
+          shopVariantSku: input.shopVariantSku,
         }
 
         return { ...prev, items: [...prev.items, item] }
@@ -825,6 +892,10 @@ export function InventoryProvider({
         modifierTotal: input.modifierTotal,
         selectedModifiers: input.selectedModifiers,
         preparationTimeMinutes: input.preparationTimeMinutes,
+        selectedShopAttributes: input.selectedShopAttributes,
+        shopAttributeGroupsSnapshot: input.shopAttributeGroupsSnapshot,
+        shopVariantId: input.shopVariantId,
+        shopVariantSku: input.shopVariantSku,
       }
     }
 

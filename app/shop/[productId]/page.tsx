@@ -133,6 +133,7 @@ export default function ShopProductPage({
               rentalToDate={rentalToDate}
               rentalSlotStartAt={rentalSlotStartAt}
               rentalSlotEndAt={rentalSlotEndAt}
+              shopAttributeGroups={product?.shopAttributeGroups ?? []}
             />
           )}
           {product && isRentalProduct(product) ? (
