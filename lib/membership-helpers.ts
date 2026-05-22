@@ -70,6 +70,31 @@ export function annualSavingsVsMonthly(monthlyPrice: number, annualPrice: number
   return Math.round((monthlyPrice * 12 - annualPrice) * 100) / 100
 }
 
+/** True when a plan card should show the checkout selection ring (exact plan id only). */
+export function isMembershipPlanCheckoutSelected(
+  checkoutPlan: MembershipPlan | null,
+  candidate: MembershipPlan,
+): boolean {
+  return checkoutPlan?.id === candidate.id
+}
+
+/** Same product group (monthly/annual pair) for syncing checkout when billing toggle changes. */
+export function resolveCheckoutPlanForBilling(
+  checkoutPlan: MembershipPlan,
+  catalog: readonly MembershipCatalogEntry[],
+  billingAnnual: boolean,
+): MembershipPlan {
+  if (!checkoutPlan.planGroupId) {
+    return checkoutPlan
+  }
+  const row = catalog.find((entry) => entry.planGroupId === checkoutPlan.planGroupId)
+  if (!row) {
+    return checkoutPlan
+  }
+  const aligned = billingAnnual ? row.annualPlan : row.monthlyPlan
+  return aligned ?? checkoutPlan
+}
+
 export interface MembershipAddonCatalogItem {
   readonly id: string
   readonly name: string

@@ -5,10 +5,17 @@ import {
   eventPackagesMock,
   schedulingBookings,
   schedulingCategories,
+  schedulingOccasions,
   schedulingServices,
   schedulingSlots,
   schedulingWaitlistEntries,
 } from '@/lib/mock-data'
+import { withoutOpenPlayPassCatalogServices } from '@/lib/open-play-pass-catalog'
+import { SPECIAL_PLAY_SERVICE_ORDER } from '@/lib/special-play-service-order'
+import {
+  RETIRED_WE_BRING_PLAY_SERVICE_IDS,
+  WE_BRING_PLAY_SERVICE_IDS,
+} from '@/lib/we-bring-play-offerings'
 import type { RootState } from '@/lib/redux/store'
 import type {
   CategoryAddOn,
@@ -25,6 +32,81 @@ import type {
 
 export type SchedulingAddOnParent = 'category' | 'service'
 export const SCHEDULING_STORAGE_KEY = 'discovery-town:scheduling-store:v1'
+
+/** Retired catalog services — hidden from play/events after persist merge. */
+const RETIRED_SCHEDULING_SERVICE_IDS: ReadonlySet<string> = new Set([
+  'svc-special-seasonal-festivals',
+  'svc-special-interactive-festivals',
+  'svc-special-skill-building',
+  ...RETIRED_WE_BRING_PLAY_SERVICE_IDS,
+])
+
+const CAMP_PLAY_CATALOG_SYNC_IDS = [
+  'svc-camp-summer',
+  'svc-camp-winter-break',
+  'svc-camp-spring-break',
+  'svc-camp-mlk-day',
+] as const
+
+const CAMP_PLAY_CANONICAL_SLOT_IDS = new Set<string>([
+  'slot-camp-summer',
+  'slot-camp-winter-break',
+  'slot-camp-spring-break',
+  'slot-camp-mlk-day',
+])
+
+const CAMP_PLAY_SERVICE_IDS = new Set<string>(CAMP_PLAY_CATALOG_SYNC_IDS)
+
+const PARENTS_NIGHT_CATALOG_SYNC_IDS = ['svc-parents-night-out'] as const
+
+const FIELD_TRIP_CATALOG_SYNC_IDS = ['svc-field-trip-preschool-school'] as const
+
+/** Refresh listing fields from catalog when mock data changes (e.g. image URLs). */
+const CATALOG_LISTING_SYNC_SERVICE_IDS: ReadonlySet<string> = new Set([
+  ...SPECIAL_PLAY_SERVICE_ORDER,
+  ...CAMP_PLAY_CATALOG_SYNC_IDS,
+  ...PARENTS_NIGHT_CATALOG_SYNC_IDS,
+  ...FIELD_TRIP_CATALOG_SYNC_IDS,
+  ...WE_BRING_PLAY_SERVICE_IDS,
+])
+
+function syncCategoryToServices(
+  state: SchedulingState,
+  categoryId: string,
+): void {
+  const category = state.categories.find((entry) => entry.id === categoryId)
+  if (!category) {
+    return
+  }
+
+  state.services = state.services.map((service) =>
+    service.categoryId === categoryId ? { ...service, category } : service,
+  )
+  state.slots = state.slots.map((slot) =>
+    slot.service.categoryId === categoryId
+      ? { ...slot, service: { ...slot.service, category } }
+      : slot,
+  )
+  state.bookings = state.bookings.map((booking) =>
+    booking.service.categoryId === categoryId
+      ? { ...booking, service: { ...booking.service, category } }
+      : booking,
+  )
+}
+
+function withoutRetiredSchedulingCatalog(state: SchedulingState): SchedulingState {
+  return {
+    ...state,
+    services: state.services.map((service) =>
+      RETIRED_SCHEDULING_SERVICE_IDS.has(service.id)
+        ? { ...service, isActive: false }
+        : service,
+    ),
+    slots: state.slots.filter(
+      (slot) => !RETIRED_SCHEDULING_SERVICE_IDS.has(slot.serviceId),
+    ),
+  }
+}
 
 interface SchedulingState {
   categories: SchedulingCategory[]
@@ -99,13 +181,144 @@ interface UpdateOccasionPayload {
   patch: Partial<SchedulingOccasion>
 }
 
+/** Adds mock catalog rows missing from persisted scheduling state (e.g. new play passes). */
+function mergeSchedulingWithCatalogDefaults(persisted: SchedulingState): SchedulingState {
+  const defaults = cloneInitialState()
+
+  const categoryById = new Map<string, SchedulingCategory>()
+  for (const category of persisted.categories) {
+    categoryById.set(category.id, category)
+  }
+  for (const category of defaults.categories) {
+    const existing = categoryById.get(category.id)
+    if (existing == null) {
+      categoryById.set(category.id, category)
+      continue
+    }
+    const mergedLinkedAddOns =
+      existing.linkedAddOns != null && existing.linkedAddOns.length > 0
+        ? existing.linkedAddOns.map((link) => ({ ...link }))
+        : category.linkedAddOns?.map((link) => ({ ...link }))
+
+    categoryById.set(category.id, {
+      ...category,
+      ...existing,
+      requiresAttendee: existing.requiresAttendee ?? category.requiresAttendee,
+      allowFamilyMember: existing.allowFamilyMember ?? category.allowFamilyMember,
+      membersOnly: existing.membersOnly ?? category.membersOnly,
+      specialInstructionsEnabled:
+        existing.specialInstructionsEnabled ?? category.specialInstructionsEnabled,
+      waitlistEnabled: existing.waitlistEnabled ?? category.waitlistEnabled,
+      linkedAddOns: mergedLinkedAddOns,
+    })
+  }
+
+  const categories = Array.from(categoryById.values())
+
+  const serviceById = new Map<string, SchedulingService>()
+  for (const service of persisted.services) {
+    const category = categoryById.get(service.categoryId)
+    serviceById.set(
+      service.id,
+      category != null ? { ...service, category } : service,
+    )
+  }
+  for (const service of defaults.services) {
+    const existing = serviceById.get(service.id)
+    const category = categoryById.get(service.categoryId)
+    const catalogService = category != null ? { ...service, category } : service
+    if (existing == null) {
+      serviceById.set(service.id, catalogService)
+      continue
+    }
+    if (!CATALOG_LISTING_SYNC_SERVICE_IDS.has(service.id)) {
+      continue
+    }
+    const listingPatch: SchedulingService = {
+      ...existing,
+      name: catalogService.name,
+      description: catalogService.description,
+      imageUrl: catalogService.imageUrl,
+      tags: catalogService.tags,
+      category: catalogService.category,
+      eventStatus: catalogService.eventStatus ?? existing.eventStatus,
+      requiresWaiver: catalogService.requiresWaiver,
+    }
+
+    if (service.id === 'svc-parents-night-out') {
+      const upgradedBookingMode =
+        existing.bookingMode === 'SCHEDULED' && catalogService.bookingMode === 'OPEN'
+          ? catalogService.bookingMode
+          : existing.bookingMode
+
+      serviceById.set(service.id, {
+        ...listingPatch,
+        bookingMode: upgradedBookingMode,
+        durationMinutes: existing.durationMinutes ?? catalogService.durationMinutes,
+        pricingModel: existing.pricingModel ?? catalogService.pricingModel,
+        minDurationMinutes:
+          existing.minDurationMinutes ?? catalogService.minDurationMinutes,
+        maxDurationMinutes:
+          existing.maxDurationMinutes ?? catalogService.maxDurationMinutes,
+        slotIncrementMinutes:
+          existing.slotIncrementMinutes ?? catalogService.slotIncrementMinutes,
+        maxConcurrent: existing.maxConcurrent ?? catalogService.maxConcurrent,
+        siblingPrice: existing.siblingPrice ?? catalogService.siblingPrice,
+      })
+      continue
+    }
+
+    serviceById.set(service.id, listingPatch)
+  }
+
+  const slotById = new Map<string, SchedulingSlot>()
+  for (const slot of persisted.slots) {
+    if (
+      CAMP_PLAY_SERVICE_IDS.has(slot.serviceId) &&
+      !CAMP_PLAY_CANONICAL_SLOT_IDS.has(slot.id)
+    ) {
+      continue
+    }
+    slotById.set(slot.id, slot)
+  }
+  for (const slot of defaults.slots) {
+    if (!slotById.has(slot.id)) {
+      slotById.set(slot.id, slot)
+    }
+  }
+
+  const packageById = new Map<string, EventPackage>()
+  for (const pkg of persisted.packages) {
+    packageById.set(pkg.id, pkg)
+  }
+  for (const pkg of defaults.packages) {
+    if (!packageById.has(pkg.id)) {
+      packageById.set(pkg.id, pkg)
+    }
+  }
+
+  const merged: SchedulingState = withoutRetiredSchedulingCatalog({
+    ...persisted,
+    categories,
+    services: withoutOpenPlayPassCatalogServices(Array.from(serviceById.values())),
+    slots: Array.from(slotById.values()),
+    packages: Array.from(packageById.values()),
+  })
+
+  for (const category of categories) {
+    syncCategoryToServices(merged, category.id)
+  }
+
+  return merged
+}
+
 function cloneInitialState(): SchedulingState {
-  return {
+  return withoutRetiredSchedulingCatalog({
     categories: schedulingCategories.map((category) => ({
       ...category,
       linkedAddOns: category.linkedAddOns?.map((link) => ({ ...link })),
     })),
-    services: schedulingServices.map((service) => ({
+    services: withoutOpenPlayPassCatalogServices(schedulingServices).map((service) => ({
       ...service,
       linkedAddOns: service.linkedAddOns?.map((link) => ({ ...link })),
     })),
@@ -128,8 +341,8 @@ function cloneInitialState(): SchedulingState {
       addOns: pkg.addOns.slice(),
       features: pkg.features.slice(),
     })),
-    occasions: [],
-  }
+    occasions: schedulingOccasions.map((occasion) => ({ ...occasion })),
+  })
 }
 
 const schedulingSlice = createSlice({
@@ -137,9 +350,17 @@ const schedulingSlice = createSlice({
   initialState: cloneInitialState(),
   reducers: {
     hydrateSchedulingState(_state, action: PayloadAction<SchedulingState>) {
+      const merged = mergeSchedulingWithCatalogDefaults(action.payload)
+      const persistedOccasions = merged.occasions?.map((occasion) => ({
+        ...occasion,
+      }))
+      const occasions =
+        persistedOccasions != null && persistedOccasions.length > 0
+          ? persistedOccasions
+          : schedulingOccasions.map((occasion) => ({ ...occasion }))
       return {
-        ...action.payload,
-        occasions: action.payload.occasions?.map((occasion) => ({ ...occasion })) ?? [],
+        ...merged,
+        occasions,
       }
     },
     addCategory(state, action: PayloadAction<SchedulingCategory>) {
@@ -154,6 +375,7 @@ const schedulingSlice = createSlice({
       state.categories = state.categories.map((category) =>
         category.id === categoryId ? { ...category, ...patch } : category,
       )
+      syncCategoryToServices(state, categoryId)
     },
     addBooking(state, action: PayloadAction<SchedulingBooking>) {
       const booking = action.payload
@@ -336,6 +558,7 @@ const schedulingSlice = createSlice({
           ? { ...entry, linkedAddOns: [...(entry.linkedAddOns ?? []), link] }
           : entry,
       )
+      syncCategoryToServices(state, parentId)
     },
     unlinkSchedulingAddOn(
       state,
@@ -383,6 +606,7 @@ const schedulingSlice = createSlice({
             }
           : entry,
       )
+      syncCategoryToServices(state, parentId)
     },
     setSchedulingAddOnFree(
       state,
@@ -426,6 +650,7 @@ const schedulingSlice = createSlice({
             }
           : entry,
       )
+      syncCategoryToServices(state, parentId)
     },
     addService(state, action: PayloadAction<SchedulingService>) {
       state.services.unshift(action.payload)

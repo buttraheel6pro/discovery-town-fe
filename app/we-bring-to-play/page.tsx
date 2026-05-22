@@ -1,25 +1,30 @@
 /** Dedicated route for off-site mobile play service requests. */
-import { WeBringOffsitePage } from '@/components/customer/we-bring-offsite-page'
+import { Suspense } from 'react'
 
-const PLAY_EVENT_TYPE_OPTIONS = ['Playdate', 'School Event', 'Community Activation', 'Family Gathering']
+import { WeBringOffsitePage } from '@/components/customer/we-bring-offsite-page'
+import { WE_BRING_PLAY_PRODUCT_IDS } from '@/lib/we-bring-play-offerings'
+
+const PLAY_EVENT_TYPE_OPTIONS = [
+  'Playdate',
+  'School Event',
+  'Community Activation',
+  'Family Gathering',
+]
 
 export default function WeBringToPlayPage() {
   return (
-    <WeBringOffsitePage
-      pageEyebrow="Mobile Play Experiences"
-      pageTitle="WE BRING THE PLAY"
-      pageDescription="Build a portable play experience with activity-focused rentals for your location."
-      equipmentSectionTitle="Play experience options"
-      equipmentSectionDescription="Pick your play setup, then share details so our team can plan delivery."
-      bundleName="We Bring The Play To You Items"
-      requestType="WE_BRING_PLAY"
-      productIds={[
-        'prod-2',
-        'prod-3',
-        'prod-kids-furniture-set',
-        'prod-takeout-pizza-tray',
-      ]}
-      eventTypeOptions={PLAY_EVENT_TYPE_OPTIONS}
-    />
+    <Suspense fallback={null}>
+      <WeBringOffsitePage
+        pageEyebrow="We Bring Play To You"
+        pageTitle="WE BRING PLAY TO YOU"
+        pageDescription="Choose inflatables, games, entertainment, and party setup — we deliver to your venue."
+        equipmentSectionTitle="We Bring Play To You"
+        equipmentSectionDescription="Select the services you need, then complete your inquiry."
+        bundleName="We Bring The Play To You Items"
+        requestType="WE_BRING_PLAY"
+        productIds={WE_BRING_PLAY_PRODUCT_IDS}
+        eventTypeOptions={PLAY_EVENT_TYPE_OPTIONS}
+      />
+    </Suspense>
   )
 }

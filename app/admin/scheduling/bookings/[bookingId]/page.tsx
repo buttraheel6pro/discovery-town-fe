@@ -72,7 +72,7 @@ export default function AdminSchedulingBookingDetailPage() {
             <div className="space-y-1">
               <p className="font-semibold text-foreground">Outstanding balance pending</p>
               <p className="text-sm text-muted-foreground">
-                Amount due £{balanceTransaction.netAmount.toFixed(2)}. Auto-collection on {autoCollectionDate}.
+                Amount due ${balanceTransaction.netAmount.toFixed(2)}. Auto-collection on {autoCollectionDate}.
               </p>
             </div>
             <Button className="bg-yellow-600 text-white hover:bg-yellow-700" onClick={() => setCollectOpen(true)}>
@@ -86,7 +86,7 @@ export default function AdminSchedulingBookingDetailPage() {
         <Card className="border-emerald-500/40 bg-emerald-500/10">
           <CardContent className="flex items-center justify-between gap-3 pt-6">
             <p className="text-sm font-medium text-foreground">
-              Balance paid successfully for £{balanceTransaction.netAmount.toFixed(2)}.
+              Balance paid successfully for ${balanceTransaction.netAmount.toFixed(2)}.
             </p>
             <Badge className="bg-emerald-600 text-white">PAID</Badge>
           </CardContent>
@@ -123,15 +123,15 @@ export default function AdminSchedulingBookingDetailPage() {
           <p><span className="font-semibold">Package:</span> {eventPackage?.name ?? '—'}</p>
           <p><span className="font-semibold">Date:</span> {booking.startAt ? format(new Date(booking.startAt), 'd MMM yyyy, HH:mm') : '—'}</p>
           <p><span className="font-semibold">Guests:</span> {booking.guestCount}</p>
-          <p><span className="font-semibold">Total:</span> £{booking.totalAmount.toFixed(2)}</p>
-          <p><span className="font-semibold">Balance due:</span> £{booking.balanceDue.toFixed(2)}</p>
+          <p><span className="font-semibold">Total:</span> ${booking.totalAmount.toFixed(2)}</p>
+          <p><span className="font-semibold">Balance due:</span> ${booking.balanceDue.toFixed(2)}</p>
           <div>
             <p className="mb-1 font-semibold">Add-ons:</p>
             {booking.addOns.length > 0 ? (
               <ul className="space-y-1">
                 {booking.addOns.map((addOn) => (
                   <li key={addOn.id} className="text-muted-foreground">
-                    {addOn.name} x{addOn.quantity} (£{addOn.totalPrice.toFixed(2)})
+                    {addOn.name} x{addOn.quantity} (${addOn.totalPrice.toFixed(2)})
                   </li>
                 ))}
               </ul>

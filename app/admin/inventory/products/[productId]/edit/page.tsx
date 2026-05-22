@@ -97,7 +97,7 @@ export default function AdminInventoryProductEditPage() {
     couponsWithPackage: false,
     isPerishable: false,
     basketCapacity: '',
-    occasionId: '',
+    occasionIds: [],
     giftPriceUpperLimit: '0',
     isActive: true,
   })
@@ -176,7 +176,11 @@ export default function AdminInventoryProductEditPage() {
       couponsWithPackage: product.giftCouponsWithPackage ?? false,
       isPerishable: product.isPerishable ?? false,
       basketCapacity: product.basketCapacity != null ? String(product.basketCapacity) : '',
-      occasionId: product.giftOccasionId ?? '',
+      occasionIds:
+        product.giftOccasionIds ??
+        (product.giftOccasionId != null && product.giftOccasionId.length > 0
+          ? [product.giftOccasionId]
+          : []),
       giftPriceUpperLimit:
         product.giftPriceUpperLimit != null ? String(product.giftPriceUpperLimit) : '0',
       isActive: product.availableOnline !== false,
@@ -230,7 +234,8 @@ export default function AdminInventoryProductEditPage() {
         isPerishable: giftDraft.isPerishable,
         basketCapacity: parsedBasketCapacity,
         giftPriceUpperLimit: toNumberOrUndefined(giftDraft.giftPriceUpperLimit) ?? null,
-        giftOccasionId: giftDraft.occasionId || null,
+        giftOccasionIds: giftDraft.occasionIds,
+        giftOccasionId: giftDraft.occasionIds[0] ?? null,
       })
       router.push(returnTo)
       return

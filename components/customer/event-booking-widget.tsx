@@ -25,11 +25,14 @@ import { useEventBookingForm } from '@/hooks/use-event-booking-form'
 import { useToast } from '@/hooks/use-toast'
 import { useClients } from '@/lib/client-store'
 import { useInventory } from '@/lib/inventory-store'
+import { resolvePackagesForSchedulingService } from '@/lib/event-package-catalog'
 import {
   eventPackageOptionalAddOnsMock,
-  eventPackagesMock,
+  generateOpenAvailabilityForDuration,
   sampleEventAddOns,
 } from '@/lib/mock-data'
+import { windowsFromSchedulingSlots } from '@/lib/scheduling-slot-availability'
+import { useScheduling } from '@/lib/scheduling-store'
 import {
   buildEventCartBookingDescription,
   EVENT_CART_BOOKING_META_KEY,
@@ -135,25 +138,27 @@ export function EventBookingWidget({
   const { toast } = useToast()
   const { addCustomCartItem } = useInventory()
   const { contacts, subscriptions } = useClients()
+  const { slots, services, packages: storePackages } = useScheduling()
   const [step, setStep] = useState<Step>(showOccasionStep ? 1 : showPackageStep ? 2 : 3)
   const [bookingComplete, setBookingComplete] = useState(false)
   const [weekOffset, setWeekOffset] = useState(0)
   const [customizeModalOpen, setCustomizeModalOpen] = useState(false)
 
-  const svcPackagesFromMock = useMemo(() => {
-    const serviceIds = new Set<string>([serviceId])
-    if (serviceId === 'svc-5' || serviceId === 'svc-event-party-booking') {
-      serviceIds.add('svc-5')
-      serviceIds.add('svc-event-party-booking')
-    }
-    return eventPackagesMock.filter(
-      (entry) => serviceIds.has(entry.serviceId) && entry.isActive,
-    )
-  }, [serviceId])
-  const resolvedPackages = useMemo(
-    () => (bookingPackagesProp ? [...bookingPackagesProp] : svcPackagesFromMock),
-    [bookingPackagesProp, svcPackagesFromMock],
+  const bookingService = useMemo(
+    () => services.find((entry) => entry.id === serviceId) ?? null,
+    [serviceId, services],
   )
+  const resolvedPackages = useMemo(() => {
+    if (bookingPackagesProp) {
+      return [...bookingPackagesProp]
+    }
+    if (bookingService) {
+      return resolvePackagesForSchedulingService(bookingService, storePackages)
+    }
+    return storePackages.filter(
+      (entry) => entry.serviceId === serviceId && entry.isActive,
+    )
+  }, [bookingPackagesProp, bookingService, serviceId, storePackages])
   const privateRoomPackages = useMemo(() => resolvedPackages.filter((p) => !p.isWholeVenue), [
     resolvedPackages,
   ])
@@ -189,10 +194,38 @@ export function EventBookingWidget({
     defaultAdults: 20,
   })
 
+  const partyDurationMinutes =
+    form.selectedPackage?.duration ?? form.service?.durationMinutes ?? 120
+
+  const timingAvailabilityWindows = useMemo(() => {
+    if (!form.service) {
+      return null
+    }
+    const dateStr = form.selectedDate ?? toIsoDate(new Date())
+    if (form.service.bookingMode === 'SCHEDULED') {
+      const fromSlots = windowsFromSchedulingSlots(slots, form.service.id, dateStr)
+      if (fromSlots.length > 0) {
+        return fromSlots
+      }
+      return generateOpenAvailabilityForDuration(
+        form.service,
+        dateStr,
+        partyDurationMinutes,
+      ).windows
+    }
+    return null
+  }, [form.selectedDate, form.service, partyDurationMinutes, slots])
+
   useEffect(() => {
     if (!externalSelectedPackageId) return
     form.setSelectedPackageId(externalSelectedPackageId)
-  }, [externalSelectedPackageId, form])
+  }, [externalSelectedPackageId, form.setSelectedPackageId])
+
+  useEffect(() => {
+    if (!form.selectedDate) {
+      form.setSelectedDate(toIsoDate(new Date()))
+    }
+  }, [form.selectedDate, form.setSelectedDate])
 
   const includedAddOns = useMemo(() => {
     if (!form.selectedPackage) return []
@@ -272,11 +305,6 @@ export function EventBookingWidget({
       },
     })
     setBookingComplete(true)
-    toast({
-      title: 'Added to cart',
-      description:
-        'Open Event bookings in your cart to review details or continue to checkout.',
-    })
   }
 
   const progressTimeRange = useMemo(() => {
@@ -462,13 +490,17 @@ export function EventBookingWidget({
             weekOffset={weekOffset}
             onWeekOffsetChange={setWeekOffset}
             selectedDate={form.selectedDate ?? toIsoDate(new Date())}
-            onSelectedDateChange={form.setSelectedDate}
+            onSelectedDateChange={(date) => {
+              form.setSelectedDate(date)
+              form.setSelectedWindow(null)
+            }}
             selectedWindow={form.selectedWindow}
             onSelectedWindowChange={form.setSelectedWindow}
-            durationMinutes={form.selectedPackage?.duration ?? 120}
+            durationMinutes={partyDurationMinutes}
             onDurationMinutesChange={() => {}}
             durationOptions={[]}
             mode="facility"
+            availabilityWindows={timingAvailabilityWindows}
           />
         ) : (
           <p className="text-sm text-muted-foreground">Select a package to load availability.</p>

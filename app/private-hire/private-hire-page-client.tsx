@@ -78,7 +78,7 @@ export function PrivateHirePageClient() {
             </h1>
             <p className="mt-3 max-w-2xl leading-relaxed text-white/70">
               Book the whole space for birthday parties, corporate days, and exclusive sessions at
-              Discovery Town — Manchester&apos;s family activity centre.
+              Discovery Town — Indianapolis&apos;s family activity centre.
             </p>
             <Button
               type="button"

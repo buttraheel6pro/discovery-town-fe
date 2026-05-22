@@ -24,6 +24,15 @@ import { LABELS } from '@/lib/constants/ui-labels'
 import { locations, samplePreschoolAddOns } from '@/lib/mock-data'
 import { useInventory } from '@/lib/inventory-store'
 import { newAdminEntityId } from '@/lib/scheduling-admin-builders'
+import {
+  SCHEDULING_TOP_LEVEL_ORDER,
+  getSchedulingTopLevelId,
+  getSchedulingTopLevelLabel,
+  isConsumerAlignedCategoryId,
+  type SchedulingTopLevelId,
+} from '@/lib/scheduling-consumer-categories'
+import { showMaxPassCountAdminField } from '@/lib/booking-pass-count'
+import { isOpenPlayPassCatalogServiceId } from '@/lib/open-play-pass-catalog'
 import { useScheduling } from '@/lib/scheduling-store'
 import { bookingAddOnToSchedulingAddOn, formatPrice } from '@/lib/utils'
 import type {
@@ -35,38 +44,6 @@ import type {
   SchedulingServiceType,
 } from '@/lib/types'
 import { CATEGORY_ADD_ON_CHARGE_FREQUENCIES, SchedulingServiceTypeEnum } from '@/lib/types'
-
-const CONSUMER_ALIGNED_CATEGORY_IDS = new Set<string>([
-  'cat-open-play',
-  'cat-private-play',
-  'cat-special-play-events',
-  'cat-camps-play',
-  'cat-parents-night',
-  'cat-field-trips',
-  'cat-we-bring-play',
-  'cat-gym-babies',
-  'cat-gym-toddlers',
-  'cat-gym-preschool',
-  'cat-gym-kids',
-  'cat-gym-teens',
-  'cat-gym-adults',
-  'cat-gym-seniors',
-  'cat-gym-family',
-  'cat-gym-prenatal',
-  'cat-gym-special-needs',
-  'cat-5',
-])
-
-function isConsumerAlignedCategoryId(categoryId: string): boolean {
-  if (CONSUMER_ALIGNED_CATEGORY_IDS.has(categoryId)) {
-    return true
-  }
-  return (
-    categoryId.startsWith('cat-gym-') ||
-    categoryId.startsWith('cat-play-') ||
-    categoryId.startsWith('cat-event-')
-  )
-}
 
 function parseOptionalFloat(value: string): number | null {
   const trimmed = value.trim()
@@ -109,6 +86,8 @@ function draftFromService(service: SchedulingService): CreateDraft {
     siblingPrice: service.siblingPrice ?? '',
     freeAdultCount:
       service.freeAdultCount != null ? String(service.freeAdultCount) : '2',
+    maxPassCount:
+      service.maxPassCount != null ? String(service.maxPassCount) : '',
     additionalAdultPrice: service.additionalAdultPrice ?? '',
     minSeats: service.minSeats != null ? String(service.minSeats) : '1',
     pricePerHour: service.pricePerHour ?? '',
@@ -154,6 +133,7 @@ interface CreateDraft {
   readonly maxAdvanceHours: string
   readonly siblingPrice: string
   readonly freeAdultCount: string
+  readonly maxPassCount: string
   readonly additionalAdultPrice: string
   readonly minSeats: string
   readonly pricePerHour: string
@@ -185,12 +165,19 @@ function AdminSchedulingServiceNewPageInner() {
   const rawReturnTo = searchParams.get('returnTo')?.trim() ?? '/admin/scheduling/services'
   const returnTo = rawReturnTo.startsWith('/admin/') ? rawReturnTo : '/admin/scheduling/services'
   const editingService = useMemo(() => {
-    if (!requestedServiceId) {
+    if (!requestedServiceId || isOpenPlayPassCatalogServiceId(requestedServiceId)) {
       return null
     }
     return services.find((entry) => entry.id === requestedServiceId) ?? null
   }, [requestedServiceId, services])
   const isEditing = Boolean(editingService)
+
+  useEffect(() => {
+    if (!requestedServiceId || !isOpenPlayPassCatalogServiceId(requestedServiceId)) {
+      return
+    }
+    router.replace('/admin/memberships')
+  }, [requestedServiceId, router])
 
   const sortedCategories = useMemo(() => {
     return categories
@@ -205,6 +192,34 @@ function AdminSchedulingServiceNewPageInner() {
     }
     return sortedCategories[0]?.id ?? ''
   }, [requestedCategoryId, sortedCategories])
+
+  const lockedTopLevelCategory = useMemo<SchedulingTopLevelId | null>(() => {
+    if (isEditing && editingService) {
+      return getSchedulingTopLevelId(editingService.categoryId)
+    }
+    if (
+      !isEditing &&
+      requestedCategoryId.length > 0 &&
+      sortedCategories.some((entry) => entry.id === requestedCategoryId)
+    ) {
+      return getSchedulingTopLevelId(requestedCategoryId)
+    }
+    return null
+  }, [isEditing, editingService, requestedCategoryId, sortedCategories])
+
+  const newEventHeroDescription = useMemo(() => {
+    if (isEditing) {
+      return 'Update this catalog event. Category is fixed; you can change sub-category and other fields.'
+    }
+    if (lockedTopLevelCategory !== null) {
+      return 'Category matches where you started. You can still change sub-category below.'
+    }
+    return 'Choose category and sub-category, then complete the details.'
+  }, [isEditing, lockedTopLevelCategory])
+
+  const [programArea, setProgramArea] = useState<SchedulingTopLevelId>(() =>
+    getSchedulingTopLevelId(initialCategoryId),
+  )
 
   const [draft, setDraft] = useState<CreateDraft>({
     categoryId: initialCategoryId,
@@ -230,6 +245,7 @@ function AdminSchedulingServiceNewPageInner() {
     maxAdvanceHours: '',
     siblingPrice: '',
     freeAdultCount: '2',
+    maxPassCount: '',
     additionalAdultPrice: '',
     minSeats: '1',
     pricePerHour: '',
@@ -242,12 +258,49 @@ function AdminSchedulingServiceNewPageInner() {
     pendingServiceAddOnLinks: [],
     isActive: true,
   })
+
+  const subCategoriesInProgramArea = useMemo(() => {
+    return sortedCategories.filter((entry) => getSchedulingTopLevelId(entry.id) === programArea)
+  }, [programArea, sortedCategories])
+
   useEffect(() => {
     if (!editingService) {
       return
     }
     setDraft(draftFromService(editingService))
+    setProgramArea(getSchedulingTopLevelId(editingService.categoryId))
   }, [editingService])
+
+  useEffect(() => {
+    if (isEditing || lockedTopLevelCategory === null) {
+      return
+    }
+    setProgramArea(lockedTopLevelCategory)
+  }, [isEditing, lockedTopLevelCategory])
+
+  useEffect(() => {
+    if (editingService || !initialCategoryId) {
+      return
+    }
+    setDraft((prev) => {
+      if (prev.categoryId) {
+        return prev
+      }
+      return { ...prev, categoryId: initialCategoryId }
+    })
+  }, [editingService, initialCategoryId])
+
+  useEffect(() => {
+    const fallback = subCategoriesInProgramArea[0]?.id ?? ''
+    if (
+      !fallback ||
+      subCategoriesInProgramArea.some((entry) => entry.id === draft.categoryId)
+    ) {
+      return
+    }
+    setDraft((prev) => ({ ...prev, categoryId: fallback }))
+  }, [draft.categoryId, subCategoriesInProgramArea])
+
   const [newAddOnId, setNewAddOnId] = useState<string>('')
   const [addOnModalOpen, setAddOnModalOpen] = useState(false)
   const [pendingAddOnQuantity, setPendingAddOnQuantity] = useState('1')
@@ -279,6 +332,19 @@ function AdminSchedulingServiceNewPageInner() {
   const selectedCategory = useMemo<SchedulingCategory | null>(() => {
     return sortedCategories.find((entry) => entry.id === draft.categoryId) ?? null
   }, [draft.categoryId, sortedCategories])
+
+  function handleProgramAreaChange(next: SchedulingTopLevelId): void {
+    if (lockedTopLevelCategory !== null) {
+      return
+    }
+    setProgramArea(next)
+    setDraft((prev) => {
+      const subs = sortedCategories.filter((entry) => getSchedulingTopLevelId(entry.id) === next)
+      const keep = subs.some((entry) => entry.id === prev.categoryId)
+      const nextCategoryId = keep ? prev.categoryId : (subs[0]?.id ?? prev.categoryId)
+      return { ...prev, categoryId: nextCategoryId }
+    })
+  }
 
   function openAddOnModal(): void {
     if (!newAddOnId) {
@@ -383,6 +449,10 @@ function AdminSchedulingServiceNewPageInner() {
         pricingModel: draft.bookingMode === 'OPEN' ? 'per_hour' : 'flat',
         siblingPrice: draft.siblingPrice.trim() || undefined,
         freeAdultCount,
+        maxPassCount: (() => {
+          const parsed = parseOptionalInt(draft.maxPassCount)
+          return parsed != null && parsed >= 1 ? parsed : undefined
+        })(),
         additionalAdultPrice: draft.additionalAdultPrice.trim() || undefined,
         minSeats,
         pricePerHour: draft.pricePerHour.trim() || undefined,
@@ -441,6 +511,10 @@ function AdminSchedulingServiceNewPageInner() {
       addOns: [],
       siblingPrice: draft.siblingPrice.trim() || undefined,
       freeAdultCount,
+      maxPassCount: (() => {
+        const parsed = parseOptionalInt(draft.maxPassCount)
+        return parsed != null && parsed >= 1 ? parsed : undefined
+      })(),
       additionalAdultPrice: draft.additionalAdultPrice.trim() || undefined,
       minSeats,
       pricePerHour: draft.pricePerHour.trim() || undefined,
@@ -471,118 +545,146 @@ function AdminSchedulingServiceNewPageInner() {
   }
 
   return (
-    <div className="max-w-5xl space-y-6">
-      <div className="space-y-3">
+    <div className="w-full space-y-3">
+      <div className="space-y-2">
         <Link href={returnTo}>
           <Button type="button" variant="outline" className="gap-2">
             <ArrowLeft className="h-4 w-4" />
             Back
           </Button>
         </Link>
-        <h1 className="text-3xl font-bold text-foreground">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
           {isEditing ? 'Edit event' : 'New event'}
         </h1>
-        <p className="mt-2 text-muted-foreground">
-          {isEditing
-            ? 'Update this catalog event using the same form fields.'
-            : 'Add a catalog event for the selected event category.'}
-        </p>
+        <p className="text-sm text-muted-foreground">{newEventHeroDescription}</p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{isEditing ? 'Edit Event' : LABELS.createService}</CardTitle>
-          <CardDescription>
+      <Card className="gap-0 border-border py-0 shadow-sm">
+        <CardHeader className="gap-0.5 border-b border-border px-4 py-2.5 sm:px-6 [.border-b]:pb-2.5">
+          <CardTitle className="text-sm font-semibold sm:text-base">
+            {isEditing ? 'Edit Event' : LABELS.createService}
+          </CardTitle>
+          <CardDescription className="text-xs leading-snug text-muted-foreground sm:text-sm">
             {isEditing
               ? 'Edit and save this service entry.'
               : 'Create and publish a new service entry.'}
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label>{LABELS.serviceCategory}</Label>
-              <Select
-                value={draft.categoryId}
-                onValueChange={(value) => setDraft((prev) => ({ ...prev, categoryId: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {sortedCategories.map((category) => (
-                    <SelectItem key={category.id} value={category.id}>
-                      {category.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+        <CardContent className="space-y-5 px-4 pb-8 pt-3 sm:px-6">
+          <div className="w-full space-y-5">
+            <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
+              <div className="min-w-0 space-y-2">
+                <Label>Category</Label>
+                {lockedTopLevelCategory !== null ? (
+                  <div className="rounded-md border border-input bg-muted/30 px-3 py-2 text-sm font-medium text-foreground">
+                    {getSchedulingTopLevelLabel(lockedTopLevelCategory)}
+                  </div>
+                ) : (
+                  <Select
+                    value={programArea}
+                    onValueChange={(value) =>
+                      handleProgramAreaChange(value as SchedulingTopLevelId)
+                    }
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SCHEDULING_TOP_LEVEL_ORDER.map((topLevelId) => (
+                        <SelectItem key={topLevelId} value={topLevelId}>
+                          {getSchedulingTopLevelLabel(topLevelId)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+              <div className="min-w-0 space-y-2">
+                <Label>Sub-category</Label>
+                <Select
+                  value={draft.categoryId}
+                  onValueChange={(value) =>
+                    setDraft((prev) => ({ ...prev, categoryId: value }))
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select sub-category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {subCategoriesInProgramArea.map((category) => (
+                      <SelectItem key={category.id} value={category.id}>
+                        {category.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>Location</Label>
-              <Select
-                value={draft.locationId}
-                onValueChange={(value) => setDraft((prev) => ({ ...prev, locationId: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select location" />
-                </SelectTrigger>
-                <SelectContent>
-                  {locations.map((location) => (
-                    <SelectItem key={location.id} value={location.id}>
-                      {location.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Booking mode</Label>
-              <Select
-                value={draft.bookingMode}
-                onValueChange={(value) =>
-                  setDraft((prev) => ({ ...prev, bookingMode: value as SchedulingBookingMode }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="SCHEDULED">Scheduled</SelectItem>
-                  <SelectItem value="OPEN">Open</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-3">
+              <div className="min-w-0 space-y-2">
+                <Label>Location</Label>
+                <Select
+                  value={draft.locationId}
+                  onValueChange={(value) => setDraft((prev) => ({ ...prev, locationId: value }))}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select location" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {locations.map((location) => (
+                      <SelectItem key={location.id} value={location.id}>
+                        {location.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="min-w-0 space-y-2">
+                <Label>Booking mode</Label>
+                <Select
+                  value={draft.bookingMode}
+                  onValueChange={(value) =>
+                    setDraft((prev) => ({ ...prev, bookingMode: value as SchedulingBookingMode }))
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="SCHEDULED">Scheduled</SelectItem>
+                    <SelectItem value="OPEN">Open</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="min-w-0 space-y-2">
+                <Label>Event Type</Label>
+                <Select
+                  value={draft.serviceType}
+                  onValueChange={(value) =>
+                    setDraft((prev) => ({ ...prev, serviceType: value as SchedulingServiceType }))
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.values(SchedulingServiceTypeEnum).map((serviceType) => (
+                      <SelectItem key={serviceType} value={serviceType}>
+                        {serviceType}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>Event Type</Label>
-              <Select
-                value={draft.serviceType}
-                onValueChange={(value) =>
-                  setDraft((prev) => ({ ...prev, serviceType: value as SchedulingServiceType }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.values(SchedulingServiceTypeEnum).map((serviceType) => (
-                    <SelectItem key={serviceType} value={serviceType}>
-                      {serviceType}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
 
           <div className="space-y-2">
             <Label>Event visibility</Label>
             <EventTypeSelector
               value={draft.eventType}
               onChange={(value) => setDraft((prev) => ({ ...prev, eventType: value }))}
+              className="w-full"
             />
           </div>
 
@@ -605,7 +707,7 @@ function AdminSchedulingServiceNewPageInner() {
             />
           </div>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>Base price</Label>
               <Input
@@ -634,7 +736,7 @@ function AdminSchedulingServiceNewPageInner() {
                 Pricing &amp; seat rules
               </AccordionTrigger>
               <AccordionContent>
-                <div className="grid grid-cols-1 gap-3 pb-2 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-x-6 gap-y-4 pb-2 sm:grid-cols-2">
                   <div className="space-y-2 sm:col-span-2">
                     <Label>Sibling price (per additional family child)</Label>
                     <Input
@@ -658,6 +760,29 @@ function AdminSchedulingServiceNewPageInner() {
                       }
                     />
                   </div>
+                  {showMaxPassCountAdminField({
+                    id: editingService?.id ?? '',
+                    categoryId: draft.categoryId,
+                  }) ? (
+                    <div className="space-y-2 sm:col-span-2">
+                      <Label htmlFor="new-page-max-passes">Max passes per booking</Label>
+                      <Input
+                        id="new-page-max-passes"
+                        type="number"
+                        min={1}
+                        max={99}
+                        value={draft.maxPassCount}
+                        onChange={(event) =>
+                          setDraft((prev) => ({ ...prev, maxPassCount: event.target.value }))
+                        }
+                        placeholder="Leave blank for no limit"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Customer “No of passes” stepper. Set 1 to fix at one pass (no +/−).
+                        Set 2 to allow up to two passes, and so on.
+                      </p>
+                    </div>
+                  ) : null}
                   <div className="space-y-2">
                     <Label>Price per extra adult (beyond free count)</Label>
                     <Input
@@ -809,7 +934,7 @@ function AdminSchedulingServiceNewPageInner() {
                             <Badge variant="secondary">{formatPrice(addOn.price)}</Badge>
                           ) : null}
                           <Badge variant="outline">{`Qty ${row.quantity}`}</Badge>
-                          <Badge variant="outline">{`£${row.unitPrice}`}</Badge>
+                          <Badge variant="outline">{`$${row.unitPrice}`}</Badge>
                           <Badge variant="outline">
                             {
                               CATEGORY_ADD_ON_CHARGE_FREQUENCIES.find(
@@ -872,7 +997,7 @@ function AdminSchedulingServiceNewPageInner() {
             </AccordionItem>
           </Accordion>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>Subscription price (optional)</Label>
               <Input
@@ -940,7 +1065,7 @@ function AdminSchedulingServiceNewPageInner() {
             </div>
           ) : null}
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>Min age (optional)</Label>
               <Input
@@ -961,8 +1086,8 @@ function AdminSchedulingServiceNewPageInner() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="space-y-2">
+          <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
+            <div className="space-y-2 sm:col-span-2">
               <Label>Duration (minutes)</Label>
               <Input
                 type="number"
@@ -978,7 +1103,7 @@ function AdminSchedulingServiceNewPageInner() {
             <AccordionItem value="booking-rules">
               <AccordionTrigger>Booking rules</AccordionTrigger>
               <AccordionContent>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 pb-2">
+                <div className="grid grid-cols-1 gap-x-6 gap-y-4 pb-2 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Min duration (mins)</Label>
                     <Input
@@ -1052,13 +1177,14 @@ function AdminSchedulingServiceNewPageInner() {
             />
           </div>
 
-          <div className="flex items-center justify-end gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
             <Button asChild type="button" variant="outline">
               <Link href={returnTo}>Cancel</Link>
             </Button>
             <Button type="button" className="bg-accent text-accent-foreground" onClick={handleSubmit}>
               {isEditing ? 'Save changes' : 'Create event'}
             </Button>
+          </div>
           </div>
         </CardContent>
       </Card>

@@ -230,7 +230,7 @@ export default function AdminCafeAttributesPage() {
                   }))
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

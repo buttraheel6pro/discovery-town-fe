@@ -62,7 +62,7 @@ export function ApproveHireModal({
     >
       <div className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="hire-deposit">Deposit amount (£)</Label>
+          <Label htmlFor="hire-deposit">Deposit amount ($)</Label>
           <Input
             id="hire-deposit"
             type="number"

@@ -46,6 +46,8 @@ export interface OpenBookingServiceAvailabilitySectionProps {
   readonly onCheckAvailability?: () => void
   readonly onResetAvailabilityCheck?: () => void
   readonly maxAdvanceDate?: Date | null
+  /** When set, uses catalog slot windows instead of generated open-booking mock times. */
+  readonly availabilityWindows?: readonly AvailableWindow[] | null
 }
 
 export type OpenBookingRentalPerDayVariantProps = Readonly<
@@ -85,12 +87,21 @@ function OpenBookingServiceAvailabilitySection({
   onCheckAvailability,
   onResetAvailabilityCheck,
   maxAdvanceDate = null,
+  availabilityWindows,
 }: Readonly<OpenBookingServiceAvailabilitySectionProps>) {
   const todayStr = getOpenBookingTodayIsoDate()
   const weekDates = getOpenBookingWeekDatesFromOffset(weekOffset)
 
   const availability = (() => {
     if (mode === 'private_hire' && !availabilityChecked) return null
+    if (availabilityWindows != null) {
+      return {
+        date: selectedDate,
+        serviceId: service.id,
+        windows: [...availabilityWindows],
+        operatingHours: { open: '08:00', close: '21:00' },
+      }
+    }
     if (mode === 'private_hire') {
       return generateOpenAvailabilityForDuration(service, selectedDate, durationMinutes)
     }
@@ -173,26 +184,32 @@ function OpenBookingServiceAvailabilitySection({
       ) : null}
 
       {availability && (mode === 'facility' || availabilityChecked) ? (
-        <OpenBookingTimeWindowGrid
-          headline={`Available times for ${formatOpenBookingDateDisplay(selectedDate)}`}
-          windows={availability.windows}
-          selectedWindow={selectedWindow}
-          onSelectedWindowChange={onSelectedWindowChange}
-          showTimeRange={showTimeRange}
-          resetSlot={
-            mode === 'private_hire' && availabilityChecked && onResetAvailabilityCheck ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="shrink-0 text-muted-foreground"
-                onClick={onResetAvailabilityCheck}
-              >
-                Reset
-              </Button>
-            ) : null
-          }
-        />
+        availability.windows.length > 0 ? (
+          <OpenBookingTimeWindowGrid
+            headline={`Available times for ${formatOpenBookingDateDisplay(selectedDate)}`}
+            windows={availability.windows}
+            selectedWindow={selectedWindow}
+            onSelectedWindowChange={onSelectedWindowChange}
+            showTimeRange={showTimeRange}
+            resetSlot={
+              mode === 'private_hire' && availabilityChecked && onResetAvailabilityCheck ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="shrink-0 text-muted-foreground"
+                  onClick={onResetAvailabilityCheck}
+                >
+                  Reset
+                </Button>
+              ) : null
+            }
+          />
+        ) : (
+          <p className="mt-4 text-sm text-muted-foreground">
+            No times available on this day. Choose another date in the week above.
+          </p>
+        )
       ) : null}
 
       {mode === 'facility' && durationOptions.length > 0 && selectedWindow ? (

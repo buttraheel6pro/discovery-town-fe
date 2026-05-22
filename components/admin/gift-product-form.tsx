@@ -43,7 +43,7 @@ export interface GiftProductDraft {
   couponsWithPackage: boolean
   isPerishable: boolean
   basketCapacity: string
-  occasionId: string
+  occasionIds: string[]
   /** Auto-derived basket + add-on price ceiling; persisted as `giftPriceUpperLimit`. */
   giftPriceUpperLimit: string
   /** Customer visibility only (does not remove from admin). */
@@ -383,6 +383,17 @@ export function GiftProductForm({
     [addOnOptions],
   )
 
+  const occasionPickerOptions = useMemo<GiftPickerOption[]>(
+    () =>
+      occasions.map((occasion) => ({
+        id: occasion.id,
+        label: occasion.name,
+        description: occasion.description,
+        imageUrl: occasion.image,
+      })),
+    [occasions],
+  )
+
   const couponPickerOptions = useMemo<GiftPickerOption[]>(
     () =>
       couponOptions.map((coupon) => {
@@ -542,33 +553,29 @@ export function GiftProductForm({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <div className="space-y-2">
-          <Label htmlFor="gift-occasion">Occasion</Label>
-          <Select
-            value={value.occasionId || undefined}
-            onValueChange={(next) => set('occasionId', next)}
-          >
-            <SelectTrigger id="gift-occasion">
-              <SelectValue placeholder="Select occasion" />
-            </SelectTrigger>
-            <SelectContent>
-              {occasions.map((occasion) => (
-                <SelectItem key={occasion.id} value={occasion.id}>
-                  {occasion.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="min-w-0 space-y-2">
+          <GiftMultiSelect
+            label="Occasions"
+            placeholder="Select occasions"
+            searchPlaceholder="Search occasions..."
+            options={occasionPickerOptions}
+            selectedIds={value.occasionIds}
+            onChange={(next) => set('occasionIds', next)}
+            helperText="Choose all occasions this gift bundle fits."
+          />
         </div>
-        <div className="space-y-2">
+        <div className="min-w-0 space-y-2">
           <Label htmlFor="gift-basket-capacity">Basket capacity</Label>
           <Input
             id="gift-basket-capacity"
             type="number"
             step="1"
             min="0"
-            className={basketCapacityError ? 'border-destructive focus-visible:ring-destructive/30' : ''}
+            className={cn(
+              'w-full',
+              basketCapacityError ? 'border-destructive focus-visible:ring-destructive/30' : '',
+            )}
             value={value.basketCapacity}
             onChange={(event) => {
               const next = event.target.value
@@ -617,6 +624,9 @@ export function GiftProductForm({
             Auto-calculated from basket total plus nice-to-have add-ons.
           </p>
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <div className="space-y-2">
           <Label htmlFor="gift-member-price">Member price</Label>
           <Input

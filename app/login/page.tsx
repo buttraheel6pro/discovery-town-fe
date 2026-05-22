@@ -3,7 +3,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 
@@ -20,12 +20,20 @@ import {
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { isLoginBypassEnabled } from '@/lib/config/auth'
 import { loginRequestSchema, type LoginRequest } from '@/lib/schemas/auth/login'
 import { loginUser } from '@/lib/services/auth'
 
 export default function LoginPage() {
   const router = useRouter()
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const bypassLogin = isLoginBypassEnabled()
+
+  useEffect(() => {
+    if (bypassLogin) {
+      router.replace('/account')
+    }
+  }, [bypassLogin, router])
 
   const form = useForm<LoginRequest>({
     resolver: zodResolver(loginRequestSchema),
@@ -49,6 +57,10 @@ export default function LoginPage() {
         error instanceof Error ? error.message : 'Login failed. Please try again.'
       setErrorMessage(message)
     }
+  }
+
+  if (bypassLogin) {
+    return null
   }
 
   return (

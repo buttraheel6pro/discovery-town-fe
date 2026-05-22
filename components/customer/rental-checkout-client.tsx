@@ -159,7 +159,8 @@ export function RentalCheckoutClient() {
             </>
           ) : (
             <p className="text-sm text-muted-foreground">
-              Pickup venue: 4821 Oak Tree Blvd, Carmel IN 46032. Pickup hours 9:00AM-7:00PM.
+              Pickup venue: 9753 Crosspoint Blvd, Indianapolis, Indiana, 46256.
+              Pickup hours 9:00AM-7:00PM.
             </p>
           )}
           <Button onClick={() => setStep('ack')} disabled={missingRequiredRentalSchedule}>

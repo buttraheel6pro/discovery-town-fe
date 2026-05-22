@@ -2,17 +2,22 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit'
 
 import {
+  buildCafeCatalogInventoryProducts,
+  isCafeCatalogProductId,
+} from '@/lib/cafe-utils'
+import {
   addOns as seedAddOns,
+  MOCK_CAFE_PRODUCTS,
   productCategories as baseProductCategories,
   products as baseProducts,
   shopProductCategories,
   shopProducts,
 } from '@/lib/mock-data'
 import type { RootState } from '@/lib/redux/store'
-import type { AddOn, Product, ProductCategory } from '@/lib/types'
+import type { AddOn, CafeProduct, Product, ProductCategory } from '@/lib/types'
 
 export const INVENTORY_STORAGE_KEY = 'discovery-town:inventory-store:v1'
-const GENERIC_PRODUCT_IMAGE_SRC = '/placeholder.jpg'
+const GENERIC_PRODUCT_IMAGE_SRC = '/placeholder.svg'
 
 interface InventoryState {
   products: Product[]
@@ -40,6 +45,12 @@ interface UpdateBookingAddOnPayload {
   updates: Partial<AddOn>
 }
 
+interface SyncCafeCatalogPayload {
+  cafeProducts: CafeProduct[]
+  productCategories: ProductCategory[]
+  tenantId: string
+}
+
 function withFallbackImageUrl(product: Product): Product {
   const imageUrl = product.imageUrl?.trim()
   return {
@@ -49,13 +60,24 @@ function withFallbackImageUrl(product: Product): Product {
 }
 
 function cloneInitialState(): InventoryState {
+  const productCategories = [...baseProductCategories, ...shopProductCategories].map(
+    (category) => ({ ...category }),
+  )
+  const tenantId = 'tenant-1'
+  const cafeCatalogProducts = buildCafeCatalogInventoryProducts(
+    MOCK_CAFE_PRODUCTS,
+    productCategories,
+    tenantId,
+  )
+  const nonCafeProducts = [...baseProducts, ...shopProducts].filter(
+    (product) => !isCafeCatalogProductId(product.id),
+  )
+
   return {
-    products: [...baseProducts, ...shopProducts].map((product) =>
+    products: [...nonCafeProducts, ...cafeCatalogProducts].map((product) =>
       withFallbackImageUrl({ ...product }),
     ),
-    productCategories: [...baseProductCategories, ...shopProductCategories].map(
-      (category) => ({ ...category }),
-    ),
+    productCategories,
     bookingAddOns: seedAddOns.map((addOn) => ({
       ...addOn,
       applicableServiceTypes: [...addOn.applicableServiceTypes],
@@ -169,6 +191,20 @@ const inventorySlice = createSlice({
     deleteBookingAddOn(state, action: PayloadAction<string>) {
       state.bookingAddOns = state.bookingAddOns.filter((addOn) => addOn.id !== action.payload)
     },
+    syncCafeCatalogProducts(state, action: PayloadAction<SyncCafeCatalogPayload>) {
+      const { cafeProducts, productCategories, tenantId } = action.payload
+      const catalogRows = buildCafeCatalogInventoryProducts(
+        cafeProducts,
+        productCategories,
+        tenantId,
+      )
+      const nonCafeProducts = state.products.filter(
+        (product) => !isCafeCatalogProductId(product.id),
+      )
+      state.products = [...nonCafeProducts, ...catalogRows].map((product) =>
+        withFallbackImageUrl({ ...product }),
+      )
+    },
   },
 })
 
@@ -184,6 +220,7 @@ export const {
   addBookingAddOn,
   updateBookingAddOn,
   deleteBookingAddOn,
+  syncCafeCatalogProducts,
 } = inventorySlice.actions
 
 export const inventoryReducer = inventorySlice.reducer

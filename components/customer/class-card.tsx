@@ -87,7 +87,7 @@ export function ClassCard({ service, nextSlot }: ClassCardProps) {
       footer={
         <div className="flex items-center justify-between">
           <span className="font-bold text-foreground text-base">
-            £{service.basePrice}
+            ${service.basePrice}
             <span className="text-xs font-normal text-muted-foreground">/session</span>
           </span>
           <Button

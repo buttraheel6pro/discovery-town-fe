@@ -7,6 +7,7 @@ import { Menu, Search, ShoppingCart, User, X, Zap } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { isLoginBypassEnabled } from '@/lib/config/auth'
 import { useInventory } from '@/lib/inventory-store'
 import { cn } from '@/lib/utils'
 
@@ -61,6 +62,7 @@ export function CustomerNavbar() {
 
   const allTopLevelLinks: NavbarLinkItem[] = [...discoverItems, ...storeItems]
   const cartCount = cart.items.reduce((sum, item) => sum + item.quantity, 0)
+  const bypassLogin = isLoginBypassEnabled()
 
   return (
     <>
@@ -121,11 +123,19 @@ export function CustomerNavbar() {
                 <User className="w-4 h-4" />
               </Button>
             </Link>
-            <Link href="/login">
-              <Button variant="outline" size="sm">
-                Login
-              </Button>
-            </Link>
+            {bypassLogin ? (
+              <Link href="/account">
+                <Button variant="outline" size="sm">
+                  My account
+                </Button>
+              </Link>
+            ) : (
+              <Link href="/login">
+                <Button variant="outline" size="sm">
+                  Login
+                </Button>
+              </Link>
+            )}
             <Link href="/play">
               <Button
                 size="sm"
@@ -176,11 +186,19 @@ export function CustomerNavbar() {
                   Account
                 </Button>
               </Link>
-              <Link href="/login" className="flex-1">
-                <Button variant="outline" className="w-full" size="sm">
-                  Login
-                </Button>
-              </Link>
+              {bypassLogin ? (
+                <Link href="/account" className="flex-1">
+                  <Button variant="outline" className="w-full" size="sm">
+                    My account
+                  </Button>
+                </Link>
+              ) : (
+                <Link href="/login" className="flex-1">
+                  <Button variant="outline" className="w-full" size="sm">
+                    Login
+                  </Button>
+                </Link>
+              )}
               <Link href="/play" className="flex-1">
                 <Button
                   size="sm"

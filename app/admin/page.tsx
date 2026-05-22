@@ -282,7 +282,7 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-foreground">
-              £{revenueToday.toFixed(2)}
+              ${revenueToday.toFixed(2)}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               Shop orders today
@@ -362,7 +362,7 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-foreground">
-              £{revenueThisMonth.toFixed(0)}
+              ${revenueThisMonth.toFixed(0)}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               Normalised from plan billing cycles
@@ -434,7 +434,7 @@ export default function AdminDashboard() {
                     {o.channel}
                   </span>
                   <span className="text-sm font-semibold text-foreground">
-                    £{o.total.toFixed(2)}
+                    ${o.total.toFixed(2)}
                   </span>
                   <span className="text-xs text-muted-foreground">
                     {new Date(o.createdAt).toLocaleTimeString()}

@@ -114,7 +114,7 @@ export function PackageSelector({
               <div className="relative mt-3 flex items-end justify-between gap-3">
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">Per booking</p>
-                  <p className="text-xl font-black text-foreground">£{p.basePrice.toFixed(2)}</p>
+                  <p className="text-xl font-black text-foreground">${p.basePrice.toFixed(2)}</p>
                 </div>
                 <span
                   className={cn(
@@ -196,7 +196,7 @@ export function PackageSelector({
                   </span>
                   {p.depositAmount ? (
                     <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">
-                      £{p.depositAmount.toFixed(0)} deposit
+                      ${p.depositAmount.toFixed(0)} deposit
                     </span>
                   ) : null}
                   {p.isWholeVenue ? (
@@ -218,7 +218,7 @@ export function PackageSelector({
 
             <div className="mt-4 rounded-md bg-muted/40 p-3">
               <p className="text-xs text-muted-foreground">Package price</p>
-              <p className="text-2xl font-black text-foreground">£{p.basePrice.toFixed(2)}</p>
+              <p className="text-2xl font-black text-foreground">${p.basePrice.toFixed(2)}</p>
             </div>
 
             <div className="mt-4 space-y-2">

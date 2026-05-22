@@ -761,6 +761,10 @@ export interface MembershipPlan {
   maxChildren?: number;
   /** Seasonal / marketing badge (e.g. winter pass). */
   seasonalBadge?: string;
+  /** Customer pages where this plan is listed (gym, play, events, membership). */
+  displayPages?: Array<'gym' | 'play' | 'events' | 'membership'>;
+  /** Scheduling sub-category ids — limits which page sections show the plan. */
+  schedulingCategoryIds?: string[];
 }
 
 /** Links a membership plan to a catalog add-on (admin + member perks). */
@@ -972,6 +976,8 @@ export interface ProductCategory {
 }
 
 export interface Product {
+  /** Business grouping key (e.g. shop, cafe&food, gifts, rentals). */
+  productType?: string;
   id: string;
   tenantId: string;
   categoryId: string;
@@ -1162,7 +1168,9 @@ export interface Product {
   basketCapacity?: number | null;
   /** Gifts-only max list price when all nice-to-have add-ons are included (basket + add-ons). */
   giftPriceUpperLimit?: number | null;
-  /** Gifts-only linked occasion id. */
+  /** Gifts-only linked scheduling occasion ids (supports multiple). */
+  giftOccasionIds?: string[];
+  /** @deprecated Use `giftOccasionIds`. First occasion id for legacy readers. */
   giftOccasionId?: string | null;
   /** Shop merch — variant attribute groups (size/color/etc.). */
   shopAttributeGroups?: AttributeGroup[];
@@ -1899,6 +1907,16 @@ export interface SchedulingCategory {
   icon: string | null;
   displayOrder: number;
   isActive: boolean;
+  description?: string;
+  requiresAttendee?: boolean;
+  membersOnly?: boolean;
+  freeInfantMonths?: number;
+  depositPercent?: number;
+  specialInstructionsEnabled?: boolean;
+  waitlistEnabled?: boolean;
+  allowFamilyMember?: boolean;
+  requireCheckInBeforeRebook?: boolean;
+  linkedAddOns?: CategoryAddOn[];
 }
 
 export interface CreateServiceCategoryPayload {
@@ -2435,19 +2453,6 @@ export interface SchedulingSlot {
   checkInCount?: number;
 }
 
-export interface SchedulingCategory {
-  description?: string;
-  requiresAttendee?: boolean;
-  membersOnly?: boolean;
-  freeInfantMonths?: number;
-  depositPercent?: number;
-  specialInstructionsEnabled?: boolean;
-  waitlistEnabled?: boolean;
-  allowFamilyMember?: boolean;
-  requireCheckInBeforeRebook?: boolean;
-  linkedAddOns?: CategoryAddOn[];
-}
-
 export type EventVisibility = "PUBLIC" | "PRIVATE" | "SINGLE_HOST";
 
 export interface SchedulingService {
@@ -2456,6 +2461,8 @@ export interface SchedulingService {
   siblingPrice?: string;
   freeAdultCount?: number;
   additionalAdultPrice?: string;
+  /** Max “No of passes” on customer booking; 1 hides +/- steppers. */
+  maxPassCount?: number | null;
   minSeats?: number;
   pricePerHour?: string;
   minChildSeats?: number;
@@ -2476,6 +2483,17 @@ export interface SchedulingBooking {
   couponCode?: string | null;
   actedByStaffId?: string | null;
   actedByStaffName?: string | null;
+  /** Child contact ids when category requires same-household participants. */
+  participantChildIds?: string[];
+  /** Logged-in primary guardian on open-play session bookings. */
+  primaryGuardianContactId?: string | null;
+  primaryGuardianName?: string | null;
+  /** Optional second adult on open-play session bookings. */
+  secondaryGuardianContactId?: string | null;
+  secondaryGuardianName?: string | null;
+  /** Adult contact id when category requires a responsible adult on the booking. */
+  accompanyingAdultContactId?: string | null;
+  accompanyingAdultName?: string | null;
 }
 
 export interface EventPackageAddOn {
@@ -2493,6 +2511,10 @@ export interface EventPackage {
   addOns: EventPackageAddOn[];
   isActive: boolean;
   createdAt: string;
+  /** Customer page(s) where this package is listed (admin placement). */
+  displayPages?: Array<"gym" | "play" | "events">;
+  /** Scheduling sub-category section(s), e.g. Play → Private Play. */
+  schedulingCategoryIds?: string[];
   depositAmount?: number;
   depositNonRefundable?: boolean;
   isWholeVenue?: boolean;
@@ -2515,14 +2537,21 @@ export interface EventPackage {
 
 export type CafeCategory =
   | "Coffee"
+  | "Hot Drinks"
+  | "Cold Brew"
   | "Cold Drinks"
+  | "Frozen Treats"
   | "Specialty"
   | "Pizza"
   | "Sandwiches"
   | "Kids Corner"
+  | "Salads"
+  | "Snacks"
   | "Salads & Snacks"
   | "Sweets"
-  | "Pastries";
+  | "Pastries"
+  | "Baked Food"
+  | "Toasts";
 
 export interface CafeModifier {
   id: string;

@@ -1,8 +1,16 @@
 /** Play, gym & event scheduling checkout helpers — cart grouping flags and line-item copy. */
 
+import { isOpenPlayPassCatalogService } from '@/lib/open-play-pass-catalog'
+import { usesEventTicketBookingSidebar } from '@/lib/scheduling-slot-availability'
 import { isEventCatalogService } from '@/lib/scheduling-visibility'
+import { getSchedulingTopLevelId } from '@/lib/scheduling-consumer-categories'
 import { formatPrice, formatSlotDate, formatSlotTimeRange } from '@/lib/utils'
 import type { SchedulingBooking, SchedulingService } from '@/lib/types'
+
+/** “Buy now” on play listing cards only (special play, camps, field trips). */
+export function usesBuyNowListingCta(service: SchedulingService): boolean {
+  return usesEventTicketBookingSidebar(service)
+}
 
 export const PLAY_CART_BOOKING_META_KEY = 'playCartBooking' as const
 export const GYM_CART_BOOKING_META_KEY = 'gymCartBooking' as const
@@ -14,6 +22,9 @@ export interface PlayCartDescriptionExtras {
 
 /** Open-play facility bookings are held in cart until shop checkout (mock). */
 export function isPlayCartCheckoutService(service: SchedulingService): boolean {
+  if (isOpenPlayPassCatalogService(service)) {
+    return false
+  }
   return service.serviceType === 'OPEN_PLAY'
 }
 
@@ -25,6 +36,19 @@ export function isGymFacilityCartCheckoutService(service: SchedulingService): bo
 /** Gym page class listings (`cat-gym-*`) use cart checkout on the class detail page. */
 export function isGymClassCartCheckoutService(service: SchedulingService): boolean {
   return service.categoryId.startsWith('cat-gym-')
+}
+
+/** Play top-level class sessions (camps, parents night, etc.) checkout via cart like open play. */
+export function isPlayClassCartCheckoutService(service: SchedulingService): boolean {
+  if (isGymClassCartCheckoutService(service)) return false
+  if (isEventSlotCartCheckoutService(service)) return false
+  const classLike =
+    service.serviceType === 'GYM_CLASS' ||
+    service.serviceType === 'SWIM_CLASS' ||
+    service.serviceType === 'COACHING_SESSION' ||
+    service.serviceType === 'FITNESS_ASSESSMENT'
+  if (!classLike) return false
+  return getSchedulingTopLevelId(service.categoryId) === 'PLAY'
 }
 
 export function isPlayCartBookingMetadata(
@@ -74,6 +98,18 @@ export function buildPlayCartBookingDescription(
   lines.push(`Guests: ${booking.guestCount}`)
   if (booking.participantName?.trim()) {
     lines.push(`Participant: ${booking.participantName.trim()}`)
+  }
+  if (booking.primaryGuardianName?.trim()) {
+    lines.push(`Primary guardian: ${booking.primaryGuardianName.trim()}`)
+  }
+  if (booking.secondaryGuardianName?.trim()) {
+    lines.push(`Secondary guardian: ${booking.secondaryGuardianName.trim()}`)
+  }
+  if (booking.accompanyingAdultName?.trim()) {
+    lines.push(`Guardian: ${booking.accompanyingAdultName.trim()}`)
+  }
+  if (booking.participantChildIds != null && booking.participantChildIds.length > 0) {
+    lines.push(`Children (${booking.participantChildIds.length}): household selection`)
   }
   if (booking.notes?.trim()) {
     lines.push(`Notes: ${booking.notes.trim()}`)

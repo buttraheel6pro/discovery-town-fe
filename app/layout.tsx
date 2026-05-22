@@ -4,6 +4,7 @@ import { Analytics } from '@vercel/analytics/next'
 import { Toaster } from '@/components/ui/toaster'
 import { CalendarProvider } from '@/lib/calendar-store'
 import { ClientProvider } from '@/lib/client-store'
+import { CafeInventorySyncBridge } from '@/lib/cafe-inventory-sync-bridge'
 import { CafeProvider } from '@/lib/cafe-store'
 import { InventoryProvider } from '@/lib/inventory-store'
 import { LocationProvider } from '@/lib/location-store'
@@ -58,6 +59,7 @@ export default function RootLayout({
           <SchedulingProvider>
             <InventoryProvider>
               <CafeProvider>
+                <CafeInventorySyncBridge />
                 <ReportsProvider>
                   <LocationProvider>
                     <CalendarProvider>

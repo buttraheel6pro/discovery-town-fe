@@ -1,4 +1,5 @@
 /** Shared visibility helpers for scheduling services across admin and customer routes. */
+import { isOpenPlayPassCatalogService } from '@/lib/open-play-pass-catalog'
 import type { SchedulingService, SchedulingSlot } from '@/lib/types'
 
 const LEGACY_SERVICE_ID_PREFIXES = [
@@ -52,6 +53,10 @@ export function hasAssignedConsumerSlot(
   service: SchedulingService,
   slots: readonly SchedulingSlot[],
 ): boolean {
+  if (isOpenPlayPassCatalogService(service)) {
+    return false
+  }
+
   if (service.bookingMode !== 'SCHEDULED') {
     return true
   }

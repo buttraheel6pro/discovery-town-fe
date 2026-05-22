@@ -217,22 +217,22 @@ const sidebarGroups = [
   //     },
   //   ],
   // },
-  // {
-  //   label: "Customers",
-  //   icon: Users,
-  //   items: [
-  //     {
-  //       label: "Directory",
-  //       href: "/admin/clients",
-  //       icon: UserCircle,
-  //     },
-  //     {
-  //       label: "Labels & Tags",
-  //       href: "/admin/clients/tags",
-  //       icon: Tag,
-  //     },
-  //   ],
-  // },
+  {
+    label: "Customers",
+    icon: Users,
+    items: [
+      {
+        label: "Directory",
+        href: "/admin/clients",
+        icon: UserCircle,
+      },
+      {
+        label: "Labels & Tags",
+        href: "/admin/clients/tags",
+        icon: Tag,
+      },
+    ],
+  },
 ];
 
 const SECTION_ROOTS = [

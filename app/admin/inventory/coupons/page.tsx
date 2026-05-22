@@ -130,7 +130,7 @@ export default function AdminInventoryCouponsPage() {
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{c.type}</TableCell>
                   <TableCell className="text-right font-semibold">
-                    {c.type === 'PERCENTAGE' ? `${c.value}%` : `£${c.value}`}
+                    {c.type === 'PERCENTAGE' ? `${c.value}%` : `$${c.value}`}
                   </TableCell>
                   <TableCell className="text-right text-sm text-muted-foreground">
                     {c.usageCount}
@@ -198,7 +198,7 @@ export default function AdminInventoryCouponsPage() {
                     <li key={o.id} className="flex items-center justify-between rounded-lg border border-border p-3">
                       <span className="font-mono text-xs font-semibold text-foreground">{o.orderNumber}</span>
                       <span className="text-muted-foreground">{new Date(o.createdAt).toLocaleDateString()}</span>
-                      <span className="font-semibold text-foreground">−£{(o.couponDiscount ?? 0).toFixed(2)}</span>
+                      <span className="font-semibold text-foreground">−${(o.couponDiscount ?? 0).toFixed(2)}</span>
                     </li>
                   ))}
                 </ul>

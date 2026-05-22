@@ -1,11 +1,14 @@
 /** Dedicated route for off-site party service requests. */
+import { Suspense } from 'react'
+
 import { WeBringOffsitePage } from '@/components/customer/we-bring-offsite-page'
 
 const PARTY_EVENT_TYPE_OPTIONS = ['Birthday', 'School Fair', 'Community Event', 'Corporate Family Day']
 
 export default function WeBringThePartyPage() {
   return (
-    <WeBringOffsitePage
+    <Suspense fallback={null}>
+      <WeBringOffsitePage
       pageEyebrow="Off-site Party Support"
       pageTitle="WE BRING THE PARTY"
       pageDescription="Select party-ready equipment and submit one complete off-site inquiry."
@@ -20,6 +23,7 @@ export default function WeBringThePartyPage() {
         'prod-takeout-cupcakes',
       ]}
       eventTypeOptions={PARTY_EVENT_TYPE_OPTIONS}
-    />
+      />
+    </Suspense>
   )
 }

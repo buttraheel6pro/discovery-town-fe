@@ -23,6 +23,8 @@ export interface ListingCardProps {
   meta?: React.ReactNode
   footer?: React.ReactNode
   className?: string
+  /** Stretch card to parent height so footers align in horizontal rails. */
+  fillHeight?: boolean
 }
 
 export function ListingCard({
@@ -36,19 +38,21 @@ export function ListingCard({
   meta,
   footer,
   className,
+  fillHeight = false,
 }: Readonly<ListingCardProps>) {
   const [usePlaceholder, setUsePlaceholder] = useState(false)
   const showRemoteImage = Boolean(imageUrl) && !usePlaceholder
 
   return (
-    <Link href={href} className="block">
+    <Link href={href} className={cn('block', fillHeight && 'h-full min-h-0 w-full')}>
       <Card
         className={cn(
-          'group overflow-hidden rounded-xl border border-border transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg',
+          'group overflow-hidden rounded-xl border border-border shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg',
+          fillHeight && 'h-full min-h-[28rem] gap-0 py-0',
           className,
         )}
       >
-        <div className="relative h-48 overflow-hidden">
+        <div className="relative h-48 shrink-0 overflow-hidden">
           {showRemoteImage ? (
             <Image
               src={imageUrl as string}
@@ -88,23 +92,42 @@ export function ListingCard({
           ) : null}
         </div>
 
-        <CardContent className="flex flex-col gap-3 p-5">
-          <div className="space-y-1">
+        <CardContent
+          className={cn(
+            'flex flex-col gap-3 p-5',
+            fillHeight && 'min-h-0 flex-1',
+          )}
+        >
+          <div className={cn('space-y-1', fillHeight && 'min-h-[4.5rem] shrink-0')}>
             <h3
-              className="text-base font-bold leading-tight text-foreground"
+              className={cn(
+                'text-base font-bold leading-tight text-foreground',
+                fillHeight && 'line-clamp-2 min-h-[2.5rem]',
+              )}
               style={{ fontFamily: 'var(--font-barlow)' }}
             >
               {title}
             </h3>
-            {description ? (
-              <p className="line-clamp-2 text-sm leading-relaxed text-muted-foreground">
-                {description}
+            {description || fillHeight ? (
+              <p
+                className={cn(
+                  'line-clamp-2 text-sm leading-relaxed text-muted-foreground',
+                  fillHeight && 'min-h-[2.75rem]',
+                )}
+              >
+                {description ?? ''}
               </p>
             ) : null}
           </div>
 
-          {meta ? <div>{meta}</div> : null}
-          {footer ? <div className="mt-auto pt-1">{footer}</div> : null}
+          {meta ? (
+            <div className={fillHeight ? 'min-h-0 flex-1' : undefined}>{meta}</div>
+          ) : fillHeight ? (
+            <div className="min-h-0 flex-1" aria-hidden />
+          ) : null}
+          {footer ? (
+            <div className={cn('pt-1', fillHeight && 'mt-auto shrink-0')}>{footer}</div>
+          ) : null}
         </CardContent>
       </Card>
     </Link>

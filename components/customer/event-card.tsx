@@ -102,7 +102,7 @@ export function EventCard({ service, slot }: EventCardProps) {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1 text-foreground font-bold">
             <Ticket className="w-4 h-4 text-accent" />
-            <span>{ticketPrice > 0 ? `£${ticketPrice}` : 'Free'}</span>
+            <span>{ticketPrice > 0 ? `$${ticketPrice}` : 'Free'}</span>
           </div>
           <Button
             size="sm"

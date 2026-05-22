@@ -108,7 +108,7 @@ export default function AdminClassPacksPage() {
                   {def.name}
                 </CardTitle>
                 <p className="text-xs text-muted-foreground mt-1">
-                  £{def.price} · {def.creditCount} credits · {def.validityDays} days
+                  ${def.price} · {def.creditCount} credits · {def.validityDays} days
                 </p>
               </div>
               <CapacityRing
@@ -207,7 +207,7 @@ export default function AdminClassPacksPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="c-price">Price (£)</Label>
+              <Label htmlFor="c-price">Price ($)</Label>
               <Input
                 id="c-price"
                 type="number"

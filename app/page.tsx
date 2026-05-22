@@ -198,7 +198,7 @@ export default function HomePage() {
           <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
             <div className="max-w-3xl space-y-8">
               <Badge className="bg-accent text-accent-foreground font-semibold text-xs px-3 py-1.5 uppercase tracking-widest">
-                London&apos;s Premier Sports Complex
+                Indianapolis&apos;s Premier Sports Complex
               </Badge>
               <h1
                 id="hero-heading"

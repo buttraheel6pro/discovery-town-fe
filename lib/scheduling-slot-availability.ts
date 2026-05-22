@@ -1,0 +1,182 @@
+/** Map catalog scheduling slots to customer availability windows. */
+import { locations } from '@/lib/mock-data'
+import { formatSlotTimeRange } from '@/lib/utils'
+import type { AvailableWindow, SchedulingService, SchedulingSlot } from '@/lib/types'
+
+export const SPECIAL_PLAY_EVENTS_CATEGORY_ID = 'cat-special-play-events' as const
+export const CAMP_PLAY_CATEGORY_ID = 'cat-camps-play' as const
+
+const CAMP_SINGLE_DAY_SERVICE_ID = 'svc-camp-mlk-day' as const
+const CAMP_DAILY_HOURS_LABEL = '9:00 AM – 3:00 PM'
+
+const EVENT_TICKET_BOOKING_CATEGORY_IDS = new Set<string>([
+  SPECIAL_PLAY_EVENTS_CATEGORY_ID,
+  'cat-camps-play',
+  'cat-field-trips',
+])
+
+/** Ticket counter + cart sidebar (special play, camps, field trips). */
+export function usesEventTicketBookingSidebar(
+  service: Pick<SchedulingService, 'categoryId'>,
+): boolean {
+  return EVENT_TICKET_BOOKING_CATEGORY_IDS.has(service.categoryId)
+}
+
+export interface SlotDrivenEventDisplayMeta {
+  readonly dateLabel: string
+  readonly timeLabel: string
+  readonly locationLabel: string
+  readonly organiserLabel: string
+}
+
+function formatEventLongDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-GB', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
+}
+
+function formatCampMonthDateRange(startAt: string, endAt: string): string {
+  const start = new Date(startAt)
+  const end = new Date(endAt)
+  const sameMonth =
+    start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear()
+
+  if (sameMonth) {
+    const monthYear = start.toLocaleDateString('en-GB', {
+      month: 'long',
+      year: 'numeric',
+    })
+    const firstDay = start.getDate()
+    const lastDay = end.getDate()
+    return `${monthYear} · ${firstDay}–${lastDay} (month-long camp)`
+  }
+
+  const startLabel = start.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
+  const endLabel = end.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
+  return `${startLabel} – ${endLabel} (month-long camp)`
+}
+
+function isCampMonthLongBooking(
+  service: Pick<SchedulingService, 'categoryId' | 'id'>,
+  slot: SchedulingSlot,
+): boolean {
+  if (service.categoryId !== CAMP_PLAY_CATEGORY_ID) {
+    return false
+  }
+  if (service.id === CAMP_SINGLE_DAY_SERVICE_ID) {
+    return false
+  }
+  const start = new Date(slot.startAt)
+  const end = new Date(slot.endAt)
+  return end.getTime() - start.getTime() > 24 * 60 * 60_000
+}
+
+function resolveLocationName(
+  locationId: string | null | undefined,
+  fallback?: string | null,
+): string {
+  if (locationId) {
+    const match = locations.find((entry) => entry.id === locationId)
+    if (match?.name) {
+      return match.name
+    }
+  }
+  return fallback?.trim() || '—'
+}
+
+function isoDateFromInstant(iso: string): string {
+  const d = new Date(iso)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+export function windowsFromSchedulingSlots(
+  slots: readonly SchedulingSlot[],
+  serviceId: string,
+  dateStr: string,
+): AvailableWindow[] {
+  const now = Date.now()
+  return slots
+    .filter((slot) => {
+      if (slot.serviceId !== serviceId) {
+        return false
+      }
+      if (slot.status === 'CANCELLED' || slot.status === 'COMPLETED') {
+        return false
+      }
+      if (slot.isActive === false) {
+        return false
+      }
+      if (isoDateFromInstant(slot.startAt) !== dateStr) {
+        return false
+      }
+      return new Date(slot.startAt).getTime() > now
+    })
+    .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
+    .map((slot) => ({
+      startAt: slot.startAt,
+      endAt: slot.endAt,
+      spotsRemaining: Math.max(
+        0,
+        slot.effectiveCapacity - slot.bookedCount,
+      ),
+    }))
+    .filter((window) => window.spotsRemaining > 0)
+}
+
+/** Next bookable slot for a service (used on event detail headers). */
+export function findUpcomingSlotForService(
+  slots: readonly SchedulingSlot[],
+  serviceId: string,
+): SchedulingSlot | undefined {
+  const now = Date.now()
+  return slots
+    .filter((slot) => {
+      if (slot.serviceId !== serviceId) {
+        return false
+      }
+      if (slot.status === 'CANCELLED' || slot.status === 'COMPLETED') {
+        return false
+      }
+      if (slot.isActive === false) {
+        return false
+      }
+      return new Date(slot.startAt).getTime() > now
+    })
+    .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())[0]
+}
+
+export function buildSlotDrivenEventDisplayMeta(
+  slot: SchedulingSlot,
+  serviceLocation?: string | null,
+  service?: Pick<SchedulingService, 'categoryId' | 'id'>,
+): SlotDrivenEventDisplayMeta {
+  if (service != null && isCampMonthLongBooking(service, slot)) {
+    return {
+      dateLabel: formatCampMonthDateRange(slot.startAt, slot.endAt),
+      timeLabel: `${CAMP_DAILY_HOURS_LABEL} daily (weekdays)`,
+      locationLabel: resolveLocationName(slot.locationId, serviceLocation),
+      organiserLabel: slot.staffName?.trim() || 'Discovery Town team',
+    }
+  }
+
+  return {
+    dateLabel: formatEventLongDate(slot.startAt),
+    timeLabel: formatSlotTimeRange(slot.startAt, slot.endAt),
+    locationLabel: resolveLocationName(slot.locationId, serviceLocation),
+    organiserLabel: slot.staffName?.trim() || 'Discovery Town team',
+  }
+}

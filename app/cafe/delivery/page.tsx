@@ -50,7 +50,7 @@ export default function CafeDeliveryPage() {
           Delivery
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Enter your address for an estimated fee (mock). Free delivery on orders over £50.
+          Enter your address for an estimated fee (mock). Free delivery on orders over $50.
         </p>
 
         <div className="mt-8 space-y-4">
@@ -70,7 +70,7 @@ export default function CafeDeliveryPage() {
               id="zip"
               value={zip}
               onChange={(e) => setZip(e.target.value)}
-              placeholder="46032"
+              placeholder="46256"
               autoComplete="postal-code"
             />
           </div>
@@ -81,16 +81,16 @@ export default function CafeDeliveryPage() {
           <Progress value={progressPct} className="mt-2 h-2" />
           <p className="mt-2 text-xs text-muted-foreground">
             {remainder > 0
-              ? `Add £${remainder.toFixed(2)} more for free delivery.`
+              ? `Add $${remainder.toFixed(2)} more for free delivery.`
               : 'You qualify for free delivery.'}
           </p>
           <p className="mt-4 text-sm">
-            Cart subtotal: <span className="font-semibold">£{cartTotal.toFixed(2)}</span>
+            Cart subtotal: <span className="font-semibold">${cartTotal.toFixed(2)}</span>
           </p>
           <p className={cn('mt-1 text-sm', fee === 0 && zip.trim() === '' && 'text-muted-foreground')}>
             Delivery fee (est.):{' '}
             <span className="font-semibold">
-              {zip.trim() === '' ? '—' : `£${fee.toFixed(2)}`}
+              {zip.trim() === '' ? '—' : `$${fee.toFixed(2)}`}
             </span>
           </p>
           <p className="mt-2 text-xs text-muted-foreground">

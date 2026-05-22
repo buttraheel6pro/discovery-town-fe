@@ -130,7 +130,7 @@ function ClassPacksCheckoutContent() {
                     className="text-2xl font-black text-foreground"
                     style={{ fontFamily: 'var(--font-barlow)' }}
                   >
-                    GBP {selectedPack.price}
+                    USD {selectedPack.price}
                   </p>
                 </div>
               </CardContent>

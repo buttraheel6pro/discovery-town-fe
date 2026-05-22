@@ -6,60 +6,86 @@ import { useMemo } from 'react'
 import { CustomerFooter } from '@/components/customer/footer'
 import { HorizontalScrollSection } from '@/components/customer/horizontal-scroll-section'
 import { CustomerNavbar } from '@/components/customer/navbar'
-import { PromoLinkGridSection } from '@/components/customer/promo-link-grid-section'
+import { OpenPlayMembershipOfferCard } from '@/components/customer/open-play-membership-offer-card'
 import { ScrollableSectionBreadcrumbs } from '@/components/customer/scrollable-section-breadcrumbs'
 import { ServiceScrollCard } from '@/components/customer/service-scroll-card'
+import { visibleOpenPlayMembershipOffers } from '@/lib/open-play-membership-offers'
+import { useClients } from '@/lib/client-store'
+import { isOpenPlayPassCatalogService } from '@/lib/open-play-pass-catalog'
 import { hasAssignedConsumerSlot } from '@/lib/scheduling-visibility'
+import { SPECIAL_PLAY_EVENTS_CATEGORY_ID } from '@/lib/scheduling-slot-availability'
+import { sortSpecialPlayServices } from '@/lib/special-play-service-order'
 import { useScheduling } from '@/lib/scheduling-store'
+import {
+  WE_BRING_PLAY_CATEGORY_ID,
+  WE_BRING_PLAY_SERVICE_IDS,
+} from '@/lib/we-bring-play-offerings'
+import type { SchedulingService, SchedulingSlot } from '@/lib/types'
+
+const WE_BRING_PLAY_SERVICE_ORDER = new Map(
+  WE_BRING_PLAY_SERVICE_IDS.map((id, index) => [id, index]),
+)
+
+const OPEN_PLAY_CATEGORY_ID = 'cat-open-play'
+
+function servicesForPlayCategory(
+  categoryId: string,
+  services: readonly SchedulingService[],
+  slots: readonly SchedulingSlot[],
+): SchedulingService[] {
+  const matched = services.filter(
+    (service) =>
+      service.isActive &&
+      !isOpenPlayPassCatalogService(service) &&
+      service.categoryId === categoryId &&
+      hasAssignedConsumerSlot(service, slots),
+  )
+  if (categoryId === SPECIAL_PLAY_EVENTS_CATEGORY_ID) {
+    return sortSpecialPlayServices(matched)
+  }
+  if (categoryId === WE_BRING_PLAY_CATEGORY_ID) {
+    return matched
+      .filter((service) => WE_BRING_PLAY_SERVICE_ORDER.has(service.id))
+      .sort(
+        (a, b) =>
+          (WE_BRING_PLAY_SERVICE_ORDER.get(a.id) ?? 0) -
+          (WE_BRING_PLAY_SERVICE_ORDER.get(b.id) ?? 0),
+      )
+  }
+  return matched
+}
 
 const PLAY_CATEGORY_IDS = new Set<string>([
-  'cat-open-play',
+  OPEN_PLAY_CATEGORY_ID,
   'cat-private-play',
   'cat-special-play-events',
   'cat-camps-play',
   'cat-parents-night',
   'cat-field-trips',
+  'cat-we-bring-play',
 ])
 
 const PLAY_CATEGORY_DESCRIPTIONS: Record<string, string> = {
-  'cat-open-play': '2-hour pass, sibling pass, and multi-pass options for everyday play.',
+  'cat-open-play':
+    '2-hour, sibling, and multi-pass session bookings. Membership and seasonal passes are listed below.',
   'cat-private-play': 'Private room, full venue takeover, and meeting-room conference options.',
   'cat-special-play-events':
-    'Character, holiday, seasonal, and skill-building festival programmes.',
+    'Character, holiday, fall/winter/spring seasonal festivals, and skill-building programmes.',
   'cat-camps-play': 'Summer, winter break, spring break, and MLK day camp options.',
   'cat-parents-night': 'Saturday 4-7 PM supervised care for ages 6 months to 7 years.',
   'cat-field-trips': 'Structured group experiences for schools and organizations.',
+  'cat-we-bring-play':
+    'Mobile inflatables, games, entertainment, and party setup brought to your venue.',
 }
-
-const WE_BRING_PLAY_ITEMS = [
-  {
-    id: 'play-soft-play-zones',
-    title: 'Soft Play Zones',
-    imageUrl: 'https://images.unsplash.com/photo-1516627145497-ae6968895b74?w=1200&q=80',
-    href: '/we-bring-to-play',
-  },
-  {
-    id: 'play-mobile-sensory-stations',
-    title: 'Mobile Sensory Stations',
-    imageUrl: 'https://images.unsplash.com/photo-1515488042361-ee00e0ddd4e4?w=1200&q=80',
-    href: '/we-bring-to-play',
-  },
-  {
-    id: 'play-active-game-coaches',
-    title: 'Active Game Coaches',
-    imageUrl: 'https://images.unsplash.com/photo-1542810634-71277d95dcbb?w=1200&q=80',
-    href: '/we-bring-to-play',
-  },
-  {
-    id: 'play-travel-play-kits',
-    title: 'Travel Play Kits',
-    imageUrl: 'https://images.unsplash.com/photo-1516626891537-bbfbbd5f6cdd?w=1200&q=80',
-    href: '/we-bring-to-play',
-  },
-] as const
 
 export default function PlayPage() {
   const { categories, services, slots } = useScheduling()
+  const { membershipPlans } = useClients()
+
+  const openPlayMembershipOffers = useMemo(
+    () => visibleOpenPlayMembershipOffers(membershipPlans),
+    [membershipPlans],
+  )
 
   const sectionServices = useMemo(
     () =>
@@ -74,15 +100,15 @@ export default function PlayPage() {
           id: category.id,
           title: category.name,
           description: PLAY_CATEGORY_DESCRIPTIONS[category.id] ?? 'Discover play experiences.',
-        services: services.filter(
-          (service) =>
-              service.isActive &&
-              service.categoryId === category.id &&
-            hasAssignedConsumerSlot(service, slots),
-        ),
+          services: servicesForPlayCategory(category.id, services, slots),
+          membershipOffers:
+            category.id === OPEN_PLAY_CATEGORY_ID ? openPlayMembershipOffers : [],
         }))
-        .filter((section) => section.services.length > 0),
-    [categories, services, slots],
+        .filter(
+          (section) =>
+            section.services.length > 0 || section.membershipOffers.length > 0,
+        ),
+    [categories, openPlayMembershipOffers, services, slots],
   )
   const breadcrumbItems = useMemo(
     () =>
@@ -128,18 +154,12 @@ export default function PlayPage() {
                   {section.services.map((service) => (
                     <ServiceScrollCard key={service.id} service={service} />
                   ))}
+                  {section.membershipOffers.map((offer) => (
+                    <OpenPlayMembershipOfferCard key={offer.id} offer={offer} />
+                  ))}
                 </HorizontalScrollSection>
               </div>
             ))}
-
-            <PromoLinkGridSection
-              eyebrow="We Bring Play To You"
-              title="The Play Comes to You"
-              description="Can’t come to us? We bring mobile play experiences to your home, school, or venue."
-              items={WE_BRING_PLAY_ITEMS}
-              ctaLabel="Book Now"
-              ctaHref="/we-bring-to-play"
-            />
           </div>
         </section>
       </main>

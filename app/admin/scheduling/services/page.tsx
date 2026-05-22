@@ -30,7 +30,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { BookingModeBadge } from "@/components/admin/booking-mode-badge";
-import { CategoryAddOnManager } from "@/components/admin/category-add-on-manager";
+import { CategoryPlacedPackagesSection } from "@/components/admin/category-placed-packages-section";
+import { OpenPlayMembershipAdminSection } from "@/components/admin/open-play-membership-admin-section";
 import { CrudModal } from "@/components/admin/crud-modal";
 import { EventTypeBadge } from "@/components/admin/event-type-badge";
 import { EventTypeSelector } from "@/components/admin/event-type-selector";
@@ -94,7 +95,21 @@ import {
 } from "@/lib/services/service-categories";
 import { LABELS } from "@/lib/constants/ui-labels";
 import { locations, samplePreschoolAddOns } from "@/lib/mock-data";
+import {
+  countCafeFoodProductsForInventoryCategory,
+  listCafeFoodProductsForInventoryCategory,
+} from "@/lib/cafe-utils";
 import { useInventory } from "@/lib/inventory-store";
+import {
+  SCHEDULING_TOP_LEVEL_ORDER,
+  getSchedulingTopLevelId,
+  getSchedulingTopLevelLabel,
+  isConsumerAlignedCategoryId,
+  type SchedulingTopLevelId,
+} from "@/lib/scheduling-consumer-categories";
+import { showMaxPassCountAdminField } from "@/lib/booking-pass-count";
+import { withoutOpenPlayPassCatalogServices } from "@/lib/open-play-pass-catalog";
+import { buildPackageEditHref } from "@/lib/package-placement";
 import { isCurrentCatalogService } from "@/lib/scheduling-visibility";
 import { useScheduling } from "@/lib/scheduling-store";
 import {
@@ -113,7 +128,6 @@ import { StockAdjustmentModal } from "@/components/admin/stock-adjustment-modal"
 import type {
   SchedulingBookingMode,
   SchedulingCategory,
-  EventPackage,
   EventVisibility,
   SchedulingService,
   SchedulingServiceAddOn,
@@ -149,6 +163,7 @@ type EditDraft = {
   maxAdvanceHours: string;
   siblingPrice: string;
   freeAdultCount: string;
+  maxPassCount: string;
   additionalAdultPrice: string;
   minSeats: string;
   pricePerHour: string;
@@ -202,39 +217,6 @@ type CategoryDraft = {
 
 const allServiceTypes = Object.values(SchedulingServiceTypeEnum);
 const ALL_CATEGORIES_VALUE = "all";
-const SCHEDULING_TOP_LEVEL_ORDER = ["GYM", "PLAY", "EVENT"] as const;
-type SchedulingTopLevelId = (typeof SCHEDULING_TOP_LEVEL_ORDER)[number];
-
-const PLAY_CATEGORY_IDS = new Set<string>([
-  "cat-open-play",
-  "cat-private-play",
-  "cat-camps-play",
-  "cat-special-play-events",
-  "cat-parents-night",
-  "cat-field-trips",
-  "cat-we-bring-play",
-]);
-
-function getSchedulingTopLevelId(categoryId: string): SchedulingTopLevelId {
-  if (categoryId.startsWith("cat-gym-")) {
-    return "GYM";
-  }
-  if (PLAY_CATEGORY_IDS.has(categoryId) || categoryId.startsWith("cat-play-")) {
-    return "PLAY";
-  }
-  return "EVENT";
-}
-
-function isConsumerAlignedCategoryId(categoryId: string): boolean {
-  if (CONSUMER_ALIGNED_CATEGORY_IDS.has(categoryId)) {
-    return true;
-  }
-  return (
-    categoryId.startsWith("cat-gym-") ||
-    categoryId.startsWith("cat-play-") ||
-    categoryId.startsWith("cat-event-")
-  );
-}
 
 function slugifyCategoryName(input: string): string {
   return input
@@ -243,40 +225,6 @@ function slugifyCategoryName(input: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
 }
-
-function getSchedulingTopLevelLabel(topLevelId: SchedulingTopLevelId): string {
-  switch (topLevelId) {
-    case "GYM":
-      return "Gym";
-    case "PLAY":
-      return "Play";
-    case "EVENT":
-      return "Event";
-    default:
-      return "Event";
-  }
-}
-
-const CONSUMER_ALIGNED_CATEGORY_IDS = new Set<string>([
-  "cat-open-play",
-  "cat-private-play",
-  "cat-special-play-events",
-  "cat-camps-play",
-  "cat-parents-night",
-  "cat-field-trips",
-  "cat-we-bring-play",
-  "cat-gym-babies",
-  "cat-gym-toddlers",
-  "cat-gym-preschool",
-  "cat-gym-kids",
-  "cat-gym-teens",
-  "cat-gym-adults",
-  "cat-gym-seniors",
-  "cat-gym-family",
-  "cat-gym-prenatal",
-  "cat-gym-special-needs",
-  "cat-5",
-]);
 
 const EVENT_TYPE_PRODUCT_TYPE_MENU_ORDER = [
   { productType: "cafe&food", label: "Cafe & Food" },
@@ -335,9 +283,6 @@ function AdminSchedulingServicesPageContent() {
     addService,
     updateService,
     packages,
-    addPackage,
-    updatePackage,
-    removePackage,
     duplicatePackage,
     linkSchedulingAddOn,
     unlinkSchedulingAddOn,
@@ -352,7 +297,7 @@ function AdminSchedulingServicesPageContent() {
   }, [categories]);
 
   const alignedServices = useMemo<SchedulingService[]>(() => {
-    return services.filter(
+    return withoutOpenPlayPassCatalogServices(services).filter(
       (service) =>
         isConsumerAlignedCategoryId(service.categoryId) &&
         isCurrentCatalogService(service.id),
@@ -403,30 +348,6 @@ function AdminSchedulingServicesPageContent() {
   const [dragOverCategoryId, setDragOverCategoryId] = useState<string | null>(
     null,
   );
-  const [packageOpen, setPackageOpen] = useState(false);
-  const [selectedPackageId, setSelectedPackageId] = useState<string | null>(
-    null,
-  );
-  const [packageName, setPackageName] = useState("");
-  const [packageTier, setPackageTier] = useState<
-    "SILVER" | "GOLD" | "PLATINUM"
-  >("SILVER");
-  const [packageBasePrice, setPackageBasePrice] = useState("0");
-  const [packageFeatures, setPackageFeatures] = useState("");
-  const [packageIsActive, setPackageIsActive] = useState(true);
-  const [packageDepositAmount, setPackageDepositAmount] = useState("");
-  const [packageIsWholeVenue, setPackageIsWholeVenue] = useState(false);
-  const [packageRequiresApproval, setPackageRequiresApproval] = useState(false);
-  const [packageMinChild, setPackageMinChild] = useState("");
-  const [packageMaxChild, setPackageMaxChild] = useState("");
-  const [packageMinAdult, setPackageMinAdult] = useState("");
-  const [packageMaxAdult, setPackageMaxAdult] = useState("");
-  const [packageAdditionalChildPrice, setPackageAdditionalChildPrice] =
-    useState("");
-  const [packageDuration, setPackageDuration] = useState("");
-  const [packageSetupTime, setPackageSetupTime] = useState("");
-  const [packageStaffCount, setPackageStaffCount] = useState("");
-  const [packagePartyRooms, setPackagePartyRooms] = useState("");
   const [packageDisableConfirmOpen, setPackageDisableConfirmOpen] =
     useState(false);
   const [categoryAddOnOpen, setCategoryAddOnOpen] = useState(false);
@@ -468,6 +389,7 @@ function AdminSchedulingServicesPageContent() {
     maxAdvanceHours: "",
     siblingPrice: "",
     freeAdultCount: "2",
+    maxPassCount: "",
     additionalAdultPrice: "",
     minSeats: "1",
     pricePerHour: "",
@@ -503,6 +425,7 @@ function AdminSchedulingServicesPageContent() {
     maxAdvanceHours: "",
     siblingPrice: "",
     freeAdultCount: "2",
+    maxPassCount: "",
     additionalAdultPrice: "",
     minSeats: "1",
     pricePerHour: "",
@@ -703,6 +626,8 @@ function AdminSchedulingServicesPageContent() {
       siblingPrice: selected.siblingPrice ?? "",
       freeAdultCount:
         selected.freeAdultCount != null ? String(selected.freeAdultCount) : "2",
+      maxPassCount:
+        selected.maxPassCount != null ? String(selected.maxPassCount) : "",
       additionalAdultPrice: selected.additionalAdultPrice ?? "",
       minSeats: selected.minSeats != null ? String(selected.minSeats) : "1",
       pricePerHour: selected.pricePerHour ?? "",
@@ -933,10 +858,19 @@ function AdminSchedulingServicesPageContent() {
 
   const productsInSelectedMenu = useMemo(() => {
     if (!selectedProductMenuCategoryId) return [];
+    const category = productCategoryById.get(selectedProductMenuCategoryId);
+    const isCafeMenu =
+      (category?.productType ?? "").toLowerCase() === "cafe&food";
+    if (isCafeMenu) {
+      return listCafeFoodProductsForInventoryCategory(
+        products,
+        selectedProductMenuCategoryId,
+      );
+    }
     return products.filter(
       (p) => p.isActive && p.categoryId === selectedProductMenuCategoryId,
     );
-  }, [products, selectedProductMenuCategoryId]);
+  }, [productCategoryById, products, selectedProductMenuCategoryId]);
 
   const productTypeProductCountsByRootId = useMemo(() => {
     const out = new Map<string, number>();
@@ -944,9 +878,18 @@ function AdminSchedulingServicesPageContent() {
       const subIds = productCategories
         .filter((c) => (c.parentId ?? null) === root.id)
         .map((c) => c.id);
-      const count = products.filter(
-        (p) => p.isActive && subIds.includes(p.categoryId),
-      ).length;
+      const isCafeRoot =
+        (root.productType ?? "").toLowerCase() === "cafe&food";
+      const count = isCafeRoot
+        ? products.filter(
+            (p) =>
+              p.isActive &&
+              subIds.includes(p.categoryId) &&
+              (p.id.startsWith("prod-cafe-") || p.id.startsWith("cp-")),
+          ).length
+        : products.filter(
+            (p) => p.isActive && subIds.includes(p.categoryId),
+          ).length;
       out.set(root.id, count);
     }
     return out;
@@ -1060,6 +1003,10 @@ function AdminSchedulingServicesPageContent() {
       maxAdvanceHours,
       siblingPrice: editDraft.siblingPrice.trim() || undefined,
       freeAdultCount,
+      maxPassCount: (() => {
+        const parsed = parseOptionalInt(editDraft.maxPassCount);
+        return parsed != null && parsed >= 1 ? parsed : undefined;
+      })(),
       additionalAdultPrice: editDraft.additionalAdultPrice.trim() || undefined,
       minSeats,
       pricePerHour: editDraft.pricePerHour.trim() || undefined,
@@ -1077,104 +1024,20 @@ function AdminSchedulingServicesPageContent() {
   function openEditPackage(pkgId: string) {
     const pkg = packages.find((p) => p.id === pkgId) ?? null;
     if (!pkg) return;
-    setSelectedPackageId(pkg.id);
-    setPackageName(pkg.name);
-    setPackageTier(pkg.tier);
-    setPackageBasePrice(String(pkg.basePrice));
-    setPackageFeatures(pkg.features.join("\n"));
-    setPackageIsActive(pkg.isActive);
-    setPackageDepositAmount(
-      pkg.depositAmount != null ? String(pkg.depositAmount) : "",
-    );
-    setPackageIsWholeVenue(Boolean(pkg.isWholeVenue));
-    setPackageRequiresApproval(Boolean(pkg.requiresApproval));
-    setPackageMinChild(
-      pkg.minChildSeats != null ? String(pkg.minChildSeats) : "",
-    );
-    setPackageMaxChild(
-      pkg.maxChildSeats != null ? String(pkg.maxChildSeats) : "",
-    );
-    setPackageMinAdult(
-      pkg.minAdultSeats != null ? String(pkg.minAdultSeats) : "",
-    );
-    setPackageMaxAdult(
-      pkg.maxAdultSeats != null ? String(pkg.maxAdultSeats) : "",
-    );
-    setPackageAdditionalChildPrice(
-      pkg.additionalChildPrice != null ? String(pkg.additionalChildPrice) : "",
-    );
-    setPackageDuration(pkg.duration != null ? String(pkg.duration) : "");
-    setPackageSetupTime(pkg.setupTime != null ? String(pkg.setupTime) : "");
-    setPackageStaffCount(pkg.staffCount != null ? String(pkg.staffCount) : "");
-    setPackagePartyRooms(pkg.partyRooms != null ? String(pkg.partyRooms) : "");
-    setPackageOpen(true);
-  }
-
-  function persistPackage() {
-    if (!selected) return;
-    const basePrice = Number.parseFloat(packageBasePrice);
-    if (!packageName.trim() || !Number.isFinite(basePrice)) return;
-
-    const features = packageFeatures
-      .split("\n")
-      .map((l) => l.trim())
-      .filter(Boolean);
-
-    const depositAmount = parseOptionalFloat(packageDepositAmount);
-    const minChildSeats = parseOptionalInt(packageMinChild);
-    const maxChildSeats = parseOptionalInt(packageMaxChild);
-    const minAdultSeats = parseOptionalInt(packageMinAdult);
-    const maxAdultSeats = parseOptionalInt(packageMaxAdult);
-    const additionalChildPrice = parseOptionalFloat(
-      packageAdditionalChildPrice,
-    );
-    const duration = parseOptionalInt(packageDuration);
-    const setupTime = parseOptionalInt(packageSetupTime);
-    const staffCount = parseOptionalInt(packageStaffCount);
-    const partyRooms = parseOptionalInt(packagePartyRooms);
-
-    const extended = {
-      depositAmount: depositAmount ?? undefined,
-      isWholeVenue: packageIsWholeVenue,
-      requiresApproval: packageIsWholeVenue ? packageRequiresApproval : false,
-      minChildSeats: minChildSeats ?? undefined,
-      maxChildSeats: maxChildSeats ?? undefined,
-      minAdultSeats: minAdultSeats ?? undefined,
-      maxAdultSeats: maxAdultSeats ?? undefined,
-      additionalChildPrice: additionalChildPrice ?? undefined,
-      duration: duration ?? undefined,
-      setupTime: setupTime ?? undefined,
-      staffCount: staffCount ?? undefined,
-      partyRooms: partyRooms ?? undefined,
-    };
-
-    if (selectedPackageId) {
-      updatePackage(selectedPackageId, {
-        name: packageName.trim(),
-        tier: packageTier,
-        basePrice,
-        features,
-        isActive: packageIsActive,
-        ...extended,
-      });
-      setPackageOpen(false);
-      return;
+    const returnParams = new URLSearchParams();
+    if (serviceCategoryFilterId !== "ALL") {
+      returnParams.set("serviceCategoryFilterId", serviceCategoryFilterId);
     }
-
-    const created: EventPackage = {
-      id: `pkg-${Math.random().toString(16).slice(2, 10)}`,
-      serviceId: selected.id,
-      tier: packageTier,
-      name: packageName.trim(),
-      basePrice,
-      features,
-      addOns: [],
-      isActive: packageIsActive,
-      createdAt: new Date().toISOString(),
-      ...extended,
-    };
-    addPackage(created);
-    setPackageOpen(false);
+    const returnTo = returnParams.toString()
+      ? `/admin/scheduling/services?${returnParams.toString()}`
+      : "/admin/scheduling/services";
+    router.push(
+      buildPackageEditHref(pkgId, {
+        returnTo,
+        category:
+          serviceCategoryFilterId !== "ALL" ? serviceCategoryFilterId : undefined,
+      }),
+    );
   }
 
   function buildServiceForCategory(input: {
@@ -1365,6 +1228,10 @@ function AdminSchedulingServicesPageContent() {
       maxAdvanceHours: maxAdvanceHours ?? 168,
       siblingPrice: createDraft.siblingPrice.trim() || undefined,
       freeAdultCount: freeAdultCountC,
+      maxPassCount: (() => {
+        const parsed = parseOptionalInt(createDraft.maxPassCount);
+        return parsed != null && parsed >= 1 ? parsed : undefined;
+      })(),
       additionalAdultPrice:
         createDraft.additionalAdultPrice.trim() || undefined,
       minSeats: minSeatsC,
@@ -2095,9 +1962,18 @@ function AdminSchedulingServicesPageContent() {
                             </p>
                           ) : null}
                           {subRows.map((sub) => {
-                            const subCount = products.filter(
-                              (p) => p.isActive && p.categoryId === sub.id,
-                            ).length;
+                            const isCafeRoot =
+                              (root.productType ?? "").toLowerCase() ===
+                              "cafe&food";
+                            const subCount = isCafeRoot
+                              ? countCafeFoodProductsForInventoryCategory(
+                                  products,
+                                  sub.id,
+                                )
+                              : products.filter(
+                                  (p) =>
+                                    p.isActive && p.categoryId === sub.id,
+                                ).length;
                             const active =
                               catalogView === "products" &&
                               selectedProductMenuCategoryId === sub.id;
@@ -2354,7 +2230,8 @@ function AdminSchedulingServicesPageContent() {
                     </Card>
                   ))}
 
-                  {filtered.length === 0 ? (
+                  {filtered.length === 0 &&
+                  serviceCategoryFilterId !== "cat-open-play" ? (
                     <Card className="sm:col-span-2">
                       <CardContent className="pb-10 pt-10 text-center text-muted-foreground">
                         No matching {LABELS.services.toLowerCase()} for this
@@ -2364,8 +2241,17 @@ function AdminSchedulingServicesPageContent() {
                   ) : null}
                 </div>
 
-                {serviceCategoryFilterId !== "ALL" ? (
-                  <CategoryAddOnManager categoryId={categoryId} />
+                {serviceCategoryFilterId === "cat-open-play" ? (
+                  <OpenPlayMembershipAdminSection className="pt-2" />
+                ) : null}
+
+                {serviceCategoryFilterId === "cat-private-play" ? (
+                  <CategoryPlacedPackagesSection
+                    page="play"
+                    categoryId="cat-private-play"
+                    categoryName="Private Play"
+                    className="pt-2"
+                  />
                 ) : null}
               </>
             ) : (
@@ -2999,7 +2885,7 @@ function AdminSchedulingServicesPageContent() {
                       />
                       <p className="text-xs text-muted-foreground">
                         {categoryDraft.depositPercent.trim()
-                          ? `e.g. ${categoryDraft.depositPercent}% deposit on a £100 booking = £${Math.round(Number.parseFloat(categoryDraft.depositPercent) || 0)} upfront`
+                          ? `e.g. ${categoryDraft.depositPercent}% deposit on a $100 booking = $${Math.round(Number.parseFloat(categoryDraft.depositPercent) || 0)} upfront`
                           : "Customers pay this percentage upfront to confirm the booking."}
                       </p>
                     </div>
@@ -3139,7 +3025,7 @@ function AdminSchedulingServicesPageContent() {
                             </Badge>
                           ) : null}
                           <Badge variant="outline">{`Qty ${row.quantity}`}</Badge>
-                          <Badge variant="outline">{`£${row.unitPrice}`}</Badge>
+                          <Badge variant="outline">{`$${row.unitPrice}`}</Badge>
                           <Badge variant="outline">
                             {
                               CATEGORY_ADD_ON_CHARGE_FREQUENCIES.find(
@@ -3384,6 +3270,29 @@ function AdminSchedulingServicesPageContent() {
                         Adults included at no extra charge per booking.
                       </p>
                     </div>
+                    {selected != null && showMaxPassCountAdminField(selected) ? (
+                      <div className="space-y-2 sm:col-span-2">
+                        <Label htmlFor="edit-max-passes">Max passes per booking</Label>
+                        <Input
+                          id="edit-max-passes"
+                          type="number"
+                          min={1}
+                          max={99}
+                          value={editDraft.maxPassCount}
+                          onChange={(e) =>
+                            setEditDraft((d) => ({
+                              ...d,
+                              maxPassCount: e.target.value,
+                            }))
+                          }
+                          placeholder="Leave blank for no limit"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Customer “No of passes” stepper. Set 1 to fix at one pass
+                          (no +/−). Set 2 to allow up to two passes, and so on.
+                        </p>
+                      </div>
+                    ) : null}
                     <div className="space-y-2">
                       <Label htmlFor="edit-extra-adult">
                         Price per extra adult (beyond free count)
@@ -3855,7 +3764,7 @@ function AdminSchedulingServicesPageContent() {
                               <Badge variant="outline">{`Qty ${row.quantity}`}</Badge>
                             ) : null}
                             {row.unitPrice != null ? (
-                              <Badge variant="outline">{`£${row.unitPrice}`}</Badge>
+                              <Badge variant="outline">{`$${row.unitPrice}`}</Badge>
                             ) : null}
                             {row.chargeFrequency ? (
                               <Badge variant="outline">
@@ -3965,202 +3874,6 @@ function AdminSchedulingServicesPageContent() {
             </div>
           </div>
         ) : null}
-      </CrudModal>
-
-      <CrudModal
-        open={packageOpen}
-        onOpenChange={setPackageOpen}
-        title={selectedPackageId ? "Edit package" : "New package"}
-        description={selected?.name ?? undefined}
-        size="md"
-        variant={selectedPackageId ? "edit" : "create"}
-        footer={
-          <>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setPackageOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button type="button" onClick={persistPackage}>
-              {selectedPackageId ? "Save package" : "Create package"}
-            </Button>
-          </>
-        }
-      >
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="pkg-name">Name</Label>
-            <Input
-              id="pkg-name"
-              value={packageName}
-              onChange={(e) => setPackageName(e.target.value)}
-              placeholder="Gold Party Package"
-            />
-          </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Tier</Label>
-              <Select
-                value={packageTier}
-                onValueChange={(v) => setPackageTier(v as typeof packageTier)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="SILVER">SILVER</SelectItem>
-                  <SelectItem value="GOLD">GOLD</SelectItem>
-                  <SelectItem value="PLATINUM">PLATINUM</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="pkg-price">Base price</Label>
-              <Input
-                id="pkg-price"
-                type="number"
-                value={packageBasePrice}
-                onChange={(e) => setPackageBasePrice(e.target.value)}
-              />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="pkg-features">Features (one per line)</Label>
-            <Textarea
-              id="pkg-features"
-              value={packageFeatures}
-              onChange={(e) => setPackageFeatures(e.target.value)}
-              rows={5}
-              placeholder={"Private space\nDecorations\nDedicated host"}
-            />
-          </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="pkg-dep">Deposit amount (optional)</Label>
-              <Input
-                id="pkg-dep"
-                type="number"
-                step="0.01"
-                value={packageDepositAmount}
-                onChange={(e) => setPackageDepositAmount(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="pkg-dur">Duration (minutes)</Label>
-              <Input
-                id="pkg-dur"
-                type="number"
-                value={packageDuration}
-                onChange={(e) => setPackageDuration(e.target.value)}
-              />
-            </div>
-            <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2 sm:col-span-2">
-              <Label htmlFor="pkg-whole">Requires exclusive venue access</Label>
-              <Switch
-                id="pkg-whole"
-                checked={packageIsWholeVenue}
-                onCheckedChange={setPackageIsWholeVenue}
-              />
-            </div>
-            {packageIsWholeVenue ? (
-              <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2 sm:col-span-2">
-                <Label htmlFor="pkg-appr">
-                  Manager must approve before confirming
-                </Label>
-                <Switch
-                  id="pkg-appr"
-                  checked={packageRequiresApproval}
-                  onCheckedChange={setPackageRequiresApproval}
-                />
-              </div>
-            ) : null}
-            <div className="space-y-2">
-              <Label htmlFor="pkg-min-c">Min children</Label>
-              <Input
-                id="pkg-min-c"
-                type="number"
-                value={packageMinChild}
-                onChange={(e) => setPackageMinChild(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="pkg-max-c">Max children</Label>
-              <Input
-                id="pkg-max-c"
-                type="number"
-                value={packageMaxChild}
-                onChange={(e) => setPackageMaxChild(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="pkg-min-a">Min adults</Label>
-              <Input
-                id="pkg-min-a"
-                type="number"
-                value={packageMinAdult}
-                onChange={(e) => setPackageMinAdult(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="pkg-max-a">Max adults</Label>
-              <Input
-                id="pkg-max-a"
-                type="number"
-                value={packageMaxAdult}
-                onChange={(e) => setPackageMaxAdult(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="pkg-extra-child">
-                Extra per child (beyond max)
-              </Label>
-              <Input
-                id="pkg-extra-child"
-                type="number"
-                step="0.01"
-                value={packageAdditionalChildPrice}
-                onChange={(e) => setPackageAdditionalChildPrice(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="pkg-setup">Setup time (minutes)</Label>
-              <Input
-                id="pkg-setup"
-                type="number"
-                value={packageSetupTime}
-                onChange={(e) => setPackageSetupTime(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="pkg-staff">Staff count</Label>
-              <Input
-                id="pkg-staff"
-                type="number"
-                value={packageStaffCount}
-                onChange={(e) => setPackageStaffCount(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="pkg-rooms">Party rooms</Label>
-              <Input
-                id="pkg-rooms"
-                type="number"
-                value={packagePartyRooms}
-                onChange={(e) => setPackagePartyRooms(e.target.value)}
-              />
-            </div>
-          </div>
-          <div className="flex items-center justify-between">
-            <Label htmlFor="pkg-active">Active</Label>
-            <Switch
-              id="pkg-active"
-              checked={packageIsActive}
-              onCheckedChange={(v) => setPackageIsActive(v)}
-            />
-          </div>
-        </div>
       </CrudModal>
 
       <CrudModal
@@ -4379,6 +4092,32 @@ function AdminSchedulingServicesPageContent() {
                       Adults included at no extra charge per booking.
                     </p>
                   </div>
+                  {showMaxPassCountAdminField({
+                    id: "",
+                    categoryId: createDraft.categoryId,
+                  }) ? (
+                    <div className="space-y-2 sm:col-span-2">
+                      <Label htmlFor="new-max-passes">Max passes per booking</Label>
+                      <Input
+                        id="new-max-passes"
+                        type="number"
+                        min={1}
+                        max={99}
+                        value={createDraft.maxPassCount}
+                        onChange={(e) =>
+                          setCreateDraft((d) => ({
+                            ...d,
+                            maxPassCount: e.target.value,
+                          }))
+                        }
+                        placeholder="Leave blank for no limit"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Customer “No of passes” stepper. Set 1 to fix at one pass
+                        (no +/−). Set 2 to allow up to two passes, and so on.
+                      </p>
+                    </div>
+                  ) : null}
                   <div className="space-y-2">
                     <Label htmlFor="new-extra-adult">
                       Price per extra adult (beyond free count)
@@ -4596,7 +4335,7 @@ function AdminSchedulingServicesPageContent() {
                             </Badge>
                           ) : null}
                           <Badge variant="outline">{`Qty ${row.quantity}`}</Badge>
-                          <Badge variant="outline">{`£${row.unitPrice}`}</Badge>
+                          <Badge variant="outline">{`$${row.unitPrice}`}</Badge>
                           <Badge variant="outline">
                             {
                               CATEGORY_ADD_ON_CHARGE_FREQUENCIES.find(

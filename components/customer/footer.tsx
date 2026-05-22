@@ -8,6 +8,12 @@ import {
   Twitter,
   Instagram,
 } from "lucide-react";
+import { locations } from "@/lib/mock-data";
+
+const mainLocation = locations[0];
+const mainAddressLine = mainLocation
+  ? `${mainLocation.address}, ${mainLocation.city}, ${mainLocation.country ?? "Indiana"}, ${mainLocation.postcode}`
+  : "9753 Crosspoint Blvd, Indianapolis, Indiana, 46256";
 
 const footerLinks = {
   Facilities: [
@@ -65,15 +71,15 @@ export function CustomerFooter() {
             <div className="space-y-2 text-sm text-primary-foreground/70">
               <div className="flex items-start gap-2">
                 <MapPin className="w-4 h-4 shrink-0 mt-0.5 text-accent" />
-                <span>1 Apex Way, Sports Quarter, London, EC1A 1BB</span>
+                <span>{mainAddressLine}</span>
               </div>
               <div className="flex items-center gap-2">
                 <Phone className="w-4 h-4 shrink-0 text-accent" />
-                <span>+44 20 7946 0000</span>
+                <span>{mainLocation?.phone ?? "(317) 555-0142"}</span>
               </div>
               <div className="flex items-center gap-2">
                 <Mail className="w-4 h-4 shrink-0 text-accent" />
-                <span>hello@apexsports.com</span>
+                <span>{mainLocation?.email ?? "hello@discoverytown.com"}</span>
               </div>
             </div>
             {/* Social */}

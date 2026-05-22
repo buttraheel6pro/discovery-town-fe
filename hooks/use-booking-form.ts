@@ -1,22 +1,60 @@
 /** Booking checkout state and submit helpers shared across scheduling detail pages. */
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import {
+  contactFullName as householdContactFullName,
+  getBookingPrimaryGuardianId,
+  getPrimaryGuardianCandidates,
+  isOpenPlaySessionBookingService,
+} from '@/lib/booking-household'
+import {
+  parseAdditionalAdultUnitPrice,
+  resolveFreeAdultCount,
+  showsAdditionalAdultPicker,
+} from '@/lib/booking-additional-adult'
+import {
+  parseAdditionalSiblingUnitPrice,
+  showsAdditionalSiblingPicker,
+} from '@/lib/booking-additional-sibling'
+import {
+  needsAccompanyingAdultPicker,
+  needsAgeParticipantPicker,
+  needsHouseholdChildPicker,
+} from '@/lib/booking-category-rules'
+import {
+  clampPassCount,
+  passCountHelperText as buildPassCountHelperText,
+  resolveMaxPassCount,
+} from '@/lib/booking-pass-count'
+import { resolveServiceChildAgeRules } from '@/lib/booking-child-age'
+import { PARENTS_NIGHT_OUT_SERVICE_ID } from '@/lib/booking-household'
+import { usesEventTicketBookingSidebar } from '@/lib/scheduling-slot-availability'
+import {
+  buildSchedulingAddOnCatalog,
+  resolveCategoryIncludedAddOns,
+  resolveCategoryOptionalAddOns,
+  resolveSchedulingCategoryForService,
+} from '@/lib/scheduling-category-addons'
 import { useScheduling } from '@/lib/scheduling-store'
+import { useInventory } from '@/lib/inventory-store'
 import {
   computeSchedulingBaseTotal,
-  toSchedulingBookingAddOnLines,
-  totalForSelectedServiceAddOns,
 } from '@/lib/utils'
 import type {
   AvailableWindow,
+  CmContact,
   Coupon,
   SchedulingBooking,
   SchedulingService,
   SchedulingServiceAddOn,
   SchedulingSlot,
 } from '@/lib/types'
+
+function contactDisplayName(contact: Pick<CmContact, 'firstName' | 'lastName'>): string {
+  return `${contact.firstName} ${contact.lastName}`.trim()
+}
 
 export interface UseBookingFormParams {
   readonly service: SchedulingService
@@ -27,6 +65,7 @@ export interface UseBookingFormParams {
   readonly contactName?: string
   readonly actedByStaffId?: string | null
   readonly source?: SchedulingBooking['source']
+  readonly contacts?: readonly CmContact[]
 }
 
 function createBookingId(): string {
@@ -46,24 +85,137 @@ export function useBookingForm({
   contactName,
   actedByStaffId,
   source = 'ONLINE',
+  contacts = [],
 }: UseBookingFormParams) {
-  const { addBooking, addToWaitlist, services } = useScheduling()
+  const { addBooking, addToWaitlist, services, categories } = useScheduling()
+  const { bookingAddOns } = useInventory()
 
   const [guestCount, setGuestCount] = useState(1)
   const [participantName, setParticipantName] = useState('')
+  const [participantContactId, setParticipantContactId] = useState('')
+  const [selectedChildIds, setSelectedChildIds] = useState<string[]>([])
+  const [accompanyingAdultContactId, setAccompanyingAdultContactId] = useState('')
+  const [secondaryGuardianContactId, setSecondaryGuardianContactId] = useState('')
   const [participantDateOfBirth, setParticipantDateOfBirth] = useState<string | null>(null)
+
+  const usesOpenPlayHouseholdBooking = isOpenPlaySessionBookingService(service.id)
+  const maxPassCount = useMemo(() => resolveMaxPassCount(service), [service])
+
+  const setGuestCountClamped = useCallback(
+    (next: number) => {
+      setGuestCount(clampPassCount(next, maxPassCount, 1))
+    },
+    [maxPassCount],
+  )
+
+  useEffect(() => {
+    setGuestCount((prev) => clampPassCount(prev, maxPassCount, 1))
+  }, [maxPassCount, service.id])
+
+  const defaultPrimaryGuardianId = useMemo(
+    () => getBookingPrimaryGuardianId(contacts),
+    [contacts],
+  )
+  const [primaryGuardianContactId, setPrimaryGuardianContactId] = useState(
+    defaultPrimaryGuardianId,
+  )
+
+  useEffect(() => {
+    if (!usesOpenPlayHouseholdBooking) {
+      return
+    }
+    setPrimaryGuardianContactId((current) => {
+      const candidates = getPrimaryGuardianCandidates(contacts)
+      if (candidates.some((c) => c.id === current)) {
+        return current
+      }
+      return defaultPrimaryGuardianId
+    })
+  }, [contacts, defaultPrimaryGuardianId, usesOpenPlayHouseholdBooking])
   const [waiverAccepted, setWaiverAccepted] = useState(false)
   const [notes, setNotes] = useState('')
   const [specialInstructions, setSpecialInstructions] = useState('')
-  const [addOnQuantities, setAddOnQuantities] = useState<Record<string, number>>({})
+  const [additionalAdultCount, setAdditionalAdultCount] = useState(0)
+  const [additionalSiblingCount, setAdditionalSiblingCount] = useState(0)
   const [selectedCategoryAddOnIds, setSelectedCategoryAddOnIds] = useState<string[]>([])
   const [checkoutCouponCode, setCheckoutCouponCode] = useState<string | null>(null)
   const [checkoutCouponDiscount, setCheckoutCouponDiscount] = useState(0)
 
-  const needsParticipant =
-    service.ageMin !== null || service.ageMax !== null || service.category.requiresAttendee === true
+  const usesTicketBookingSidebar = usesEventTicketBookingSidebar(service)
 
-  const freeInfantMonths = service.category.freeInfantMonths ?? null
+  const needsHouseholdChildren =
+    !usesTicketBookingSidebar &&
+    (usesOpenPlayHouseholdBooking || needsHouseholdChildPicker(service.category))
+  const needsAccompanyingAdult =
+    !usesTicketBookingSidebar &&
+    !usesOpenPlayHouseholdBooking &&
+    needsAccompanyingAdultPicker(service.category)
+  const needsAgeParticipant = needsAgeParticipantPicker(
+    service.category,
+    service.ageMin,
+    service.ageMax,
+  )
+  const needsParticipant = needsAgeParticipant
+
+  const childContacts = useMemo(
+    () => contacts.filter((c) => c.contactType === 'CHILD'),
+    [contacts],
+  )
+
+  useEffect(() => {
+    if (!usesOpenPlayHouseholdBooking) {
+      return
+    }
+    setAccompanyingAdultContactId(primaryGuardianContactId)
+  }, [primaryGuardianContactId, usesOpenPlayHouseholdBooking])
+
+  const maxChildSelections = useMemo(() => {
+    if (!usesOpenPlayHouseholdBooking) {
+      return null
+    }
+    return guestCount + additionalSiblingCount
+  }, [additionalSiblingCount, guestCount, usesOpenPlayHouseholdBooking])
+
+  useEffect(() => {
+    if (!usesOpenPlayHouseholdBooking || maxChildSelections == null) {
+      return
+    }
+    setSelectedChildIds((prev) =>
+      prev.length <= maxChildSelections ? prev : prev.slice(0, maxChildSelections),
+    )
+  }, [maxChildSelections, usesOpenPlayHouseholdBooking])
+
+  useEffect(() => {
+    if (!needsHouseholdChildren) {
+      return
+    }
+    if (selectedChildIds.length === 0) {
+      if (usesOpenPlayHouseholdBooking) {
+        setParticipantName('')
+      }
+      return
+    }
+    const names = selectedChildIds
+      .map((id) => childContacts.find((c) => c.id === id))
+      .filter((c): c is CmContact => c != null)
+      .map(contactDisplayName)
+    setParticipantName(names.join(', '))
+    if (!usesOpenPlayHouseholdBooking) {
+      setGuestCount(selectedChildIds.length)
+    }
+  }, [
+    childContacts,
+    needsHouseholdChildren,
+    selectedChildIds,
+    usesOpenPlayHouseholdBooking,
+  ])
+
+  const bookingCategory = useMemo(
+    () => resolveSchedulingCategoryForService(service, categories),
+    [categories, service],
+  )
+
+  const freeInfantMonths = bookingCategory.freeInfantMonths ?? null
 
   const participantAgeMonths = useMemo(() => {
     if (!participantDateOfBirth) return null
@@ -101,38 +253,60 @@ export function useBookingForm({
     return service.durationMinutes / 60
   }, [slot, selectedDurationMinutes, selectedWindow, service.durationMinutes])
 
-  const addOnCatalog = useMemo(() => {
-    const map = new Map<string, SchedulingServiceAddOn>()
-    for (const addOn of service.addOns ?? []) {
-      if (addOn.isActive) {
-        map.set(addOn.id, addOn)
-      }
-    }
-    for (const schedulingService of services) {
-      for (const addOn of schedulingService.addOns ?? []) {
-        if (addOn.isActive && !map.has(addOn.id)) {
-          map.set(addOn.id, addOn)
-        }
-      }
-    }
-    return map
-  }, [service.addOns, services])
+  const addOnCatalog = useMemo(
+    () => buildSchedulingAddOnCatalog(services, bookingAddOns),
+    [bookingAddOns, services],
+  )
 
-  const categoryIncludedAddOns = useMemo(() => {
-    return (service.category.linkedAddOns ?? [])
-      .filter((link) => link.isFree)
-      .map((link) => addOnCatalog.get(link.addOnId))
-      .filter((addOn): addOn is SchedulingServiceAddOn => addOn != null)
-  }, [addOnCatalog, service.category.linkedAddOns])
+  const additionalAdultUnitPrice = useMemo(
+    () => parseAdditionalAdultUnitPrice(service),
+    [service],
+  )
+  const showAdditionalAdultPicker = useMemo(
+    () => showsAdditionalAdultPicker(service),
+    [service],
+  )
+  const additionalSiblingUnitPrice = useMemo(
+    () => parseAdditionalSiblingUnitPrice(service),
+    [service],
+  )
+  const showAdditionalSiblingPicker = useMemo(
+    () => showsAdditionalSiblingPicker(service),
+    [service],
+  )
+  const freeAdultCount = useMemo(() => resolveFreeAdultCount(service), [service])
+  const guestCountLabel = usesOpenPlayHouseholdBooking ? 'No of passes' : 'Guests'
+  const passCountHelperText = useMemo(
+    () => buildPassCountHelperText(service, maxPassCount),
+    [maxPassCount, service],
+  )
 
-  const categoryOptionalAddOns = useMemo(() => {
-    return (service.category.linkedAddOns ?? [])
-      .filter((link) => !link.isFree)
-      .map((link) => addOnCatalog.get(link.addOnId))
-      .filter((addOn): addOn is SchedulingServiceAddOn => addOn != null)
-  }, [addOnCatalog, service.category.linkedAddOns])
+  const categoryIncludedAddOns = useMemo(
+    () => resolveCategoryIncludedAddOns(bookingCategory, addOnCatalog),
+    [addOnCatalog, bookingCategory],
+  )
+
+  const categoryOptionalAddOns = useMemo(
+    () => resolveCategoryOptionalAddOns(bookingCategory, addOnCatalog),
+    [addOnCatalog, bookingCategory],
+  )
 
   const baseTotal = useMemo(() => {
+    if (usesOpenPlayHouseholdBooking) {
+      const passPart = computeSchedulingBaseTotal(
+        service,
+        slot,
+        guestCount,
+        selectedWindow ?? null,
+        selectedDurationMinutes,
+      )
+      const siblingPart =
+        additionalSiblingUnitPrice != null && additionalSiblingCount > 0
+          ? Math.round(additionalSiblingUnitPrice * additionalSiblingCount * 100) / 100
+          : 0
+      const raw = Math.round((passPart + siblingPart) * 100) / 100
+      return isFreeInfant ? 0 : raw
+    }
     const raw = computeSchedulingBaseTotal(
       service,
       slot,
@@ -141,18 +315,25 @@ export function useBookingForm({
       selectedDurationMinutes,
     )
     return isFreeInfant ? 0 : raw
-  }, [guestCount, isFreeInfant, selectedDurationMinutes, selectedWindow, service, slot])
+  }, [
+    additionalSiblingCount,
+    additionalSiblingUnitPrice,
+    guestCount,
+    isFreeInfant,
+    selectedDurationMinutes,
+    selectedWindow,
+    service,
+    slot,
+    usesOpenPlayHouseholdBooking,
+  ])
 
-  const addOnTotal = useMemo(
-    () =>
-      totalForSelectedServiceAddOns(
-        service.addOns,
-        addOnQuantities,
-        guestCount,
-        durationHours,
-      ),
-    [addOnQuantities, durationHours, guestCount, service.addOns],
-  )
+  const additionalAdultTotal = useMemo(() => {
+    if (additionalAdultUnitPrice == null || additionalAdultCount <= 0) {
+      return 0
+    }
+    return Math.round(additionalAdultUnitPrice * additionalAdultCount * 100) / 100
+  }, [additionalAdultCount, additionalAdultUnitPrice])
+
   const categoryOptionalAddOnTotal = useMemo(() => {
     return selectedCategoryAddOnIds.reduce((sum, addOnId) => {
       const addOn = addOnCatalog.get(addOnId)
@@ -164,8 +345,11 @@ export function useBookingForm({
   }, [addOnCatalog, durationHours, guestCount, selectedCategoryAddOnIds])
 
   const totalBeforeCoupon = useMemo(
-    () => Math.round((baseTotal + addOnTotal + categoryOptionalAddOnTotal) * 100) / 100,
-    [addOnTotal, baseTotal, categoryOptionalAddOnTotal],
+    () =>
+      Math.round(
+        (baseTotal + additionalAdultTotal + categoryOptionalAddOnTotal) * 100,
+      ) / 100,
+    [additionalAdultTotal, baseTotal, categoryOptionalAddOnTotal],
   )
 
   const grandTotal = useMemo(
@@ -183,7 +367,7 @@ export function useBookingForm({
     setCheckoutCouponDiscount(Math.max(0, discountAmount))
   }, [])
 
-  const depositPercent = service.category.depositPercent ?? null
+  const depositPercent = bookingCategory.depositPercent ?? null
   const depositDueToday = useMemo(() => {
     if (depositPercent == null) return null
     return Math.round(((grandTotal * depositPercent) / 100) * 100) / 100
@@ -193,21 +377,131 @@ export function useBookingForm({
     return Math.round((grandTotal - depositDueToday) * 100) / 100
   }, [depositDueToday, grandTotal])
 
+  const toggleSelectedChild = useCallback(
+    (childId: string, checked: boolean) => {
+      setSelectedChildIds((prev) => {
+        if (!checked) {
+          return prev.filter((id) => id !== childId)
+        }
+        if (prev.includes(childId)) {
+          return prev
+        }
+        if (maxChildSelections != null && prev.length >= maxChildSelections) {
+          return prev
+        }
+        return [...prev, childId]
+      })
+    },
+    [maxChildSelections],
+  )
+
+  const applyParticipantContact = useCallback(
+    (contactIdValue: string) => {
+      setParticipantContactId(contactIdValue)
+      const contact = contacts.find((c) => c.id === contactIdValue) ?? null
+      setParticipantName(contact ? contactDisplayName(contact) : '')
+      setParticipantDateOfBirth(contact?.dateOfBirth ?? null)
+    },
+    [contacts],
+  )
+
+  const childAgeRules = useMemo(() => resolveServiceChildAgeRules(service), [service])
+
+  const selectedChildrenMeetAgeRules = useMemo(() => {
+    if (childAgeRules == null || !usesOpenPlayHouseholdBooking) {
+      return true
+    }
+    if (selectedChildIds.length < 1) {
+      return false
+    }
+    return selectedChildIds.every((childId) => {
+      const child = contacts.find((entry) => entry.id === childId)
+      if (child == null) {
+        return false
+      }
+      return childAgeRules.isEligible(child.dateOfBirth)
+    })
+  }, [childAgeRules, contacts, selectedChildIds, usesOpenPlayHouseholdBooking])
+
+  useEffect(() => {
+    if (!usesOpenPlayHouseholdBooking || childAgeRules == null) {
+      return
+    }
+    setSelectedChildIds((prev) =>
+      prev.filter((childId) => {
+        const child = contacts.find((entry) => entry.id === childId)
+        if (child == null) {
+          return false
+        }
+        return childAgeRules.isEligible(child.dateOfBirth)
+      }),
+    )
+  }, [childAgeRules, contacts, usesOpenPlayHouseholdBooking])
+
   const canSubmitDetails = useMemo(() => {
-    if (needsParticipant && participantName.trim().length === 0) return false
+    if (usesTicketBookingSidebar) {
+      return guestCount >= 1
+    }
+    if (usesOpenPlayHouseholdBooking) {
+      if (service.id === PARENTS_NIGHT_OUT_SERVICE_ID) {
+        return selectedChildrenMeetAgeRules
+      }
+      return selectedChildIds.length >= 1
+    }
+    if (needsAccompanyingAdult && accompanyingAdultContactId.trim().length === 0) {
+      return false
+    }
+    if (needsHouseholdChildren && selectedChildIds.length < 1) {
+      return false
+    }
+    if (needsAgeParticipant && participantName.trim().length === 0) {
+      return false
+    }
     return true
-  }, [needsParticipant, participantName])
+  }, [
+    accompanyingAdultContactId,
+    guestCount,
+    usesTicketBookingSidebar,
+    needsAccompanyingAdult,
+    needsAgeParticipant,
+    needsHouseholdChildren,
+    participantName,
+    selectedChildIds.length,
+    selectedChildrenMeetAgeRules,
+    service.id,
+    usesOpenPlayHouseholdBooking,
+  ])
 
   const submitBooking = useCallback(
     (options?: { readonly persist?: boolean }): SchedulingBooking => {
     const persist = options?.persist !== false
     const nowIso = new Date().toISOString()
-    const addOnLines = toSchedulingBookingAddOnLines(
-      service.addOns,
-      addOnQuantities,
-      guestCount,
-      durationHours,
-    )
+    const additionalAdultLines =
+      additionalAdultUnitPrice != null && additionalAdultCount > 0
+        ? [
+            {
+              id: 'bkao-additional-adult',
+              name: 'Additional Adult',
+              quantity: additionalAdultCount,
+              unitPrice: additionalAdultUnitPrice,
+              totalPrice: additionalAdultTotal,
+            },
+          ]
+        : []
+    const additionalSiblingLines =
+      additionalSiblingUnitPrice != null && additionalSiblingCount > 0
+        ? [
+            {
+              id: 'bkao-additional-sibling',
+              name: 'Additional sibling',
+              quantity: additionalSiblingCount,
+              unitPrice: additionalSiblingUnitPrice,
+              totalPrice:
+                Math.round(additionalSiblingUnitPrice * additionalSiblingCount * 100) /
+                100,
+            },
+          ]
+        : []
     const categoryIncludedLines = categoryIncludedAddOns.map((addOn) => ({
       id: `bkao-${addOn.id}`,
       name: addOn.name,
@@ -233,8 +527,12 @@ export function useBookingForm({
           totalPrice: lineTotal,
         }
       })
-    const bookingAddOns = [...addOnLines, ...categoryIncludedLines, ...categoryOptionalLines]
-      .filter((line, index, rows) => rows.findIndex((row) => row.id === line.id) === index)
+    const bookingAddOns = [
+      ...additionalAdultLines,
+      ...additionalSiblingLines,
+      ...categoryIncludedLines,
+      ...categoryOptionalLines,
+    ].filter((line, index, rows) => rows.findIndex((row) => row.id === line.id) === index)
 
     const totalAmount = grandTotal
 
@@ -273,6 +571,14 @@ export function useBookingForm({
       }
     }
 
+    const adultContact = contacts.find((c) => c.id === accompanyingAdultContactId) ?? null
+    const primaryContact =
+      contacts.find((c) => c.id === primaryGuardianContactId) ?? null
+    const secondaryContact =
+      contacts.find((c) => c.id === secondaryGuardianContactId) ?? null
+    const participantLabel =
+      needsHouseholdChildren || needsAgeParticipant ? participantName.trim() : null
+
     const booking: SchedulingBooking = {
       id: createBookingId(),
       bookingType: service.serviceType,
@@ -282,7 +588,32 @@ export function useBookingForm({
       service,
       contactId: contactId ?? 'contact-1',
       contactName: contactName ?? 'Rachel Green',
-      participantName: needsParticipant ? participantName.trim() : null,
+      participantName: participantLabel || null,
+      participantChildIds:
+        needsHouseholdChildren && selectedChildIds.length > 0
+          ? [...selectedChildIds]
+          : undefined,
+      primaryGuardianContactId: usesOpenPlayHouseholdBooking
+        ? primaryGuardianContactId
+        : undefined,
+      primaryGuardianName:
+        usesOpenPlayHouseholdBooking && primaryContact
+          ? householdContactFullName(primaryContact)
+          : undefined,
+      secondaryGuardianContactId: usesOpenPlayHouseholdBooking
+        ? secondaryGuardianContactId || null
+        : undefined,
+      secondaryGuardianName:
+        usesOpenPlayHouseholdBooking && secondaryContact
+          ? householdContactFullName(secondaryContact)
+          : undefined,
+      accompanyingAdultContactId: needsAccompanyingAdult
+        ? accompanyingAdultContactId || null
+        : undefined,
+      accompanyingAdultName:
+        needsAccompanyingAdult && adultContact
+          ? contactDisplayName(adultContact)
+          : undefined,
       locationId: slot?.locationId ?? service.locationId ?? 'loc-1',
       locationName: 'Discovery Town Main Centre',
       status: 'CONFIRMED',
@@ -310,15 +641,27 @@ export function useBookingForm({
   }, [
     addBooking,
     addOnCatalog,
-    addOnQuantities,
+    additionalAdultCount,
+    additionalAdultTotal,
+    additionalAdultUnitPrice,
+    additionalSiblingCount,
+    additionalSiblingUnitPrice,
     categoryIncludedAddOns,
     checkoutCouponCode,
     durationHours,
     guestCount,
     grandTotal,
+    accompanyingAdultContactId,
+    contacts,
+    needsAccompanyingAdult,
+    needsHouseholdChildren,
     needsParticipant,
     notes,
     participantName,
+    primaryGuardianContactId,
+    secondaryGuardianContactId,
+    selectedChildIds,
+    usesOpenPlayHouseholdBooking,
     selectedCategoryAddOnIds,
     selectedDurationMinutes,
     selectedWindow,
@@ -345,18 +688,6 @@ export function useBookingForm({
     })
   }, [addToWaitlist, slot])
 
-  const setAddOnQuantity = useCallback((addOnId: string, quantity: number) => {
-    setAddOnQuantities((prev) => {
-      const next = { ...prev }
-      if (quantity <= 0) {
-        delete next[addOnId]
-      } else {
-        next[addOnId] = quantity
-      }
-      return next
-    })
-  }, [])
-
   const setCategoryAddOnSelected = useCallback((addOnId: string, selected: boolean) => {
     setSelectedCategoryAddOnIds((prev) => {
       if (selected) {
@@ -369,9 +700,25 @@ export function useBookingForm({
 
   return {
     guestCount,
-    setGuestCount,
+    setGuestCount: setGuestCountClamped,
+    maxPassCount,
+    passCountHelperText,
     participantName,
     setParticipantName,
+    participantContactId,
+    applyParticipantContact,
+    selectedChildIds,
+    toggleSelectedChild,
+    accompanyingAdultContactId,
+    setAccompanyingAdultContactId,
+    primaryGuardianContactId,
+    setPrimaryGuardianContactId,
+    secondaryGuardianContactId,
+    setSecondaryGuardianContactId,
+    usesOpenPlayHouseholdBooking,
+    needsHouseholdChildren,
+    needsAccompanyingAdult,
+    needsAgeParticipant,
     participantDateOfBirth,
     setParticipantDateOfBirth,
     waiverAccepted,
@@ -380,8 +727,17 @@ export function useBookingForm({
     setNotes,
     specialInstructions,
     setSpecialInstructions,
-    addOnQuantities,
-    setAddOnQuantity,
+    additionalAdultCount,
+    setAdditionalAdultCount,
+    additionalAdultUnitPrice,
+    showAdditionalAdultPicker,
+    additionalSiblingCount,
+    setAdditionalSiblingCount,
+    additionalSiblingUnitPrice,
+    showAdditionalSiblingPicker,
+    maxChildSelections,
+    guestCountLabel,
+    freeAdultCount,
     categoryIncludedAddOns,
     categoryOptionalAddOns,
     selectedCategoryAddOnIds,
@@ -394,7 +750,7 @@ export function useBookingForm({
     depositDueOnArrival,
     durationHours,
     baseTotal,
-    addOnTotal,
+    additionalAdultTotal,
     totalBeforeCoupon,
     checkoutCouponCode,
     checkoutCouponDiscount,

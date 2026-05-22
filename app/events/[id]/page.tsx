@@ -15,6 +15,10 @@ import {
   Share2,
   Tag,
 } from 'lucide-react'
+import { BookingAdditionalAdultField } from '@/components/customer/booking-additional-adult-field'
+import { BookingAmenitiesSection } from '@/components/customer/booking-amenities-section'
+import { BookingCategoryAddons } from '@/components/customer/booking-category-addons'
+import { BookingFamilyMemberFields } from '@/components/customer/booking-family-member-fields'
 import { BookingFlowCouponSection } from '@/components/customer/booking-flow-coupon-section'
 import { EventBookingWidget } from '@/components/customer/event-booking-widget'
 import { CustomerNavbar } from '@/components/customer/navbar'
@@ -38,7 +42,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useBookingForm } from '@/hooks/use-booking-form'
-import { useToast } from '@/hooks/use-toast'
 import { useClients } from '@/lib/client-store'
 import { useInventory } from '@/lib/inventory-store'
 import {
@@ -46,6 +49,25 @@ import {
   EVENT_CART_BOOKING_META_KEY,
   isEventSlotCartCheckoutService,
 } from '@/lib/play-cart'
+import {
+  isMeetingRoomCatalogPackage,
+  isPrivateEventHubService,
+  meetingRoomPackagesFromCatalog,
+  partyRoomPackagesFromCatalog,
+  resolvePackagesForSchedulingService,
+  resolvePrivateEventHubPackages,
+  wholeVenuePackagesFromCatalog,
+  PRIVATE_PLAY_MEETING_ROOMS_SERVICE_ID,
+} from '@/lib/event-package-catalog'
+import {
+  isPrivatePlayService,
+  privatePlayPackageSectionTitle,
+} from '@/lib/private-play-packages'
+import {
+  buildSlotDrivenEventDisplayMeta,
+  findUpcomingSlotForService,
+  usesEventTicketBookingSidebar,
+} from '@/lib/scheduling-slot-availability'
 import { useScheduling } from '@/lib/scheduling-store'
 import { formatPrice, isDocumentSignedAndValid } from '@/lib/utils'
 import type { EventOccasion, SchedulingService, SchedulingSlot } from '@/lib/types'
@@ -86,7 +108,6 @@ function EventDetailContent({
   const { slots, packages } = useScheduling()
   const { contacts, subscriptions, documents } = useClients()
   const { addCustomCartItem } = useInventory()
-  const { toast } = useToast()
 
   const primaryContact =
     contacts.find((c) => c.contactType === 'CUSTOMER') ?? contacts[0] ?? null
@@ -111,18 +132,48 @@ function EventDetailContent({
   const membersOnlyBlocked = service.category.membersOnly === true && !hasActiveMembership
 
   const eventSlot = useMemo(() => {
-    const found = slots.find((s) => s.serviceId === service.id && s.id === eventSlotBase?.id)
+    const upcoming = findUpcomingSlotForService(slots, service.id)
+    if (upcoming) {
+      return upcoming
+    }
+    const found = slots.find(
+      (entry) => entry.serviceId === service.id && entry.id === eventSlotBase?.id,
+    )
     return found ?? eventSlotBase
-  }, [slots, service.id, eventSlotBase])
+  }, [eventSlotBase, service.id, slots])
+
+  const usesTicketBookingSidebar = usesEventTicketBookingSidebar(service)
+
+  const eventDisplayMeta = useMemo(() => {
+    if (eventSlot) {
+      return buildSlotDrivenEventDisplayMeta(eventSlot, service.location, service)
+    }
+    const dateLabel = service.startDate ? formatLongDate(service.startDate) : '—'
+    const endSuffix =
+      service.endDate && service.endDate !== service.startDate
+        ? ` – ${formatLongDate(service.endDate)}`
+        : ''
+    return {
+      dateLabel: service.startDate ? `${dateLabel}${endSuffix}` : '—',
+      timeLabel:
+        service.startTime && service.endTime
+          ? `${service.startTime} – ${service.endTime}`
+          : '—',
+      locationLabel: service.location ?? '—',
+      organiserLabel: service.organizer ?? '—',
+    }
+  }, [eventSlot, service.endDate, service.location, service.organizer, service.startDate, service.startTime, service.endTime])
+
+  const isPartyPackageFlow = service.serviceType === 'PARTY_PACKAGE'
+  const isPrivateEventJourney =
+    isPartyPackageFlow && searchParams.get('privateEvent') === '1'
 
   const activePackages = useMemo(() => {
-    const packageServiceIds = new Set<string>([service.id])
-    if (service.serviceType === 'PARTY_PACKAGE') {
-      packageServiceIds.add('svc-5')
-      packageServiceIds.add('svc-event-party-booking')
+    if (isPrivateEventJourney && isPrivateEventHubService(service)) {
+      return resolvePrivateEventHubPackages(packages)
     }
-    return packages.filter((p) => packageServiceIds.has(p.serviceId) && p.isActive)
-  }, [packages, service.id, service.serviceType])
+    return resolvePackagesForSchedulingService(service, packages)
+  }, [isPrivateEventJourney, packages, service])
   const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null)
   const selectedPackage = useMemo(
     () => activePackages.find((p) => p.id === selectedPackageId) ?? null,
@@ -159,6 +210,11 @@ function EventDetailContent({
   const bookingForm = useBookingForm({
     service: serviceForBooking,
     slot: slotForBooking,
+    contacts,
+    contactId: primaryContact?.id,
+    contactName: primaryContact
+      ? `${primaryContact.firstName} ${primaryContact.lastName}`.trim()
+      : undefined,
   })
 
   const bookingPricingResetKey = useMemo(
@@ -187,36 +243,61 @@ function EventDetailContent({
     )
   }, [primaryContact, requiredWaiverDocs, service.requiresWaiver])
 
+  const showGenericWaiverCheckbox =
+    service.requiresWaiver &&
+    requiredWaiverDocs.length === 0 &&
+    !usesTicketBookingSidebar
+
   const waiversOk = useMemo(() => {
-    if (!service.requiresWaiver) return true
-    if (requiredWaiverDocs.length === 0) return bookingForm.waiverAccepted
-    return missingRequiredWaivers.length === 0
+    if (!service.requiresWaiver) {
+      return true
+    }
+    if (requiredWaiverDocs.length > 0) {
+      return missingRequiredWaivers.length === 0
+    }
+    if (usesTicketBookingSidebar) {
+      return true
+    }
+    return bookingForm.waiverAccepted
   }, [
     bookingForm.waiverAccepted,
     missingRequiredWaivers.length,
     requiredWaiverDocs.length,
     service.requiresWaiver,
+    usesTicketBookingSidebar,
   ])
-
-  const participantOptions = useMemo(
-    () => contacts.filter((c) => c.contactType === 'CUSTOMER' || c.contactType === 'CHILD'),
-    [contacts],
-  )
-  const [participantId, setParticipantId] = useState<string>('')
 
   const max = eventSlot?.effectiveCapacity ?? service.maxAttendees ?? service.capacity
   const regCount = eventSlot?.bookedCount ?? service.registeredCount ?? 0
   const spotsLeft = Math.max(0, max - regCount)
   const fillPct = max > 0 ? Math.round((regCount / max) * 100) : 0
   const status = service.eventStatus ?? 'DRAFT'
-  const published = status === 'PUBLISHED'
-  const isPartyPackageFlow = service.serviceType === 'PARTY_PACKAGE'
-  const isPrivateEventJourney =
-    isPartyPackageFlow && searchParams.get('privateEvent') === '1'
+  const published =
+    status === 'PUBLISHED' ||
+    (usesTicketBookingSidebar && (eventSlot != null || service.eventStatus === 'PUBLISHED'))
   const eventSlotRegistrationCartCheckout =
-    !isPrivateEventJourney && isEventSlotCartCheckoutService(service)
-  const privateRoomPackages = activePackages.filter((entry) => !entry.isWholeVenue)
-  const wholeVenuePackages = activePackages.filter((entry) => entry.isWholeVenue)
+    !isPrivateEventJourney &&
+    (isEventSlotCartCheckoutService(service) || usesTicketBookingSidebar)
+  const privateRoomPackages = useMemo(() => {
+    if (isPrivateEventJourney && isPrivateEventHubService(service)) {
+      return partyRoomPackagesFromCatalog(packages)
+    }
+    return activePackages.filter(
+      (entry) => !entry.isWholeVenue && !isMeetingRoomCatalogPackage(entry),
+    )
+  }, [activePackages, isPrivateEventJourney, packages, service])
+  const wholeVenuePackages = useMemo(() => {
+    if (isPrivateEventJourney && isPrivateEventHubService(service)) {
+      return wholeVenuePackagesFromCatalog(packages)
+    }
+    return activePackages.filter((entry) => entry.isWholeVenue === true)
+  }, [activePackages, isPrivateEventJourney, packages, service])
+  const meetingRoomPackages = useMemo(() => {
+    if (isPrivateEventJourney && isPrivateEventHubService(service)) {
+      return meetingRoomPackagesFromCatalog(packages)
+    }
+    return []
+  }, [isPrivateEventJourney, packages, service])
   const privateSelectedPackage =
     activePackages.find((entry) => entry.id === privateSelectedPackageId) ?? null
   const agendaItems = service.agenda ?? []
@@ -246,11 +327,6 @@ function EventDetailContent({
         },
       })
       setAddedEventToCart(true)
-      toast({
-        title: 'Added to cart',
-        description:
-          'Your event registration is in the cart. Open Event bookings to review or checkout.',
-      })
       return
     }
     bookingForm.submitBooking()
@@ -319,29 +395,22 @@ function EventDetailContent({
               {
                 icon: Calendar,
                 label: 'Date',
-                value:
-                  formatLongDate(service.startDate) +
-                  (service.endDate && service.endDate !== service.startDate
-                    ? ` – ${formatLongDate(service.endDate)}`
-                    : ''),
-      },
+                value: eventDisplayMeta.dateLabel,
+              },
               {
                 icon: Clock,
                 label: 'Time',
-                value:
-                  service.startTime && service.endTime
-                    ? `${service.startTime} – ${service.endTime}`
-                    : '—',
+                value: eventDisplayMeta.timeLabel,
               },
               {
                 icon: MapPin,
                 label: 'Location',
-                value: service.location ?? '—',
+                value: eventDisplayMeta.locationLabel,
               },
               {
                 icon: Users,
                 label: 'Organiser',
-                value: service.organizer ?? '—',
+                value: eventDisplayMeta.organiserLabel,
               },
             ].map(({ icon: Icon, label, value }) => (
               <div
@@ -368,28 +437,56 @@ function EventDetailContent({
             </p>
           </section>
 
+          <Separator />
+
+          <BookingAmenitiesSection
+            serviceAmenities={service.amenities}
+            freeCategoryAddOns={bookingForm.categoryIncludedAddOns}
+          />
+
           {isPrivateEventJourney ? (
             <section className="rounded-xl border border-border bg-card p-4 sm:p-5">
               <h2 className="text-xl font-bold mb-3">Choose your package</h2>
               <div className="space-y-5">
-                <div className="space-y-2">
-                  <p className="text-sm font-semibold text-foreground">Private room booking</p>
-                  <PackageSelector
-                    packages={privateRoomPackages}
-                    selectedId={privateSelectedPackageId}
-                    onSelect={setPrivateSelectedPackageId}
-                    variant="full"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <p className="text-sm font-semibold text-foreground">Whole venue</p>
-                  <PackageSelector
-                    packages={wholeVenuePackages}
-                    selectedId={privateSelectedPackageId}
-                    onSelect={setPrivateSelectedPackageId}
-                    variant="full"
-                  />
-                </div>
+                {privateRoomPackages.length > 0 ? (
+                  <div className="space-y-2">
+                    <p className="text-sm font-semibold text-foreground">
+                      {isPrivatePlayService(service)
+                        ? privatePlayPackageSectionTitle(service.id)
+                        : 'Private room booking'}
+                    </p>
+                    <PackageSelector
+                      packages={privateRoomPackages}
+                      selectedId={privateSelectedPackageId}
+                      onSelect={setPrivateSelectedPackageId}
+                      variant="full"
+                    />
+                  </div>
+                ) : null}
+                {wholeVenuePackages.length > 0 ? (
+                  <div className="space-y-2">
+                    <p className="text-sm font-semibold text-foreground">Whole venue</p>
+                    <PackageSelector
+                      packages={wholeVenuePackages}
+                      selectedId={privateSelectedPackageId}
+                      onSelect={setPrivateSelectedPackageId}
+                      variant="full"
+                    />
+                  </div>
+                ) : null}
+                {meetingRoomPackages.length > 0 ? (
+                  <div className="space-y-2">
+                    <p className="text-sm font-semibold text-foreground">
+                      Meeting room packages
+                    </p>
+                    <PackageSelector
+                      packages={meetingRoomPackages}
+                      selectedId={privateSelectedPackageId}
+                      onSelect={setPrivateSelectedPackageId}
+                      variant="full"
+                    />
+                  </div>
+                ) : null}
                 <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
                   <p className="font-semibold text-foreground">
                     Selected package: {privateSelectedPackage?.name ?? 'Not selected'}
@@ -477,7 +574,12 @@ function EventDetailContent({
               {isPrivateEventJourney ? (
                 <EventBookingWidget
                   key={privateSelectedPackageId ?? 'private-flow'}
-                  serviceId={service.id}
+                  serviceId={
+                    privateSelectedPackageId != null &&
+                    meetingRoomPackages.some((pkg) => pkg.id === privateSelectedPackageId)
+                      ? PRIVATE_PLAY_MEETING_ROOMS_SERVICE_ID
+                      : service.id
+                  }
                   bookingPackages={activePackages}
                   embedded
                   showOccasionStep
@@ -589,158 +691,40 @@ function EventDetailContent({
                     </div>
                   ) : null}
 
-                  {service.addOns?.length ? (
-                    <div className="space-y-2">
-                      <span className="text-sm font-semibold">Add-ons</span>
-                      <ul className="space-y-2">
-                        {service.addOns.filter((a) => a.isActive).map((a) => (
-                          <li
-                            key={a.id}
-                            className="flex items-center justify-between gap-2 text-sm"
-                          >
-                            <span className="text-muted-foreground">
-                              {a.name} ({formatPrice(a.price)})
-                            </span>
-                            <div className="flex items-center gap-1">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() =>
-                                  bookingForm.setAddOnQuantity(
-                                    a.id,
-                                    (bookingForm.addOnQuantities[a.id] ?? 0) - 1,
-                                  )
-                                }
-                                aria-label={`Decrease ${a.name}`}
-                              >
-                                –
-                              </Button>
-                              <span className="w-6 text-center text-xs font-bold">
-                                {bookingForm.addOnQuantities[a.id] ?? 0}
-                              </span>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() =>
-                                  bookingForm.setAddOnQuantity(
-                                    a.id,
-                                    (bookingForm.addOnQuantities[a.id] ?? 0) + 1,
-                                  )
-                                }
-                                aria-label={`Increase ${a.name}`}
-                              >
-                                +
-                              </Button>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
+                  {bookingForm.showAdditionalAdultPicker &&
+                  bookingForm.additionalAdultUnitPrice != null ? (
+                    <BookingAdditionalAdultField
+                      count={bookingForm.additionalAdultCount}
+                      unitPrice={bookingForm.additionalAdultUnitPrice}
+                      freeAdultCount={bookingForm.freeAdultCount}
+                      onChange={bookingForm.setAdditionalAdultCount}
+                    />
                   ) : null}
 
-                  {bookingForm.categoryIncludedAddOns.length > 0 ||
-                  bookingForm.categoryOptionalAddOns.length > 0 ? (
-                    <div className="space-y-2 rounded-lg border border-border p-3">
-                      <span className="text-sm font-semibold">Category add-ons</span>
-                      {bookingForm.categoryIncludedAddOns.length > 0 ? (
-                        <div className="space-y-1.5">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                            Included
-                          </p>
-                          {bookingForm.categoryIncludedAddOns.map((addOn) => (
-                            <div
-                              key={addOn.id}
-                              className="flex items-center justify-between text-sm"
-                            >
-                              <span>{addOn.name}</span>
-                              <span className="font-semibold text-emerald-700">Included</span>
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
-                      {bookingForm.categoryOptionalAddOns.length > 0 ? (
-                        <div className="space-y-2">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                            Optional
-                          </p>
-                          {bookingForm.categoryOptionalAddOns.map((addOn) => (
-                            <label
-                              key={addOn.id}
-                              className="flex items-center justify-between gap-3 text-sm"
-                            >
-                              <div className="flex items-center gap-2">
-                                <Checkbox
-                                  checked={bookingForm.selectedCategoryAddOnIds.includes(
-                                    addOn.id,
-                                  )}
-                                  onCheckedChange={(checked) =>
-                                    bookingForm.setCategoryAddOnSelected(
-                                      addOn.id,
-                                      Boolean(checked),
-                                    )
-                                  }
-                                />
-                                <span>{addOn.name}</span>
-                              </div>
-                              <span className="text-muted-foreground">
-                                {formatPrice(addOn.price)}
-                              </span>
-                            </label>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : null}
+                  <BookingCategoryAddons
+                    optional={bookingForm.categoryOptionalAddOns}
+                    selectedOptionalIds={bookingForm.selectedCategoryAddOnIds}
+                    onOptionalToggle={bookingForm.setCategoryAddOnSelected}
+                  />
 
-                  {bookingForm.needsParticipant ? (
-                    <div className="space-y-2">
-                      <Label>Lead participant</Label>
-                      {participantOptions.length > 0 ? (
-                        <Select
-                          value={participantId}
-                          onValueChange={(v) => {
-                            setParticipantId(v)
-                            const p = participantOptions.find((c) => c.id === v) ?? null
-                            const fullName = p ? `${p.firstName} ${p.lastName}`.trim() : ''
-                            bookingForm.setParticipantName(fullName)
-                            bookingForm.setParticipantDateOfBirth(p?.dateOfBirth ?? null)
-                          }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select a family member" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {participantOptions.map((p) => (
-                              <SelectItem key={p.id} value={p.id}>
-                                {p.firstName} {p.lastName}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <>
-                          <Input
-                            value={bookingForm.participantName}
-                            onChange={(e) => bookingForm.setParticipantName(e.target.value)}
-                            placeholder="Full name"
-                          />
-                          {service.category.requiresAttendee ? (
-                            <p className="text-xs text-muted-foreground">
-                              The booked child must attend with a responsible adult (you or another
-                              adult on this booking).
-                            </p>
-                          ) : null}
-                        </>
-                      )}
-                    </div>
+                  {!usesTicketBookingSidebar ? (
+                    <BookingFamilyMemberFields
+                      service={service}
+                      contacts={contacts}
+                      selectedChildIds={bookingForm.selectedChildIds}
+                      onToggleChild={bookingForm.toggleSelectedChild}
+                      accompanyingAdultId={bookingForm.accompanyingAdultContactId}
+                      onAccompanyingAdultChange={bookingForm.setAccompanyingAdultContactId}
+                      participantContactId={bookingForm.participantContactId}
+                      onParticipantContactChange={bookingForm.applyParticipantContact}
+                      participantName={bookingForm.participantName}
+                      onParticipantNameChange={bookingForm.setParticipantName}
+                      idPrefix="event"
+                    />
                   ) : null}
 
                   {service.requiresWaiver ? (
-                    requiredWaiverDocs.length === 0 ? (
+                    showGenericWaiverCheckbox ? (
                       <div className="flex items-start gap-2">
                         <Checkbox
                           id="waiver-e"
@@ -751,7 +735,7 @@ function EventDetailContent({
                           I confirm I have read and accept the waiver.
                         </Label>
                       </div>
-                    ) : (
+                    ) : requiredWaiverDocs.length > 0 ? (
                       <div className="space-y-2 rounded-lg border border-border bg-card p-3">
                         <p className="text-sm font-semibold text-foreground">
                           Required waivers
@@ -790,7 +774,7 @@ function EventDetailContent({
                           </p>
                         )}
                       </div>
-                    )
+                    ) : null
                   ) : null}
 
                   <div className="space-y-2">
@@ -933,9 +917,11 @@ export default function EventDetailPage({
   const service = useMemo(() => services.find((s) => s.id === id), [services, id])
 
   const eventSlot = useMemo(() => {
-    if (!service) return undefined
-    return slots.find((s) => s.serviceId === service.id)
-  }, [slots, service])
+    if (!service) {
+      return undefined
+    }
+    return findUpcomingSlotForService(slots, service.id)
+  }, [service, slots])
 
   if (!service) {
     return (

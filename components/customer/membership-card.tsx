@@ -101,7 +101,7 @@ export function MembershipCard({
           </div>
         </div>
         <div className="flex flex-wrap items-baseline gap-2">
-          <span className="text-xl font-bold">£{priceShown}</span>
+          <span className="text-xl font-bold">${priceShown}</span>
           <span className="text-xs text-muted-foreground">{billingLabel}</span>
           {savingsPositive ? (
             <span
@@ -110,7 +110,7 @@ export function MembershipCard({
                 'border-emerald-500/50 bg-emerald-500/15 text-emerald-950 dark:text-emerald-100',
               )}
             >
-              Save £{annualSavingsAmount}/year
+              Save ${annualSavingsAmount}/year
             </span>
           ) : null}
         </div>

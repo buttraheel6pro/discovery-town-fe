@@ -133,7 +133,7 @@ export function LocationForm({
                 id="loc-city"
                 value={value.city}
                 onChange={(e) => onChange({ ...value, city: e.target.value })}
-                placeholder="Manchester"
+                placeholder="Indianapolis"
                 disabled={disabled}
               />
             </div>
@@ -166,7 +166,7 @@ export function LocationForm({
                 id="loc-timezone"
                 value={value.timezone}
                 onChange={(e) => onChange({ ...value, timezone: e.target.value })}
-                placeholder="Europe/London"
+                placeholder="America/Indiana/Indianapolis"
                 disabled={disabled}
               />
             </div>

@@ -16,7 +16,14 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
+import { BookingAdditionalAdultField } from '@/components/customer/booking-additional-adult-field'
+import { BookingAdditionalSiblingField } from '@/components/customer/booking-additional-sibling-field'
+import { BookingCategoryAddons } from '@/components/customer/booking-category-addons'
+import { BookingPassCountField } from '@/components/customer/booking-pass-count-field'
+import { BookingFamilyMemberFields } from '@/components/customer/booking-family-member-fields'
+import { BookingHouseholdFields } from '@/components/customer/booking-household-fields'
 import { useBookingForm } from '@/hooks/use-booking-form'
+import { getBookingPrimaryGuardianId } from '@/lib/booking-household'
 import { useClients } from '@/lib/client-store'
 import { generateOpenAvailability } from '@/lib/mock-data'
 import {
@@ -58,9 +65,15 @@ export function BookingWidget({
   onBooked,
 }: Readonly<BookingWidgetProps>) {
   const isScheduled = Boolean(slot)
-  const { contacts, subscriptions, documents } = useClients()
-  const primaryContact =
-    contacts.find((c) => c.contactType === 'CUSTOMER') ?? contacts[0] ?? null
+  const { contacts, subscriptions, documents, addContact, addRelationship } = useClients()
+  const primaryGuardianId = useMemo(
+    () => getBookingPrimaryGuardianId(contacts),
+    [contacts],
+  )
+  const primaryContact = useMemo(
+    () => contacts.find((c) => c.id === primaryGuardianId) ?? contacts[0] ?? null,
+    [contacts, primaryGuardianId],
+  )
   const hasActiveMembership = Boolean(
     primaryContact &&
       subscriptions.some(
@@ -104,6 +117,11 @@ export function BookingWidget({
     selectedWindow,
     selectedDurationMinutes:
       durationOptions.length > 0 ? selectedDuration : undefined,
+    contacts,
+    contactId: primaryContact?.id,
+    contactName: primaryContact
+      ? `${primaryContact.firstName} ${primaryContact.lastName}`.trim()
+      : undefined,
   })
 
   useEffect(() => {
@@ -189,146 +207,26 @@ export function BookingWidget({
     return false
   }
 
-  function addonSection() {
-    if (!service.addOns?.filter((a) => a.isActive).length) return null
-    return (
-      <div className="space-y-2">
-        <Label>Add-ons</Label>
-        <ul className="space-y-2">
-          {service.addOns
-            .filter((a) => a.isActive)
-            .map((a) => (
-              <li key={a.id} className="flex items-center justify-between gap-2 text-sm">
-                <span className="text-muted-foreground">
-                  {a.name} ({formatPrice(a.price)})
-                </span>
-                <div className="flex items-center gap-1">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="h-7 w-7"
-                    onClick={() =>
-                      bookingForm.setAddOnQuantity(
-                        a.id,
-                        (bookingForm.addOnQuantities[a.id] ?? 0) - 1,
-                      )
-                    }
-                    aria-label={`Decrease ${a.name}`}
-                  >
-                    –
-                  </Button>
-                  <span className="w-6 text-center text-xs font-bold">
-                    {bookingForm.addOnQuantities[a.id] ?? 0}
-                  </span>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="h-7 w-7"
-                    onClick={() =>
-                      bookingForm.setAddOnQuantity(
-                        a.id,
-                        (bookingForm.addOnQuantities[a.id] ?? 0) + 1,
-                      )
-                    }
-                    aria-label={`Increase ${a.name}`}
-                  >
-                    +
-                  </Button>
-                </div>
-              </li>
-            ))}
-        </ul>
-      </div>
-    )
-  }
-
-  function categoryAddonSection() {
-    if (
-      bookingForm.categoryIncludedAddOns.length === 0 &&
-      bookingForm.categoryOptionalAddOns.length === 0
-    ) {
-      return null
-    }
-
-    return (
-      <div className="space-y-3 rounded-lg border border-border p-3">
-        <Label>Add-ons</Label>
-        {bookingForm.categoryIncludedAddOns.length > 0 ? (
-          <div className="space-y-1.5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Included
-            </p>
-            {bookingForm.categoryIncludedAddOns.map((addOn) => (
-              <div key={addOn.id} className="flex items-center justify-between text-sm">
-                <span>{addOn.name}</span>
-                <span className="font-semibold text-emerald-700">Included</span>
-              </div>
-            ))}
-          </div>
-        ) : null}
-        {bookingForm.categoryOptionalAddOns.length > 0 ? (
-          <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Optional
-            </p>
-            {bookingForm.categoryOptionalAddOns.map((addOn) => (
-              <label key={addOn.id} className="flex items-center justify-between gap-3 text-sm">
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    checked={bookingForm.selectedCategoryAddOnIds.includes(addOn.id)}
-                    onCheckedChange={(checked) =>
-                      bookingForm.setCategoryAddOnSelected(addOn.id, Boolean(checked))
-                    }
-                  />
-                  <span>{addOn.name}</span>
-                </div>
-                <span className="text-muted-foreground">{formatPrice(addOn.price)}</span>
-              </label>
-            ))}
-          </div>
-        ) : null}
-      </div>
-    )
-  }
-
   function guestSection() {
+    const slotCap =
+      slot !== undefined
+        ? Math.max(1, slot.effectiveCapacity - slot.bookedCount)
+        : null
+    const passMax = bookingForm.usesOpenPlayHouseholdBooking
+      ? bookingForm.maxPassCount
+      : bookingForm.maxPassCount != null && slotCap != null
+        ? Math.min(bookingForm.maxPassCount, slotCap)
+        : (bookingForm.maxPassCount ?? slotCap)
+
     return (
-      <div className="space-y-2">
-        <Label>Guests</Label>
-        <div className="flex items-center gap-3">
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() =>
-              bookingForm.setGuestCount(Math.max(1, bookingForm.guestCount - 1))
-            }
-            disabled={bookingForm.guestCount <= 1}
-            aria-label="Decrease guests"
-          >
-            –
-          </Button>
-          <span className="font-bold text-base w-14 text-center">{bookingForm.guestCount}</span>
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => bookingForm.setGuestCount(bookingForm.guestCount + 1)}
-            disabled={
-              slot !== undefined &&
-              bookingForm.guestCount >=
-                Math.max(1, slot.effectiveCapacity - slot.bookedCount)
-            }
-            aria-label="Increase guests"
-          >
-            +
-          </Button>
-        </div>
-      </div>
+      <BookingPassCountField
+        label={bookingForm.guestCountLabel}
+        count={bookingForm.guestCount}
+        min={1}
+        max={passMax}
+        onChange={bookingForm.setGuestCount}
+        helperText={bookingForm.passCountHelperText}
+      />
     )
   }
 
@@ -379,18 +277,65 @@ export function BookingWidget({
           {step === 'details' && (
             <>
               {guestSection()}
-              {categoryAddonSection()}
-              {addonSection()}
-              {bookingForm.needsParticipant ? (
-                <div className="space-y-2">
-                  <Label htmlFor="participant">Participant</Label>
-                  <Input
-                    id="participant"
-                    value={bookingForm.participantName}
-                    onChange={(e) => bookingForm.setParticipantName(e.target.value)}
-                    placeholder="Full name"
-                  />
-                </div>
+
+              {bookingForm.showAdditionalSiblingPicker &&
+              bookingForm.additionalSiblingUnitPrice != null ? (
+                <BookingAdditionalSiblingField
+                  count={bookingForm.additionalSiblingCount}
+                  unitPrice={bookingForm.additionalSiblingUnitPrice}
+                  passCount={bookingForm.guestCount}
+                  onChange={bookingForm.setAdditionalSiblingCount}
+                />
+              ) : null}
+
+              {bookingForm.showAdditionalAdultPicker &&
+              bookingForm.additionalAdultUnitPrice != null ? (
+                <BookingAdditionalAdultField
+                  count={bookingForm.additionalAdultCount}
+                  unitPrice={bookingForm.additionalAdultUnitPrice}
+                  freeAdultCount={bookingForm.freeAdultCount}
+                  onChange={bookingForm.setAdditionalAdultCount}
+                />
+              ) : null}
+
+              {bookingForm.usesOpenPlayHouseholdBooking ? (
+                <BookingHouseholdFields
+                  contacts={contacts}
+                  primaryGuardianId={bookingForm.primaryGuardianContactId}
+                  onPrimaryGuardianChange={bookingForm.setPrimaryGuardianContactId}
+                  secondaryGuardianId={bookingForm.secondaryGuardianContactId}
+                  onSecondaryGuardianChange={bookingForm.setSecondaryGuardianContactId}
+                  selectedChildIds={bookingForm.selectedChildIds}
+                  onToggleChild={bookingForm.toggleSelectedChild}
+                  onAddContact={addContact}
+                  onAddRelationship={addRelationship}
+                  idPrefix="widget-household"
+                  maxChildSelections={bookingForm.maxChildSelections}
+                  passCount={bookingForm.guestCount}
+                  additionalSiblingCount={bookingForm.additionalSiblingCount}
+                />
+              ) : null}
+
+              <BookingCategoryAddons
+                optional={bookingForm.categoryOptionalAddOns}
+                selectedOptionalIds={bookingForm.selectedCategoryAddOnIds}
+                onOptionalToggle={bookingForm.setCategoryAddOnSelected}
+              />
+
+              {!bookingForm.usesOpenPlayHouseholdBooking ? (
+                <BookingFamilyMemberFields
+                  service={service}
+                  contacts={contacts}
+                  selectedChildIds={bookingForm.selectedChildIds}
+                  onToggleChild={bookingForm.toggleSelectedChild}
+                  accompanyingAdultId={bookingForm.accompanyingAdultContactId}
+                  onAccompanyingAdultChange={bookingForm.setAccompanyingAdultContactId}
+                  participantContactId={bookingForm.participantContactId}
+                  onParticipantContactChange={bookingForm.applyParticipantContact}
+                  participantName={bookingForm.participantName}
+                  onParticipantNameChange={bookingForm.setParticipantName}
+                  idPrefix="widget"
+                />
               ) : null}
 
               {service.requiresWaiver ? (
@@ -620,19 +565,65 @@ export function BookingWidget({
               </div>
 
               {guestSection()}
-              {categoryAddonSection()}
-              {addonSection()}
 
-              {bookingForm.needsParticipant ? (
-                <div className="space-y-2">
-                  <Label htmlFor="participant-open">Participant</Label>
-                  <Input
-                    id="participant-open"
-                    value={bookingForm.participantName}
-                    onChange={(e) => bookingForm.setParticipantName(e.target.value)}
-                    placeholder="Full name"
-                  />
-                </div>
+              {bookingForm.showAdditionalSiblingPicker &&
+              bookingForm.additionalSiblingUnitPrice != null ? (
+                <BookingAdditionalSiblingField
+                  count={bookingForm.additionalSiblingCount}
+                  unitPrice={bookingForm.additionalSiblingUnitPrice}
+                  passCount={bookingForm.guestCount}
+                  onChange={bookingForm.setAdditionalSiblingCount}
+                />
+              ) : null}
+
+              {bookingForm.showAdditionalAdultPicker &&
+              bookingForm.additionalAdultUnitPrice != null ? (
+                <BookingAdditionalAdultField
+                  count={bookingForm.additionalAdultCount}
+                  unitPrice={bookingForm.additionalAdultUnitPrice}
+                  freeAdultCount={bookingForm.freeAdultCount}
+                  onChange={bookingForm.setAdditionalAdultCount}
+                />
+              ) : null}
+
+              {bookingForm.usesOpenPlayHouseholdBooking ? (
+                <BookingHouseholdFields
+                  contacts={contacts}
+                  primaryGuardianId={bookingForm.primaryGuardianContactId}
+                  onPrimaryGuardianChange={bookingForm.setPrimaryGuardianContactId}
+                  secondaryGuardianId={bookingForm.secondaryGuardianContactId}
+                  onSecondaryGuardianChange={bookingForm.setSecondaryGuardianContactId}
+                  selectedChildIds={bookingForm.selectedChildIds}
+                  onToggleChild={bookingForm.toggleSelectedChild}
+                  onAddContact={addContact}
+                  onAddRelationship={addRelationship}
+                  idPrefix="widget-open-household"
+                  maxChildSelections={bookingForm.maxChildSelections}
+                  passCount={bookingForm.guestCount}
+                  additionalSiblingCount={bookingForm.additionalSiblingCount}
+                />
+              ) : null}
+
+              <BookingCategoryAddons
+                optional={bookingForm.categoryOptionalAddOns}
+                selectedOptionalIds={bookingForm.selectedCategoryAddOnIds}
+                onOptionalToggle={bookingForm.setCategoryAddOnSelected}
+              />
+
+              {!bookingForm.usesOpenPlayHouseholdBooking ? (
+                <BookingFamilyMemberFields
+                  service={service}
+                  contacts={contacts}
+                  selectedChildIds={bookingForm.selectedChildIds}
+                  onToggleChild={bookingForm.toggleSelectedChild}
+                  accompanyingAdultId={bookingForm.accompanyingAdultContactId}
+                  onAccompanyingAdultChange={bookingForm.setAccompanyingAdultContactId}
+                  participantContactId={bookingForm.participantContactId}
+                  onParticipantContactChange={bookingForm.applyParticipantContact}
+                  participantName={bookingForm.participantName}
+                  onParticipantNameChange={bookingForm.setParticipantName}
+                  idPrefix="widget-open"
+                />
               ) : null}
 
               <div className="space-y-2">

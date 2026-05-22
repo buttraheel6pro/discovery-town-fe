@@ -13,6 +13,7 @@ interface HorizontalScrollSectionProps {
   readonly title: string
   readonly description?: string
   readonly viewAllHref?: string
+  readonly headerAction?: React.ReactNode
   readonly children: React.ReactNode
   readonly className?: string
 }
@@ -23,6 +24,7 @@ export function HorizontalScrollSection({
   title,
   description,
   viewAllHref,
+  headerAction,
   children,
   className,
 }: Readonly<HorizontalScrollSectionProps>) {
@@ -51,7 +53,8 @@ export function HorizontalScrollSection({
             </h2>
             {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {headerAction}
             <Button
               type="button"
               variant="outline"
@@ -84,7 +87,7 @@ export function HorizontalScrollSection({
 
         <div
           ref={railRef}
-          className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="flex items-stretch snap-x snap-mandatory gap-4 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {children}
         </div>

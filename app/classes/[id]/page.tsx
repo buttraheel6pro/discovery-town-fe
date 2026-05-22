@@ -12,6 +12,10 @@ import {
   Star,
   MapPin,
 } from 'lucide-react'
+import { BookingAdditionalAdultField } from '@/components/customer/booking-additional-adult-field'
+import { BookingAmenitiesSection } from '@/components/customer/booking-amenities-section'
+import { BookingCategoryAddons } from '@/components/customer/booking-category-addons'
+import { BookingFamilyMemberFields } from '@/components/customer/booking-family-member-fields'
 import { BookingFlowCouponSection } from '@/components/customer/booking-flow-coupon-section'
 import { CustomerNavbar } from '@/components/customer/navbar'
 import { CustomerFooter } from '@/components/customer/footer'
@@ -35,17 +39,19 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useBookingForm } from '@/hooks/use-booking-form'
-import { useToast } from '@/hooks/use-toast'
 import { useClients } from '@/lib/client-store'
 import { useInventory } from '@/lib/inventory-store'
 import { instructors } from '@/lib/mock-data'
 import {
   buildEventCartBookingDescription,
   buildGymCartBookingDescription,
+  buildPlayCartBookingDescription,
   EVENT_CART_BOOKING_META_KEY,
   GYM_CART_BOOKING_META_KEY,
+  PLAY_CART_BOOKING_META_KEY,
   isEventSlotCartCheckoutService,
   isGymClassCartCheckoutService,
+  isPlayClassCartCheckoutService,
 } from '@/lib/play-cart'
 import { useScheduling } from '@/lib/scheduling-store'
 import {
@@ -67,6 +73,7 @@ function getClassEnrolButtonLabel(
   selectedSlot: SchedulingSlot | undefined,
   gymClassCartCheckout: boolean,
   eventClassCartCheckout: boolean,
+  playClassCartCheckout: boolean,
 ): string {
   if (!selectedSlot) {
     return 'Select a session'
@@ -74,8 +81,8 @@ function getClassEnrolButtonLabel(
   if (selectedSlot.status === 'FULL') {
     return 'Class full'
   }
-  if (gymClassCartCheckout || eventClassCartCheckout) {
-    return 'Confirm and add to cart'
+  if (gymClassCartCheckout || eventClassCartCheckout || playClassCartCheckout) {
+    return 'Add to cart'
   }
   return 'Enrol now'
 }
@@ -84,7 +91,6 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
   const { slots, packages } = useScheduling()
   const { contacts, subscriptions, documents } = useClients()
   const { addCustomCartItem } = useInventory()
-  const { toast } = useToast()
 
   const primaryContact =
     contacts.find((c) => c.contactType === 'CUSTOMER') ?? contacts[0] ?? null
@@ -110,6 +116,7 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
   const gymClassCartCheckout = isGymClassCartCheckoutService(service)
   const eventClassCartCheckout =
     isEventSlotCartCheckoutService(service) && !gymClassCartCheckout
+  const playClassCartCheckout = isPlayClassCartCheckoutService(service)
   const instructor: Instructors | undefined = service.instructorId
     ? instructors.find((i) => i.instructorId === service.instructorId || i.id === service.instructorId)
     : undefined
@@ -139,12 +146,6 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
     }
   }, [upcomingSlots, selectedSlotId])
 
-  const participantOptions = useMemo(
-    () => contacts.filter((c) => c.contactType === 'CUSTOMER' || c.contactType === 'CHILD'),
-    [contacts],
-  )
-  const [participantId, setParticipantId] = useState<string>('')
-
   const activePackages = useMemo(
     () => packages.filter((p) => p.serviceId === service.id && p.isActive),
     [packages, service.id],
@@ -169,6 +170,11 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
   const bookingForm = useBookingForm({
     service: serviceForBooking,
     slot: selectedSlotForBooking,
+    contacts,
+    contactId: primaryContact?.id,
+    contactName: primaryContact
+      ? `${primaryContact.firstName} ${primaryContact.lastName}`.trim()
+      : undefined,
   })
 
   const bookingPricingResetKey = useMemo(
@@ -209,7 +215,9 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
   ])
 
   const [enrolled, setEnrolled] = useState(false)
-  const [classCartSuccessKind, setClassCartSuccessKind] = useState<null | 'gym' | 'event'>(null)
+  const [classCartSuccessKind, setClassCartSuccessKind] = useState<null | 'gym' | 'event' | 'play'>(
+    null,
+  )
   const [waitlistOpen, setWaitlistOpen] = useState(false)
 
   const capacity = selectedSlot?.effectiveCapacity ?? service.capacity
@@ -240,11 +248,6 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
         },
       })
       setClassCartSuccessKind('gym')
-      toast({
-        title: 'Added to cart',
-        description:
-          'Your class is in the cart. Open Gym bookings to review or checkout.',
-      })
       return
     }
     if (eventClassCartCheckout) {
@@ -266,11 +269,25 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
         },
       })
       setClassCartSuccessKind('event')
-      toast({
-        title: 'Added to cart',
-        description:
-          'Your session is in the cart. Open Event bookings to review or checkout.',
+      return
+    }
+    if (playClassCartCheckout) {
+      const booking = bookingForm.submitBooking({ persist: false })
+      addCustomCartItem({
+        type: 'booking',
+        name: service.name,
+        description: buildPlayCartBookingDescription(booking, {
+          packageName: selectedPackage?.name ?? null,
+        }),
+        price: booking.totalAmount,
+        quantity: 1,
+        imageUrl: service.imageUrl ?? undefined,
+        metadata: {
+          [PLAY_CART_BOOKING_META_KEY]: true,
+          serviceId: service.id,
+        },
       })
+      setClassCartSuccessKind('play')
       return
     }
     bookingForm.submitBooking()
@@ -317,7 +334,7 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
               </h1>
             </div>
             <p className="text-3xl font-black text-accent">
-              £{service.basePrice}
+              ${service.basePrice}
               <span className="text-base font-normal text-white/80">/session</span>
             </p>
           </div>
@@ -332,6 +349,13 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
               {service.description ?? '—'}
             </p>
           </section>
+
+          <Separator />
+
+          <BookingAmenitiesSection
+            serviceAmenities={service.amenities}
+            freeCategoryAddOns={bookingForm.categoryIncludedAddOns}
+          />
 
           <Separator />
 
@@ -447,7 +471,11 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
         <aside>
           <Card className="sticky top-24 shadow-xl">
             <CardHeader className="pb-3">
-              <CardTitle className="text-lg font-bold">Enrol in this Class</CardTitle>
+              <CardTitle className="text-lg font-bold">
+                {gymClassCartCheckout || eventClassCartCheckout || playClassCartCheckout
+                  ? 'Book this class'
+                  : 'Enrol in this Class'}
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-5">
               {enrolled || classCartSuccessKind !== null ? (
@@ -470,6 +498,18 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
                       <p className="font-bold text-lg">Added to cart</p>
                       <p className="text-sm text-muted-foreground">
                         {service.name} — open Event bookings in your cart to complete checkout.
+                      </p>
+                      <Link href="/cart">
+                        <Button variant="outline" className="w-full mt-2">
+                          View cart
+                        </Button>
+                      </Link>
+                    </>
+                  ) : classCartSuccessKind === 'play' ? (
+                    <>
+                      <p className="font-bold text-lg">Added to cart</p>
+                      <p className="text-sm text-muted-foreground">
+                        {service.name} — open Play bookings in your cart to complete checkout.
                       </p>
                       <Link href="/cart">
                         <Button variant="outline" className="w-full mt-2">
@@ -567,155 +607,35 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
                     </div>
                   ) : null}
 
-                  {service.addOns?.length ? (
-                    <div className="space-y-2">
-                      <Label>Add-ons</Label>
-                      <ul className="space-y-2">
-                        {service.addOns.filter((a) => a.isActive).map((a) => (
-                          <li
-                            key={a.id}
-                            className="flex items-center justify-between gap-2 text-sm"
-                          >
-                            <span className="text-muted-foreground">
-                              {a.name} ({formatPrice(a.price)})
-                            </span>
-                            <div className="flex items-center gap-1">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() =>
-                                  bookingForm.setAddOnQuantity(
-                                    a.id,
-                                    (bookingForm.addOnQuantities[a.id] ?? 0) - 1,
-                                  )
-                                }
-                                aria-label={`Decrease ${a.name}`}
-                              >
-                                –
-                              </Button>
-                              <span className="w-6 text-center text-xs font-bold">
-                                {bookingForm.addOnQuantities[a.id] ?? 0}
-                              </span>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() =>
-                                  bookingForm.setAddOnQuantity(
-                                    a.id,
-                                    (bookingForm.addOnQuantities[a.id] ?? 0) + 1,
-                                  )
-                                }
-                                aria-label={`Increase ${a.name}`}
-                              >
-                                +
-                              </Button>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
+                  {bookingForm.showAdditionalAdultPicker &&
+                  bookingForm.additionalAdultUnitPrice != null ? (
+                    <BookingAdditionalAdultField
+                      count={bookingForm.additionalAdultCount}
+                      unitPrice={bookingForm.additionalAdultUnitPrice}
+                      freeAdultCount={bookingForm.freeAdultCount}
+                      onChange={bookingForm.setAdditionalAdultCount}
+                    />
                   ) : null}
 
-                  {bookingForm.categoryIncludedAddOns.length > 0 ||
-                  bookingForm.categoryOptionalAddOns.length > 0 ? (
-                    <div className="space-y-2 rounded-lg border border-border p-3">
-                      <Label>Category add-ons</Label>
-                      {bookingForm.categoryIncludedAddOns.length > 0 ? (
-                        <div className="space-y-1.5">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                            Included
-                          </p>
-                          {bookingForm.categoryIncludedAddOns.map((addOn) => (
-                            <div
-                              key={addOn.id}
-                              className="flex items-center justify-between text-sm"
-                            >
-                              <span>{addOn.name}</span>
-                              <span className="font-semibold text-emerald-700">Included</span>
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
-                      {bookingForm.categoryOptionalAddOns.length > 0 ? (
-                        <div className="space-y-2">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                            Optional
-                          </p>
-                          {bookingForm.categoryOptionalAddOns.map((addOn) => (
-                            <label
-                              key={addOn.id}
-                              className="flex items-center justify-between gap-3 text-sm"
-                            >
-                              <div className="flex items-center gap-2">
-                                <Checkbox
-                                  checked={bookingForm.selectedCategoryAddOnIds.includes(
-                                    addOn.id,
-                                  )}
-                                  onCheckedChange={(checked) =>
-                                    bookingForm.setCategoryAddOnSelected(
-                                      addOn.id,
-                                      Boolean(checked),
-                                    )
-                                  }
-                                />
-                                <span>{addOn.name}</span>
-                              </div>
-                              <span className="text-muted-foreground">
-                                {formatPrice(addOn.price)}
-                              </span>
-                            </label>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : null}
+                  <BookingCategoryAddons
+                    optional={bookingForm.categoryOptionalAddOns}
+                    selectedOptionalIds={bookingForm.selectedCategoryAddOnIds}
+                    onOptionalToggle={bookingForm.setCategoryAddOnSelected}
+                  />
 
-                  {bookingForm.needsParticipant ? (
-                    <div className="space-y-2">
-                      <Label>Participant</Label>
-                      {participantOptions.length > 0 ? (
-                        <Select
-                          value={participantId}
-                          onValueChange={(v) => {
-                            setParticipantId(v)
-                            const p = participantOptions.find((c) => c.id === v) ?? null
-                            const fullName = p ? `${p.firstName} ${p.lastName}`.trim() : ''
-                            bookingForm.setParticipantName(fullName)
-                            bookingForm.setParticipantDateOfBirth(p?.dateOfBirth ?? null)
-                          }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select a family member" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {participantOptions.map((p) => (
-                              <SelectItem key={p.id} value={p.id}>
-                                {p.firstName} {p.lastName}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <>
-                          <Input
-                            value={bookingForm.participantName}
-                            onChange={(e) => bookingForm.setParticipantName(e.target.value)}
-                            placeholder="Full name"
-                          />
-                          {service.category.requiresAttendee ? (
-                            <p className="text-xs text-muted-foreground">
-                              The booked child must attend with a responsible adult (you or another
-                              adult on this booking).
-                            </p>
-                          ) : null}
-                        </>
-                      )}
-                    </div>
-                  ) : null}
+                  <BookingFamilyMemberFields
+                    service={service}
+                    contacts={contacts}
+                    selectedChildIds={bookingForm.selectedChildIds}
+                    onToggleChild={bookingForm.toggleSelectedChild}
+                    accompanyingAdultId={bookingForm.accompanyingAdultContactId}
+                    onAccompanyingAdultChange={bookingForm.setAccompanyingAdultContactId}
+                    participantContactId={bookingForm.participantContactId}
+                    onParticipantContactChange={bookingForm.applyParticipantContact}
+                    participantName={bookingForm.participantName}
+                    onParticipantNameChange={bookingForm.setParticipantName}
+                    idPrefix="class"
+                  />
 
                   {service.requiresWaiver ? (
                     requiredWaiverDocs.length === 0 ? (
@@ -845,6 +765,7 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
                         selectedSlot,
                         gymClassCartCheckout,
                         eventClassCartCheckout,
+                        playClassCartCheckout,
                       )}
                     </Button>
                   )}

@@ -3,14 +3,21 @@ import { z } from 'zod'
 
 export const cafeCategorySchema = z.enum([
   'Coffee',
+  'Hot Drinks',
+  'Cold Brew',
   'Cold Drinks',
+  'Frozen Treats',
   'Specialty',
   'Pizza',
   'Sandwiches',
   'Kids Corner',
+  'Salads',
+  'Snacks',
   'Salads & Snacks',
   'Sweets',
   'Pastries',
+  'Baked Food',
+  'Toasts',
 ])
 
 export const cafeModifierSchema = z.object({

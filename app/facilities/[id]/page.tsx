@@ -1,8 +1,9 @@
 'use client'
 
-import { useMemo, useState, use } from 'react'
+import { useEffect, useMemo, useState, use } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft, Star, Users, MapPin, CheckCircle2 } from 'lucide-react'
 import { CustomerNavbar } from '@/components/customer/navbar'
 import { CustomerFooter } from '@/components/customer/footer'
@@ -21,13 +22,30 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { BookingAdditionalAdultField } from '@/components/customer/booking-additional-adult-field'
+import { BookingAdditionalSiblingField } from '@/components/customer/booking-additional-sibling-field'
+import { BookingAmenitiesSection } from '@/components/customer/booking-amenities-section'
+import { BookingCategoryAddons } from '@/components/customer/booking-category-addons'
+import { BookingPassCountField } from '@/components/customer/booking-pass-count-field'
+import { BookingFamilyMemberFields } from '@/components/customer/booking-family-member-fields'
+import { BookingHouseholdFields } from '@/components/customer/booking-household-fields'
 import { BookingFlowCouponSection } from '@/components/customer/booking-flow-coupon-section'
+import { OpenPlayPassDetail } from '@/components/customer/open-play-pass-detail'
+import { PrivatePlayDetail } from '@/components/customer/private-play-detail'
 import { OpenBookingAvailabilitySection } from '@/components/customer/open-booking-availability-section'
 import { PackageSelector } from '@/components/customer/package-selector'
 import { useBookingForm } from '@/hooks/use-booking-form'
-import { useToast } from '@/hooks/use-toast'
+import { resolveServiceChildAgeRules } from '@/lib/booking-child-age'
+import { getBookingPrimaryGuardianId } from '@/lib/booking-household'
 import { useClients } from '@/lib/client-store'
 import { useInventory } from '@/lib/inventory-store'
+import {
+  buildPassCatalogSchedulingService,
+  getOpenPlayMembershipOffer,
+  resolveOfferDisplayPrice,
+} from '@/lib/open-play-membership-offers'
+import { isOpenPlayPassCatalogService } from '@/lib/open-play-pass-catalog'
+import { isPrivatePlayService } from '@/lib/private-play-packages'
 import {
   buildGymCartBookingDescription,
   buildPlayCartBookingDescription,
@@ -36,7 +54,9 @@ import {
   isPlayCartCheckoutService,
   PLAY_CART_BOOKING_META_KEY,
 } from '@/lib/play-cart'
+import { usesBuyNowListingCta } from '@/lib/play-cart'
 import { useScheduling } from '@/lib/scheduling-store'
+import { usesEventTicketBookingSidebar } from '@/lib/scheduling-slot-availability'
 import {
   formatPrice,
   formatSlotTime,
@@ -78,9 +98,13 @@ function getFacilityCartCheckoutKind(
 function getFacilityConfirmButtonLabel(
   hasSelectedWindow: boolean,
   cartCheckoutKind: 'play' | 'gym' | null,
+  buyNowListing: boolean,
 ): string {
   if (!hasSelectedWindow) {
-    return 'Select a time slot'
+    return buyNowListing ? 'Buy now' : 'Select a time slot'
+  }
+  if (buyNowListing) {
+    return 'Buy now'
   }
   if (cartCheckoutKind !== null) {
     return 'Confirm and add to cart'
@@ -89,12 +113,17 @@ function getFacilityConfirmButtonLabel(
 }
 
 function FacilityDetailContent({ service }: Readonly<{ service: SchedulingService }>) {
-  const { contacts, subscriptions, documents } = useClients()
+  const { contacts, subscriptions, documents, addContact, addRelationship } = useClients()
   const { packages } = useScheduling()
   const { addCustomCartItem } = useInventory()
-  const { toast } = useToast()
-  const primaryContact =
-    contacts.find((c) => c.contactType === 'CUSTOMER') ?? contacts[0] ?? null
+  const primaryGuardianId = useMemo(
+    () => getBookingPrimaryGuardianId(contacts),
+    [contacts],
+  )
+  const primaryContact = useMemo(
+    () => contacts.find((c) => c.id === primaryGuardianId) ?? contacts[0] ?? null,
+    [contacts, primaryGuardianId],
+  )
   const hasActiveMembership = Boolean(
     primaryContact &&
       subscriptions.some(
@@ -115,6 +144,7 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
   )
   const membersOnlyBlocked = service.category.membersOnly === true && !hasActiveMembership
   const facilityCartCheckoutKind = getFacilityCartCheckoutKind(service)
+  const childAgeRules = useMemo(() => resolveServiceChildAgeRules(service), [service])
 
   const today = new Date()
   const todayStr = today.toISOString().split('T')[0]
@@ -155,7 +185,19 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
     selectedWindow,
     selectedDurationMinutes:
       durationOptions.length > 0 ? durationMinutes : undefined,
+    contacts,
+    contactId: primaryContact?.id,
+    contactName: primaryContact
+      ? `${primaryContact.firstName} ${primaryContact.lastName}`.trim()
+      : undefined,
   })
+
+  const passCountHelperText = useMemo(() => {
+    const parts = [bookingForm.passCountHelperText, childAgeRules?.label].filter(
+      (part): part is string => Boolean(part),
+    )
+    return parts.length > 0 ? parts.join(' · ') : undefined
+  }, [bookingForm.passCountHelperText, childAgeRules?.label])
 
   const bookingPricingResetKey = useMemo(
     () =>
@@ -202,13 +244,6 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
     service.requiresWaiver,
   ])
 
-  const participantOptions = useMemo(
-    () => contacts.filter((c) => c.contactType === 'CUSTOMER' || c.contactType === 'CHILD'),
-    [contacts],
-  )
-  const [participantId, setParticipantId] = useState<string>('')
-
-  const amenities = service.amenities ?? []
   const rating = service.rating ?? 0
   const reviewCount = service.reviewCount ?? 0
   const floorLabel = service.floor ?? 1
@@ -234,11 +269,6 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
         },
       })
       setAddedToCartKind('play')
-      toast({
-        title: 'Added to cart',
-        description:
-          'Your play session is in the cart. Open Play bookings to review or checkout.',
-      })
       return
     }
     if (facilityCartCheckoutKind === 'gym') {
@@ -258,11 +288,6 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
         },
       })
       setAddedToCartKind('gym')
-      toast({
-        title: 'Added to cart',
-        description:
-          'Your court booking is in the cart. Open Gym bookings to review or checkout.',
-      })
       return
     }
     bookingForm.submitBooking()
@@ -318,7 +343,7 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
             <div className="text-right">
               <p className="text-white/60 text-xs uppercase tracking-wider">From</p>
               <p className="text-3xl font-black text-accent">
-                £{service.basePrice}
+                ${service.basePrice}
                 <span className="text-base font-normal text-white/80">
                   {service.pricingModel === 'per_hour'
                     ? '/hr'
@@ -339,21 +364,19 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
             <p className="text-muted-foreground leading-relaxed">
               {service.description ?? '—'}
             </p>
+            {childAgeRules ? (
+              <p className="mt-2 text-sm font-medium text-foreground">
+                {childAgeRules.label}
+              </p>
+            ) : null}
           </section>
 
           <Separator />
 
-          <section>
-            <h2 className="text-xl font-bold mb-4">Amenities</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {amenities.map((a) => (
-                <div key={a} className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <CheckCircle2 className="w-4 h-4 text-accent shrink-0" />
-                  {a}
-                </div>
-              ))}
-            </div>
-          </section>
+          <BookingAmenitiesSection
+            serviceAmenities={service.amenities}
+            freeCategoryAddOns={bookingForm.categoryIncludedAddOns}
+          />
 
           {openMode ? (
             <>
@@ -432,37 +455,24 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
                     </div>
                   </div>
 
-                  <div>
-                    <Label className="text-sm font-semibold">Guests</Label>
-                    <div className="flex items-center gap-3 mt-2">
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-8 w-8"
-                        type="button"
-                        onClick={() =>
-                          bookingForm.setGuestCount(Math.max(1, bookingForm.guestCount - 1))
-                        }
-                        disabled={bookingForm.guestCount <= 1}
-                        aria-label="Decrease guests"
-                      >
-                        –
-                      </Button>
-                      <span className="font-bold text-base w-14 text-center">
-                        {bookingForm.guestCount}
-                      </span>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-8 w-8"
-                        type="button"
-                        onClick={() => bookingForm.setGuestCount(bookingForm.guestCount + 1)}
-                        aria-label="Increase guests"
-                      >
-                        +
-                      </Button>
-                    </div>
-                  </div>
+                  <BookingPassCountField
+                    label={bookingForm.guestCountLabel}
+                    count={bookingForm.guestCount}
+                    min={1}
+                    max={bookingForm.maxPassCount}
+                    onChange={bookingForm.setGuestCount}
+                    helperText={passCountHelperText}
+                  />
+
+                  {bookingForm.showAdditionalSiblingPicker &&
+                  bookingForm.additionalSiblingUnitPrice != null ? (
+                    <BookingAdditionalSiblingField
+                      count={bookingForm.additionalSiblingCount}
+                      unitPrice={bookingForm.additionalSiblingUnitPrice}
+                      passCount={bookingForm.guestCount}
+                      onChange={bookingForm.setAdditionalSiblingCount}
+                    />
+                  ) : null}
 
                   {activePackages.length > 0 ? (
                     <div className="space-y-2">
@@ -480,154 +490,56 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
                     </div>
                   ) : null}
 
-                  {service.addOns?.length ? (
-                    <div className="space-y-2">
-                      <Label>Add-ons</Label>
-                      <ul className="space-y-2">
-                        {service.addOns.filter((a) => a.isActive).map((a) => (
-                          <li
-                            key={a.id}
-                            className="flex items-center justify-between gap-2 text-sm"
-                          >
-                            <span className="text-muted-foreground">
-                              {a.name} ({formatPrice(a.price)})
-                            </span>
-                            <div className="flex items-center gap-1">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() =>
-                                  bookingForm.setAddOnQuantity(
-                                    a.id,
-                                    (bookingForm.addOnQuantities[a.id] ?? 0) - 1,
-                                  )
-                                }
-                                aria-label={`Decrease ${a.name}`}
-                              >
-                                –
-                              </Button>
-                              <span className="w-6 text-center text-xs font-bold">
-                                {bookingForm.addOnQuantities[a.id] ?? 0}
-                              </span>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() =>
-                                  bookingForm.setAddOnQuantity(
-                                    a.id,
-                                    (bookingForm.addOnQuantities[a.id] ?? 0) + 1,
-                                  )
-                                }
-                                aria-label={`Increase ${a.name}`}
-                              >
-                                +
-                              </Button>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
+                  {bookingForm.showAdditionalAdultPicker &&
+                  bookingForm.additionalAdultUnitPrice != null ? (
+                    <BookingAdditionalAdultField
+                      count={bookingForm.additionalAdultCount}
+                      unitPrice={bookingForm.additionalAdultUnitPrice}
+                      freeAdultCount={bookingForm.freeAdultCount}
+                      onChange={bookingForm.setAdditionalAdultCount}
+                    />
                   ) : null}
 
-                  {bookingForm.categoryIncludedAddOns.length > 0 ||
-                  bookingForm.categoryOptionalAddOns.length > 0 ? (
-                    <div className="space-y-2 rounded-lg border border-border p-3">
-                      <Label>Category add-ons</Label>
-                      {bookingForm.categoryIncludedAddOns.length > 0 ? (
-                        <div className="space-y-1.5">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                            Included
-                          </p>
-                          {bookingForm.categoryIncludedAddOns.map((addOn) => (
-                            <div
-                              key={addOn.id}
-                              className="flex items-center justify-between text-sm"
-                            >
-                              <span>{addOn.name}</span>
-                              <span className="font-semibold text-emerald-700">Included</span>
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
-                      {bookingForm.categoryOptionalAddOns.length > 0 ? (
-                        <div className="space-y-2">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                            Optional
-                          </p>
-                          {bookingForm.categoryOptionalAddOns.map((addOn) => (
-                            <label
-                              key={addOn.id}
-                              className="flex items-center justify-between gap-3 text-sm"
-                            >
-                              <div className="flex items-center gap-2">
-                                <Checkbox
-                                  checked={bookingForm.selectedCategoryAddOnIds.includes(
-                                    addOn.id,
-                                  )}
-                                  onCheckedChange={(checked) =>
-                                    bookingForm.setCategoryAddOnSelected(
-                                      addOn.id,
-                                      Boolean(checked),
-                                    )
-                                  }
-                                />
-                                <span>{addOn.name}</span>
-                              </div>
-                              <span className="text-muted-foreground">
-                                {formatPrice(addOn.price)}
-                              </span>
-                            </label>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
+                  {bookingForm.usesOpenPlayHouseholdBooking ? (
+                    <BookingHouseholdFields
+                      contacts={contacts}
+                      primaryGuardianId={bookingForm.primaryGuardianContactId}
+                      onPrimaryGuardianChange={bookingForm.setPrimaryGuardianContactId}
+                      secondaryGuardianId={bookingForm.secondaryGuardianContactId}
+                      onSecondaryGuardianChange={bookingForm.setSecondaryGuardianContactId}
+                      selectedChildIds={bookingForm.selectedChildIds}
+                      onToggleChild={bookingForm.toggleSelectedChild}
+                      onAddContact={addContact}
+                      onAddRelationship={addRelationship}
+                      idPrefix="facility-household"
+                      maxChildSelections={bookingForm.maxChildSelections}
+                      passCount={bookingForm.guestCount}
+                      additionalSiblingCount={bookingForm.additionalSiblingCount}
+                      isChildAgeEligible={childAgeRules?.isEligible}
+                      ageRestrictionLabel={childAgeRules?.label}
+                    />
                   ) : null}
 
-                  {bookingForm.needsParticipant ? (
-                    <div className="space-y-2">
-                      <Label>Participant</Label>
-                      {participantOptions.length > 0 ? (
-                        <Select
-                          value={participantId}
-                          onValueChange={(v) => {
-                            setParticipantId(v)
-                            const p = participantOptions.find((c) => c.id === v) ?? null
-                            const fullName = p ? `${p.firstName} ${p.lastName}`.trim() : ''
-                            bookingForm.setParticipantName(fullName)
-                            bookingForm.setParticipantDateOfBirth(p?.dateOfBirth ?? null)
-                          }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select a family member" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {participantOptions.map((p) => (
-                              <SelectItem key={p.id} value={p.id}>
-                                {p.firstName} {p.lastName}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <>
-                          <Input
-                            value={bookingForm.participantName}
-                            onChange={(e) => bookingForm.setParticipantName(e.target.value)}
-                            placeholder="Full name"
-                          />
-                          {service.category.requiresAttendee ? (
-                            <p className="text-xs text-muted-foreground">
-                              The booked child must attend with a responsible adult (you or another
-                              adult on this booking).
-                            </p>
-                          ) : null}
-                        </>
-                      )}
-                    </div>
+                  <BookingCategoryAddons
+                    optional={bookingForm.categoryOptionalAddOns}
+                    selectedOptionalIds={bookingForm.selectedCategoryAddOnIds}
+                    onOptionalToggle={bookingForm.setCategoryAddOnSelected}
+                  />
+
+                  {!bookingForm.usesOpenPlayHouseholdBooking ? (
+                    <BookingFamilyMemberFields
+                      service={service}
+                      contacts={contacts}
+                      selectedChildIds={bookingForm.selectedChildIds}
+                      onToggleChild={bookingForm.toggleSelectedChild}
+                      accompanyingAdultId={bookingForm.accompanyingAdultContactId}
+                      onAccompanyingAdultChange={bookingForm.setAccompanyingAdultContactId}
+                      participantContactId={bookingForm.participantContactId}
+                      onParticipantContactChange={bookingForm.applyParticipantContact}
+                      participantName={bookingForm.participantName}
+                      onParticipantNameChange={bookingForm.setParticipantName}
+                      idPrefix="facility"
+                    />
                   ) : null}
 
                   {service.requiresWaiver ? (
@@ -755,6 +667,7 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
                       {getFacilityConfirmButtonLabel(
                         Boolean(selectedWindow),
                         facilityCartCheckoutKind,
+                        usesBuyNowListingCta(service),
                       )}
                     </Button>
                   )}
@@ -775,12 +688,44 @@ export default function FacilityDetailPage({
   params,
 }: Readonly<{ params: Promise<{ id: string }> }>) {
   const { id } = use(params)
-  const { services } = useScheduling()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const { services, categories } = useScheduling()
+  const { membershipPlans } = useClients()
 
-  const service = useMemo(
-    () => services.find((s) => s.id === id),
-    [services, id],
-  )
+  const passOffer = getOpenPlayMembershipOffer(id)
+
+  const service = useMemo(() => {
+    const fromStore = services.find((entry) => entry.id === id)
+    if (fromStore?.isActive && isOpenPlayPassCatalogService(fromStore)) {
+      return fromStore
+    }
+    if (!passOffer) {
+      return fromStore
+    }
+    const category = categories.find((entry) => entry.id === passOffer.categoryId)
+    if (!category) {
+      return fromStore
+    }
+    const { price } = resolveOfferDisplayPrice(membershipPlans, passOffer.kind)
+    return buildPassCatalogSchedulingService(passOffer, category, price)
+  }, [categories, id, membershipPlans, passOffer, services])
+
+  const isPassCatalog =
+    passOffer != null || (service != null && isOpenPlayPassCatalogService(service))
+  const isPrivatePlay =
+    service != null && isPrivatePlayService(service)
+  const redirectsToEventDetail =
+    service != null && usesEventTicketBookingSidebar(service)
+
+  useEffect(() => {
+    if (!redirectsToEventDetail || !service) {
+      return
+    }
+    const query = searchParams.toString()
+    const suffix = query.length > 0 ? `?${query}` : ''
+    router.replace(`/events/${service.id}${suffix}`)
+  }, [redirectsToEventDetail, router, searchParams, service])
 
   if (!service) {
     return (
@@ -799,11 +744,31 @@ export default function FacilityDetailPage({
     )
   }
 
+  if (redirectsToEventDetail) {
+    return (
+      <>
+        <CustomerNavbar />
+        <main className="py-16">
+          <div className="max-w-3xl mx-auto px-4 text-center text-muted-foreground">
+            Redirecting…
+          </div>
+        </main>
+        <CustomerFooter />
+      </>
+    )
+  }
+
   return (
     <>
       <CustomerNavbar />
       <main>
-        <FacilityDetailContent service={service} />
+        {isPassCatalog ? (
+          <OpenPlayPassDetail service={service} />
+        ) : isPrivatePlay ? (
+          <PrivatePlayDetail service={service} />
+        ) : (
+          <FacilityDetailContent service={service} />
+        )}
       </main>
       <CustomerFooter />
     </>

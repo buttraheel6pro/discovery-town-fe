@@ -412,7 +412,7 @@ function AdminSchedulingCategoryNewPageInner() {
                       />
                       <p className="text-xs text-muted-foreground">
                         {draft.depositPercent.trim()
-                          ? `e.g. ${draft.depositPercent}% deposit on a £100 booking = £${Math.round((Number.parseFloat(draft.depositPercent) || 0))} upfront`
+                          ? `e.g. ${draft.depositPercent}% deposit on a $100 booking = $${Math.round((Number.parseFloat(draft.depositPercent) || 0))} upfront`
                           : 'Customers pay this percentage upfront to confirm the booking.'}
                       </p>
                     </div>
@@ -526,7 +526,7 @@ function AdminSchedulingCategoryNewPageInner() {
                             <Badge variant="secondary">{formatPrice(addOn.price)}</Badge>
                           ) : null}
                           <Badge variant="outline">{`Qty ${row.quantity}`}</Badge>
-                          <Badge variant="outline">{`£${row.unitPrice}`}</Badge>
+                          <Badge variant="outline">{`$${row.unitPrice}`}</Badge>
                           <Badge variant="outline">
                             {
                               CATEGORY_ADD_ON_CHARGE_FREQUENCIES.find(

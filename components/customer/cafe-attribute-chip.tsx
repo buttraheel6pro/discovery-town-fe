@@ -21,7 +21,9 @@ export function CafeAttributeChip({ option, className }: Readonly<CafeAttributeC
         borderColor: `${option.color}44`,
       }}
     >
-      <span aria-hidden>{option.emoji}</span>
+      {option.emoji.trim().length > 0 ? (
+        <span aria-hidden>{option.emoji}</span>
+      ) : null}
       <span>{option.label}</span>
     </span>
   )

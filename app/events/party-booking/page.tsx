@@ -9,9 +9,17 @@ import { CustomerNavbar } from '@/components/customer/navbar'
 import { EventBookingWidget } from '@/components/customer/event-booking-widget'
 import { PackageSelector } from '@/components/customer/package-selector'
 import { Button } from '@/components/ui/button'
-import { eventPackagesMock, schedulingServices } from '@/lib/mock-data'
+import {
+  meetingRoomPackagesFromCatalog,
+  partyRoomPackagesFromCatalog,
+  PRIVATE_PLAY_MEETING_ROOMS_SERVICE_ID,
+  wholeVenuePackagesFromCatalog,
+} from '@/lib/event-package-catalog'
+import { schedulingServices } from '@/lib/mock-data'
+import { useScheduling } from '@/lib/scheduling-store'
 
 export default function PartyBookingPage() {
+  const { packages } = useScheduling()
   const featuredServiceId = useMemo(
     () =>
       schedulingServices.find(
@@ -22,28 +30,17 @@ export default function PartyBookingPage() {
       )?.id ?? 'svc-5',
     [],
   )
-  const servicePackages = useMemo(
-    () =>
-      eventPackagesMock.filter((pkg) => {
-        if (!pkg.isActive) return false
-        if (pkg.serviceId === featuredServiceId) return true
-        if (
-          featuredServiceId === 'svc-5' &&
-          pkg.serviceId === 'svc-event-party-booking'
-        ) {
-          return true
-        }
-        return false
-      }),
-    [featuredServiceId],
-  )
   const privateRoomPackages = useMemo(
-    () => servicePackages.slice(0, 3),
-    [servicePackages],
+    () => partyRoomPackagesFromCatalog(packages),
+    [packages],
   )
   const wholeVenuePackages = useMemo(
-    () => servicePackages.slice(3, 6),
-    [servicePackages],
+    () => wholeVenuePackagesFromCatalog(packages),
+    [packages],
+  )
+  const meetingRoomPackages = useMemo(
+    () => meetingRoomPackagesFromCatalog(packages),
+    [packages],
   )
   const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null)
 
@@ -98,11 +95,33 @@ export default function PartyBookingPage() {
                   variant="full"
                 />
               </div>
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-foreground">
+                  Meeting room packages
+                </p>
+                <PackageSelector
+                  packages={meetingRoomPackages}
+                  selectedId={selectedPackageId}
+                  onSelect={setSelectedPackageId}
+                  variant="full"
+                />
+              </div>
             </div>
             <div className="lg:col-span-1">
               <EventBookingWidget
                 embedded
-                serviceId={featuredServiceId}
+                serviceId={
+                  selectedPackageId != null &&
+                  meetingRoomPackages.some((pkg) => pkg.id === selectedPackageId)
+                    ? PRIVATE_PLAY_MEETING_ROOMS_SERVICE_ID
+                    : featuredServiceId
+                }
+                bookingPackages={
+                  selectedPackageId != null &&
+                  meetingRoomPackages.some((pkg) => pkg.id === selectedPackageId)
+                    ? meetingRoomPackages
+                    : [...privateRoomPackages, ...wholeVenuePackages]
+                }
                 showPackageStep={false}
                 externalSelectedPackageId={selectedPackageId}
                 canStart={Boolean(selectedPackageId)}

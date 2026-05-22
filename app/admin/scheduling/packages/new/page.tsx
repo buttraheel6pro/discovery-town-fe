@@ -1,24 +1,23 @@
-/** Admin package create page with same fields previously shown in modal. */
+/** Admin package create page — placement, service link, and tier details. */
 'use client'
 
-import { useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { ArrowLeft } from 'lucide-react'
 
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { Switch } from '@/components/ui/switch'
-import { Textarea } from '@/components/ui/textarea'
-import { isCurrentCatalogService } from '@/lib/scheduling-visibility'
+  filterAssignableServices,
+  SchedulingPackageFields,
+} from '@/components/admin/scheduling-package-fields'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  buildPackagePlacementPatch,
+  DEFAULT_PRIVATE_PLAY_PACKAGE_PLACEMENT,
+  EMPTY_PACKAGE_PLACEMENT,
+  type PackagePlacementDraft,
+} from '@/lib/package-placement'
 import { useScheduling } from '@/lib/scheduling-store'
 import type { EventPackage } from '@/lib/types'
 
@@ -38,17 +37,15 @@ function parseIntOrNull(value: string): number | null {
   return Number.isFinite(n) ? n : null
 }
 
-export default function AdminSchedulingPackagesNewPage() {
+function AdminSchedulingPackagesNewPageInner() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const prefilledCategoryId = searchParams.get('category')
   const { services, addPackage } = useScheduling()
 
-  const assignableServices = useMemo(() => {
-    return services.filter((service) => isCurrentCatalogService(service.id))
-  }, [services])
+  const assignableServices = useMemo(() => filterAssignableServices(services), [services])
 
-  const [draftServiceId, setDraftServiceId] = useState<string>(() => {
-    return assignableServices[0]?.id ?? 'unassigned'
-  })
+  const [draftServiceId, setDraftServiceId] = useState('unassigned')
   const [draftTier, setDraftTier] = useState<Tier>('SILVER')
   const [draftName, setDraftName] = useState('')
   const [draftBasePrice, setDraftBasePrice] = useState('0')
@@ -57,6 +54,7 @@ export default function AdminSchedulingPackagesNewPage() {
   const [draftIsWholeVenue, setDraftIsWholeVenue] = useState(false)
   const [draftDepositAmount, setDraftDepositAmount] = useState('')
   const [draftDepositNonRefundable, setDraftDepositNonRefundable] = useState(false)
+  const [draftRequiresApproval, setDraftRequiresApproval] = useState(false)
   const [draftMinChildSeats, setDraftMinChildSeats] = useState('')
   const [draftMaxChildSeats, setDraftMaxChildSeats] = useState('')
   const [draftMinAdultSeats, setDraftMinAdultSeats] = useState('')
@@ -65,6 +63,32 @@ export default function AdminSchedulingPackagesNewPage() {
   const [draftAdditionalAdultPrice, setDraftAdditionalAdultPrice] = useState('')
   const [draftDuration, setDraftDuration] = useState('')
   const [draftSetupTime, setDraftSetupTime] = useState('')
+  const [draftStaffCount, setDraftStaffCount] = useState('')
+  const [draftPartyRooms, setDraftPartyRooms] = useState('')
+  const [placementDraft, setPlacementDraft] = useState<PackagePlacementDraft>(() => {
+    if (prefilledCategoryId === 'cat-private-play') {
+      return { ...DEFAULT_PRIVATE_PLAY_PACKAGE_PLACEMENT }
+    }
+    return { ...EMPTY_PACKAGE_PLACEMENT }
+  })
+
+  const backHref =
+    prefilledCategoryId != null
+      ? `/admin/scheduling/packages?category=${encodeURIComponent(prefilledCategoryId)}`
+      : '/admin/scheduling/packages'
+
+  useEffect(() => {
+    if (draftServiceId !== 'unassigned') {
+      return
+    }
+    const preferred =
+      prefilledCategoryId != null
+        ? assignableServices.find((service) => service.categoryId === prefilledCategoryId)
+        : assignableServices[0]
+    if (preferred) {
+      setDraftServiceId(preferred.id)
+    }
+  }, [assignableServices, draftServiceId, prefilledCategoryId])
 
   function createPackage() {
     const basePrice = parseFloatOrNull(draftBasePrice)
@@ -83,6 +107,8 @@ export default function AdminSchedulingPackagesNewPage() {
     const additionalAdultPrice = parseFloatOrNull(draftAdditionalAdultPrice)
     const duration = parseIntOrNull(draftDuration)
     const setupTime = parseIntOrNull(draftSetupTime)
+    const staffCount = parseIntOrNull(draftStaffCount)
+    const partyRooms = parseIntOrNull(draftPartyRooms)
 
     const created: EventPackage = {
       id: `pkg-${Math.random().toString(16).slice(2, 10)}`,
@@ -97,6 +123,7 @@ export default function AdminSchedulingPackagesNewPage() {
       isWholeVenue: draftIsWholeVenue,
       depositAmount: draftIsWholeVenue ? (depositAmount ?? undefined) : undefined,
       depositNonRefundable: draftIsWholeVenue ? draftDepositNonRefundable : undefined,
+      requiresApproval: draftIsWholeVenue ? draftRequiresApproval : false,
       minChildSeats: minChildSeats ?? undefined,
       maxChildSeats: maxChildSeats ?? undefined,
       minAdultSeats: minAdultSeats ?? undefined,
@@ -105,228 +132,89 @@ export default function AdminSchedulingPackagesNewPage() {
       additionalAdultPrice: additionalAdultPrice ?? undefined,
       duration: duration ?? undefined,
       setupTime: setupTime ?? undefined,
+      staffCount: staffCount ?? undefined,
+      partyRooms: partyRooms ?? undefined,
+      ...buildPackagePlacementPatch(placementDraft),
     }
     addPackage(created)
-    router.push('/admin/scheduling/packages')
+    router.push(backHref)
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">New package</h1>
-          <p className="text-muted-foreground mt-2">
-            Packages override base price and highlight included features.
-          </p>
-        </div>
+      <div className="space-y-3">
+        <Link href={backHref}>
+          <Button type="button" variant="outline" className="gap-2">
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </Button>
+        </Link>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+          New package
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          Set category placement, linked service, and package details.
+        </p>
       </div>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base font-bold">Package details</CardTitle>
+      <Card className="gap-0 border-border py-0 shadow-sm">
+        <CardHeader className="gap-0.5 border-b border-border px-4 py-2.5 sm:px-6 [.border-b]:pb-2.5">
+          <CardTitle className="text-sm font-semibold sm:text-base">Create Package</CardTitle>
+          <CardDescription className="text-xs leading-snug text-muted-foreground sm:text-sm">
+            Packages override base price and highlight included features for private play and
+            events.
+          </CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Service</Label>
-              <Select value={draftServiceId} onValueChange={setDraftServiceId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a service" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="unassigned">Unassigned</SelectItem>
-                  {assignableServices.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Tier</Label>
-                <Select value={draftTier} onValueChange={(v) => setDraftTier(v as Tier)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="SILVER">SILVER</SelectItem>
-                    <SelectItem value="GOLD">GOLD</SelectItem>
-                    <SelectItem value="PLATINUM">PLATINUM</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="pkg-price">Base price</Label>
-                <Input
-                  id="pkg-price"
-                  type="number"
-                  min={0}
-                  step={0.01}
-                  value={draftBasePrice}
-                  onChange={(e) => setDraftBasePrice(e.target.value)}
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="pkg-name">Name</Label>
-              <Input
-                id="pkg-name"
-                value={draftName}
-                onChange={(e) => setDraftName(e.target.value)}
-                placeholder="Gold Party Package"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="pkg-features">Features (one per line)</Label>
-              <Textarea
-                id="pkg-features"
-                value={draftFeatures}
-                onChange={(e) => setDraftFeatures(e.target.value)}
-                rows={6}
-                placeholder={'Private space\nDecorations\nDedicated host'}
-              />
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="pkg-duration">Duration (minutes)</Label>
-                <Input
-                  id="pkg-duration"
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={draftDuration}
-                  onChange={(e) => setDraftDuration(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="pkg-setup">Setup time (minutes)</Label>
-                <Input
-                  id="pkg-setup"
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={draftSetupTime}
-                  onChange={(e) => setDraftSetupTime(e.target.value)}
-                />
-              </div>
-            </div>
-            <fieldset className="space-y-3 rounded-lg border border-border p-3">
-              <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Guest capacity
-              </legend>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="pkg-min-child">Min child seats</Label>
-                  <Input
-                    id="pkg-min-child"
-                    type="number"
-                    min={0}
-                    step={1}
-                    value={draftMinChildSeats}
-                    onChange={(e) => setDraftMinChildSeats(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="pkg-max-child">Max child seats</Label>
-                  <Input
-                    id="pkg-max-child"
-                    type="number"
-                    min={0}
-                    step={1}
-                    value={draftMaxChildSeats}
-                    onChange={(e) => setDraftMaxChildSeats(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="pkg-min-adult">Min adult seats</Label>
-                  <Input
-                    id="pkg-min-adult"
-                    type="number"
-                    min={0}
-                    step={1}
-                    value={draftMinAdultSeats}
-                    onChange={(e) => setDraftMinAdultSeats(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="pkg-max-adult">Max adult seats</Label>
-                  <Input
-                    id="pkg-max-adult"
-                    type="number"
-                    min={0}
-                    step={1}
-                    value={draftMaxAdultSeats}
-                    onChange={(e) => setDraftMaxAdultSeats(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="pkg-extra-child">Additional child price</Label>
-                  <Input
-                    id="pkg-extra-child"
-                    type="number"
-                    min={0}
-                    step={0.01}
-                    value={draftAdditionalChildPrice}
-                    onChange={(e) => setDraftAdditionalChildPrice(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="pkg-extra-adult">Additional adult price</Label>
-                  <Input
-                    id="pkg-extra-adult"
-                    type="number"
-                    min={0}
-                    step={0.01}
-                    value={draftAdditionalAdultPrice}
-                    onChange={(e) => setDraftAdditionalAdultPrice(e.target.value)}
-                  />
-                </div>
-              </div>
-            </fieldset>
-            <div className="flex items-center justify-between">
-              <Label htmlFor="pkg-whole-venue">Whole venue package</Label>
-              <Switch
-                id="pkg-whole-venue"
-                checked={draftIsWholeVenue}
-                onCheckedChange={setDraftIsWholeVenue}
-              />
-            </div>
-            {draftIsWholeVenue ? (
-              <fieldset className="space-y-3 rounded-lg border border-border p-3">
-                <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Deposit settings
-                </legend>
-                <div className="space-y-2">
-                  <Label htmlFor="pkg-deposit">Deposit amount</Label>
-                  <Input
-                    id="pkg-deposit"
-                    type="number"
-                    min={0}
-                    step={0.01}
-                    value={draftDepositAmount}
-                    onChange={(e) => setDraftDepositAmount(e.target.value)}
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="pkg-deposit-non-refundable">Non-refundable deposit</Label>
-                  <Switch
-                    id="pkg-deposit-non-refundable"
-                    checked={draftDepositNonRefundable}
-                    onCheckedChange={setDraftDepositNonRefundable}
-                  />
-                </div>
-              </fieldset>
-            ) : null}
-            <div className="flex items-center justify-between">
-              <Label htmlFor="pkg-active">Active</Label>
-              <Switch id="pkg-active" checked={draftIsActive} onCheckedChange={setDraftIsActive} />
-            </div>
-          </div>
+        <CardContent className="space-y-5 px-4 pb-8 pt-3 sm:px-6">
+          <SchedulingPackageFields
+            assignableServices={assignableServices}
+            placementDraft={placementDraft}
+            setPlacementDraft={setPlacementDraft}
+            lockedSubCategoryId={prefilledCategoryId}
+            draftServiceId={draftServiceId}
+            setDraftServiceId={setDraftServiceId}
+            draftTier={draftTier}
+            setDraftTier={setDraftTier}
+            draftBasePrice={draftBasePrice}
+            setDraftBasePrice={setDraftBasePrice}
+            draftName={draftName}
+            setDraftName={setDraftName}
+            draftFeatures={draftFeatures}
+            setDraftFeatures={setDraftFeatures}
+            draftDuration={draftDuration}
+            setDraftDuration={setDraftDuration}
+            draftSetupTime={draftSetupTime}
+            setDraftSetupTime={setDraftSetupTime}
+            draftStaffCount={draftStaffCount}
+            setDraftStaffCount={setDraftStaffCount}
+            draftPartyRooms={draftPartyRooms}
+            setDraftPartyRooms={setDraftPartyRooms}
+            draftMinChildSeats={draftMinChildSeats}
+            setDraftMinChildSeats={setDraftMinChildSeats}
+            draftMaxChildSeats={draftMaxChildSeats}
+            setDraftMaxChildSeats={setDraftMaxChildSeats}
+            draftMinAdultSeats={draftMinAdultSeats}
+            setDraftMinAdultSeats={setDraftMinAdultSeats}
+            draftMaxAdultSeats={draftMaxAdultSeats}
+            setDraftMaxAdultSeats={setDraftMaxAdultSeats}
+            draftAdditionalChildPrice={draftAdditionalChildPrice}
+            setDraftAdditionalChildPrice={setDraftAdditionalChildPrice}
+            draftAdditionalAdultPrice={draftAdditionalAdultPrice}
+            setDraftAdditionalAdultPrice={setDraftAdditionalAdultPrice}
+            draftIsWholeVenue={draftIsWholeVenue}
+            setDraftIsWholeVenue={setDraftIsWholeVenue}
+            draftDepositAmount={draftDepositAmount}
+            setDraftDepositAmount={setDraftDepositAmount}
+            draftDepositNonRefundable={draftDepositNonRefundable}
+            setDraftDepositNonRefundable={setDraftDepositNonRefundable}
+            draftRequiresApproval={draftRequiresApproval}
+            setDraftRequiresApproval={setDraftRequiresApproval}
+            draftIsActive={draftIsActive}
+            setDraftIsActive={setDraftIsActive}
+          />
 
-          <div className="mt-6 flex items-center justify-end gap-2">
-            <Link href="/admin/scheduling/packages">
+          <div className="flex items-center justify-end gap-2 pt-2">
+            <Link href={backHref}>
               <Button type="button" variant="outline">
                 Cancel
               </Button>
@@ -338,5 +226,13 @@ export default function AdminSchedulingPackagesNewPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function AdminSchedulingPackagesNewPage() {
+  return (
+    <Suspense fallback={<p className="text-sm text-muted-foreground">Loading…</p>}>
+      <AdminSchedulingPackagesNewPageInner />
+    </Suspense>
   )
 }

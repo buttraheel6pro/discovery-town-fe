@@ -16,7 +16,7 @@ export default function CafeCategoryMenuPage() {
   const params = useParams()
   const slug = typeof params.category === 'string' ? params.category : ''
   const category = slugToCafeCategory(slug)
-  const { cafeProducts, attributeGroups } = useCafe()
+  const { cafeProducts } = useCafe()
 
   const today = useMemo(() => new Date().getDay(), [])
 
@@ -63,15 +63,10 @@ export default function CafeCategoryMenuPage() {
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {visible.map((p) => (
-            <CafeProductCard key={p.id} product={p} attributeGroups={attributeGroups} />
+            <CafeProductCard key={p.id} product={p} />
           ))}
           {soldOut.map((p) => (
-            <CafeProductCard
-              key={p.id}
-              product={p}
-              attributeGroups={attributeGroups}
-              soldOut
-            />
+            <CafeProductCard key={p.id} product={p} soldOut />
           ))}
         </div>
       </main>

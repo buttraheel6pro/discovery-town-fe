@@ -1,7 +1,8 @@
 /** Shared off-site request page used by party and play variants. */
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 
 import { CustomerFooter } from '@/components/customer/footer'
 import { HorizontalScrollSection } from '@/components/customer/horizontal-scroll-section'
@@ -14,6 +15,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useInventory } from '@/lib/inventory-store'
+import { findWeBringPlayOfferingByServiceId } from '@/lib/we-bring-play-offerings'
 import { formatPrice } from '@/lib/utils'
 
 interface WeBringOffsitePageProps {
@@ -39,6 +41,7 @@ export function WeBringOffsitePage({
   productIds,
   eventTypeOptions,
 }: Readonly<WeBringOffsitePageProps>) {
+  const searchParams = useSearchParams()
   const { addCustomCartItem, products } = useInventory()
   const [selectedQuantities, setSelectedQuantities] = useState<Record<string, number>>({})
   const [date, setDate] = useState('')
@@ -47,13 +50,33 @@ export function WeBringOffsitePage({
   const [eventType, setEventType] = useState(eventTypeOptions[0] ?? 'Birthday')
   const [notes, setNotes] = useState('')
 
-  const equipment = useMemo(
-    () =>
-      products.filter(
-        (product) => product.isActive && productIds.includes(product.id),
-      ),
-    [products, productIds],
-  )
+  const equipment = useMemo(() => {
+    const productOrder = new Map(productIds.map((id, index) => [id, index]))
+    return products
+      .filter((product) => product.isActive && productIds.includes(product.id))
+      .sort(
+        (a, b) =>
+          (productOrder.get(a.id) ?? 0) - (productOrder.get(b.id) ?? 0),
+      )
+  }, [products, productIds])
+
+  const preselectedServiceId = searchParams.get('service')
+
+  useEffect(() => {
+    if (!preselectedServiceId) {
+      return
+    }
+    const offering = findWeBringPlayOfferingByServiceId(preselectedServiceId)
+    if (offering == null) {
+      return
+    }
+    setSelectedQuantities((prev) => {
+      if (prev[offering.productId] != null) {
+        return prev
+      }
+      return { ...prev, [offering.productId]: 1 }
+    })
+  }, [preselectedServiceId])
   const travelFee = useMemo(() => {
     if (address.trim().length < 5) {
       return 0

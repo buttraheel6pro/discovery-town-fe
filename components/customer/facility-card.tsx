@@ -11,12 +11,12 @@ interface FacilityCardProps {
 
 function priceChipLabel(service: SchedulingService): string {
   if (service.pricingModel === 'per_hour') {
-    return `£${service.basePrice}/hr`
+    return `$${service.basePrice}/hr`
   }
   if (service.pricingModel === 'per_person') {
-    return `£${service.basePrice}/person`
+    return `$${service.basePrice}/person`
   }
-  return `£${service.basePrice}`
+  return `$${service.basePrice}`
 }
 
 export function FacilityCard({ service }: FacilityCardProps) {

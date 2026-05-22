@@ -1,5 +1,9 @@
 /** Auth API service for login and logout operations. */
 import { apiClient, setAuthFailureHandler } from '@/lib/api/client'
+import {
+  getBypassLoginMockProfile,
+  isLoginBypassEnabled,
+} from '@/lib/config/auth'
 import { clearAuthSession, setAuthSession } from '@/lib/api/token-storage'
 import { API_PATHS } from '@/lib/constants/api'
 import {
@@ -25,7 +29,7 @@ function initializeAuthFailureHandler(): void {
   }
 
   setAuthFailureHandler(() => {
-    if (typeof window === 'undefined') {
+    if (typeof window === 'undefined' || isLoginBypassEnabled()) {
       return
     }
 
@@ -48,6 +52,10 @@ export async function loginUser(payload: LoginRequest): Promise<LoginResponse> {
 }
 
 export async function getCurrentUserProfile(): Promise<CurrentUserProfile> {
+  if (isLoginBypassEnabled()) {
+    return getBypassLoginMockProfile()
+  }
+
   initializeAuthFailureHandler()
   const response = await apiClient.get(ME_PATH)
   const parsedResponse = meResponseSchema.parse(response.data)
@@ -56,7 +64,8 @@ export async function getCurrentUserProfile(): Promise<CurrentUserProfile> {
 
 export function logoutUser(): void {
   clearAuthSession()
-  if (typeof window !== 'undefined') {
-    window.location.replace('/login')
+  if (typeof window === 'undefined') {
+    return
   }
+  window.location.replace(isLoginBypassEnabled() ? '/account' : '/login')
 }

@@ -73,6 +73,10 @@ export function CafeProductDetailClient({
   const [showSelectionCards, setShowSelectionCards] = useState(false)
 
   useEffect(() => {
+    setShowSelectionCards(false)
+  }, [product.id])
+
+  useEffect(() => {
     setSelectedByGroup(defaultModifierSelections(groups))
   }, [groups])
 
@@ -294,7 +298,8 @@ export function CafeProductDetailClient({
                 <div className="flex flex-wrap gap-2">
                   {chips.map((c) => (
                     <Badge key={c.id} variant="secondary">
-                      {c.emoji} {c.label}
+                      {c.emoji.trim().length > 0 ? `${c.emoji} ` : ''}
+                      {c.label}
                     </Badge>
                   ))}
                 </div>

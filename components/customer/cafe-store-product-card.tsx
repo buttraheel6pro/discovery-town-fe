@@ -3,39 +3,31 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { resolveAttributeOptionsForProduct } from '@/lib/cafe-utils'
 import { cn, formatPrice } from '@/lib/utils'
-import type { AttributeGroup, CafeProduct } from '@/lib/types'
+import type { CafeProduct } from '@/lib/types'
 
-const PLACEHOLDER_SRC = '/placeholder.jpg'
+const PLACEHOLDER_SRC = '/placeholder.svg'
 
 export interface CafeStoreProductCardProps {
   readonly product: CafeProduct
-  readonly attributeGroups: AttributeGroup[]
   readonly className?: string
 }
 
 export function CafeStoreProductCard({
   product,
-  attributeGroups,
   className,
 }: Readonly<CafeStoreProductCardProps>) {
   const [usePlaceholder, setUsePlaceholder] = useState(false)
   const imageSrc = usePlaceholder ? PLACEHOLDER_SRC : product.imageUrl ?? PLACEHOLDER_SRC
 
-  const chips = useMemo(
-    () => resolveAttributeOptionsForProduct(product, attributeGroups),
-    [attributeGroups, product],
-  )
-
   return (
     <article
       className={cn(
-        'group overflow-hidden rounded-xl border border-border bg-card transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg',
+        'group flex h-full flex-col overflow-hidden rounded-xl border border-border bg-card transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg',
         className,
       )}
     >
@@ -55,7 +47,7 @@ export function CafeStoreProductCard({
         </div>
       </Link>
 
-      <div className="space-y-3 p-5">
+      <div className="flex flex-1 flex-col space-y-3 p-5">
         <div className="space-y-1">
           <Link href={`/shop/${product.id}`} className="block">
             <h3
@@ -70,37 +62,19 @@ export function CafeStoreProductCard({
               <p className="text-xs font-semibold text-foreground">{product.subtype}</p>
             </div>
           ) : null}
-          {chips.length > 0 ? (
-            <div className="flex flex-wrap gap-1.5 pt-1">
-              {chips.slice(0, 3).map((c) => (
-                <Badge key={c.id} variant="secondary" className="text-xs">
-                  {c.emoji} {c.label}
-                </Badge>
-              ))}
-            </div>
-          ) : null}
         </div>
 
-        <div className="flex items-end justify-between gap-3">
-          <div className="space-y-1">
-            <p
-              className="text-lg font-black text-foreground"
-              style={{ fontFamily: 'var(--font-barlow)' }}
-            >
-              {formatPrice(product.basePrice)}
-            </p>
-            {product.preparationTimeMinutes != null && product.preparationTimeMinutes > 0 ? (
-              <p className="text-xs text-muted-foreground">
-                Prep: ~{product.preparationTimeMinutes} min
-              </p>
-            ) : null}
-          </div>
-        </div>
+        <p
+          className="text-lg font-black text-foreground"
+          style={{ fontFamily: 'var(--font-barlow)' }}
+        >
+          {formatPrice(product.basePrice)}
+        </p>
 
         <Button
           asChild
           size="sm"
-          className="w-full bg-accent text-accent-foreground hover:bg-accent/90"
+          className="mt-auto w-full bg-accent text-accent-foreground hover:bg-accent/90"
         >
           <Link href={`/shop/${product.id}`}>View details</Link>
         </Button>

@@ -85,7 +85,7 @@ export default function ClassPacksMarketingPage() {
                   }
                   bottomRight={
                     <span className="rounded-full bg-foreground/90 px-2 py-1 text-xs font-bold text-background">
-                      £{pack.price}
+                      ${pack.price}
                     </span>
                   }
                   meta={

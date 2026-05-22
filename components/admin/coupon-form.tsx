@@ -151,7 +151,7 @@ export function CouponForm({
           </Select>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="cpn-value">{value.type === 'PERCENTAGE' ? 'Value (%)' : 'Value (£)'}</Label>
+          <Label htmlFor="cpn-value">{value.type === 'PERCENTAGE' ? 'Value (%)' : 'Value ($)'}</Label>
           <Input
             id="cpn-value"
             type="number"

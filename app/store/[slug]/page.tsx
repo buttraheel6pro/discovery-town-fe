@@ -12,7 +12,12 @@ import { ScrollableSectionBreadcrumbs } from '@/components/customer/scrollable-s
 import { CafeStoreProductCard } from '@/components/customer/cafe-store-product-card'
 import { ShopProductCard } from '@/components/customer/shop-product-card'
 import { useCafe } from '@/lib/cafe-store'
-import { filterCafeProducts, mergedCafeProductsForCustomer } from '@/lib/cafe-utils'
+import {
+  cafeProductIdsForInventoryCategory,
+  filterCafeProducts,
+  isCafeCatalogProductId,
+  mergedCafeProductsForCustomer,
+} from '@/lib/cafe-utils'
 import { useInventory } from '@/lib/inventory-store'
 import type { ProductCategory } from '@/lib/types'
 
@@ -116,6 +121,23 @@ export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) 
     () => new Map(customerCafeProducts.map((product) => [product.id, product])),
     [customerCafeProducts],
   )
+  const cafeDisplayCategories = useMemo(() => {
+    if (!isCafeAndFood) {
+      return [] as ProductCategory[]
+    }
+    const categoriesForType = productCategories
+      .filter((category) => (category.productType ?? 'shop') === productType)
+      .sort((left, right) => left.displayOrder - right.displayOrder)
+    const rootCategoryIds = new Set(
+      categoriesForType
+        .filter((category) => category.parentId === null)
+        .map((category) => category.id),
+    )
+    return categoriesForType.filter(
+      (category) => category.parentId !== null || rootCategoryIds.size === 0,
+    )
+  }, [isCafeAndFood, productCategories, productType])
+
   const cafeSections = useMemo(() => {
     if (!isCafeAndFood) return []
     const today = new Date().getDay()
@@ -123,15 +145,61 @@ export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) 
     const eligibleIdSet = new Set(
       [...eligible.visible, ...eligible.soldOut].map((product) => product.id),
     )
-    return sections
-      .map((section) => ({
-        id: section.category.id,
-        category: section.category.name,
-        slug: section.category.slug || section.category.id,
-        productIds: section.productIds.filter((productId) => eligibleIdSet.has(productId)),
-      }))
+    const categoriesById = new Map(productCategories.map((category) => [category.id, category]))
+
+    return cafeDisplayCategories
+      .map((category) => {
+        const directProducts = products
+          .filter(
+            (product) =>
+              product.isActive &&
+              product.availableOnline !== false &&
+              product.categoryId === category.id &&
+              isCafeCatalogProductId(product.id),
+          )
+          .map((product) => product.id)
+        const childProducts = products
+          .filter((product) => {
+            if (!product.isActive || product.availableOnline === false) {
+              return false
+            }
+            if (!isCafeCatalogProductId(product.id)) {
+              return false
+            }
+            const childCategory = categoriesById.get(product.categoryId)
+            return childCategory?.parentId === category.id
+          })
+          .map((product) => product.id)
+        const inventoryIds = directProducts.length > 0 ? directProducts : childProducts
+        const cafeStoreIds = cafeProductIdsForInventoryCategory(
+          category.id,
+          eligible.visible,
+          productCategories,
+        )
+        const soldOutCafeIds = cafeProductIdsForInventoryCategory(
+          category.id,
+          eligible.soldOut,
+          productCategories,
+        )
+        const productIds = [
+          ...new Set([...inventoryIds, ...cafeStoreIds, ...soldOutCafeIds]),
+        ].filter((productId) => eligibleIdSet.has(productId))
+
+        return {
+          id: category.id,
+          category: category.name,
+          slug: category.slug || category.id,
+          productIds,
+        }
+      })
       .filter((section) => section.productIds.length > 0)
-  }, [customerCafeProducts, isCafeAndFood, sections])
+  }, [
+    cafeDisplayCategories,
+    customerCafeProducts,
+    isCafeAndFood,
+    productCategories,
+    products,
+  ])
 
   const breadcrumbItems = useMemo(() => {
     if (isCafeAndFood) {
@@ -200,7 +268,6 @@ export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) 
                               >
                                 <CafeStoreProductCard
                                   product={product}
-                                  attributeGroups={attributeGroups}
                                   className="h-full"
                                 />
                               </div>

@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { MembershipBenefitPicker } from '@/components/admin/membership-benefit-picker'
+import { MembershipPlacementFields } from '@/components/admin/membership-placement-fields'
 import {
   PlanAddOnDraftPicker,
   type PlanAddOnDraftRow,
@@ -30,6 +31,15 @@ import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/hooks/use-toast'
 import { useClients } from '@/lib/client-store'
 import { useInventory } from '@/lib/inventory-store'
+import {
+  buildPlacementPatch,
+  DEFAULT_PLAY_OPEN_MEMBERSHIP_PLACEMENT,
+  EMPTY_MEMBERSHIP_PLACEMENT,
+  formatPlacementSummary,
+  placementDraftFromPlan,
+  type MembershipPlacementDraft,
+} from '@/lib/membership-placement'
+import { useScheduling } from '@/lib/scheduling-store'
 import { coupons, membershipSchedulingAddonCatalog } from '@/lib/mock-data'
 import {
   annualSavingsVsMonthly,
@@ -89,6 +99,7 @@ function createPlanCouponRowId(): string {
 export default function AdminMembershipsPage() {
   const { toast } = useToast()
   const { bookingAddOns } = useInventory()
+  const { categories } = useScheduling()
   const {
     membershipPlans,
     subscriptions,
@@ -105,6 +116,15 @@ export default function AdminMembershipsPage() {
   const [seasonalOpen, setSeasonalOpen] = useState(false)
   const [detailPlan, setDetailPlan] = useState<MembershipPlan | null>(null)
   const [detailDraft, setDetailDraft] = useState<MembershipPlanEditDraft | null>(null)
+  const [detailPlacement, setDetailPlacement] =
+    useState<MembershipPlacementDraft>(EMPTY_MEMBERSHIP_PLACEMENT)
+  const [bulkPlacement, setBulkPlacement] = useState<MembershipPlacementDraft>({
+    displayPages: ['membership', 'play'],
+    schedulingCategoryIds: ['cat-open-play'],
+  })
+  const [seasonalPlacement, setSeasonalPlacement] = useState<MembershipPlacementDraft>(
+    DEFAULT_PLAY_OPEN_MEMBERSHIP_PLACEMENT,
+  )
 
   const [bulkName, setBulkName] = useState('')
   const [bulkMonthlyDesc, setBulkMonthlyDesc] = useState('')
@@ -140,9 +160,11 @@ export default function AdminMembershipsPage() {
   useEffect(() => {
     if (!detailPlan) {
       setDetailDraft(null)
+      setDetailPlacement(EMPTY_MEMBERSHIP_PLACEMENT)
       return
     }
     setDetailDraft(planToEditDraft(detailPlan))
+    setDetailPlacement(placementDraftFromPlan(detailPlan))
   }, [detailPlan])
 
   const subscriberCountByPlan = useMemo(() => {
@@ -262,7 +284,10 @@ export default function AdminMembershipsPage() {
       patch.annualPrice = p
     }
 
-    updateMembershipPlan(detailPlan.id, patch)
+    updateMembershipPlan(detailPlan.id, {
+      ...patch,
+      ...buildPlacementPatch(detailPlacement),
+    })
     toast({ title: 'Plan saved', description: detailDraft.name.trim() })
     setDetailPlan(null)
   }
@@ -325,6 +350,7 @@ export default function AdminMembershipsPage() {
         isFeatured: bulkFeatured,
       }
 
+      const placementPatch = buildPlacementPatch(bulkPlacement)
       const monthlyPlan: MembershipPlan = {
         id: createPlanId('m'),
         name: `${base} - Monthly`,
@@ -333,6 +359,7 @@ export default function AdminMembershipsPage() {
         price: monthlyNum,
         benefits: [...bulkMonthlyBenefits],
         ...shared,
+        ...placementPatch,
         createdAt: now,
         updatedAt: now,
       }
@@ -346,6 +373,7 @@ export default function AdminMembershipsPage() {
         ...shared,
         minTermMonths: 12,
         cancellationNoticeDays: 30,
+        ...placementPatch,
         createdAt: now,
         updatedAt: now,
       }
@@ -409,6 +437,7 @@ export default function AdminMembershipsPage() {
       cancellationNoticeDays: 14,
       createdAt: now,
       updatedAt: now,
+      ...buildPlacementPatch(seasonalPlacement),
     }
     addMembershipPlan(plan)
     flushPlanExtras(plan.id, sAddonDrafts, sCouponIds)
@@ -455,6 +484,9 @@ export default function AdminMembershipsPage() {
                 <p className="text-xs text-muted-foreground mt-1">
                   {subscriberCountByPlan.get(plan.id) ?? 0} active subscribers
                 </p>
+                <p className="text-xs text-muted-foreground">
+                  {formatPlacementSummary(plan, categories)}
+                </p>
                 {plan.planGroupId ? (
                   <Badge variant="outline" className="mt-1 text-[9px]">
                     Group {plan.planGroupId}
@@ -467,7 +499,7 @@ export default function AdminMembershipsPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex items-baseline gap-1">
-                <span className="text-2xl font-bold">£{plan.price}</span>
+                <span className="text-2xl font-bold">${plan.price}</span>
                 <span className="text-xs text-muted-foreground">/ cycle</span>
               </div>
               <MembershipPlanExtrasCompact
@@ -536,6 +568,7 @@ export default function AdminMembershipsPage() {
         }
       >
         <form id="bulk-membership-form" onSubmit={handleBulkSubmit} className="space-y-4">
+          <MembershipPlacementFields value={bulkPlacement} onChange={setBulkPlacement} />
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="space-y-4">
               <div className="space-y-2">
@@ -577,7 +610,7 @@ export default function AdminMembershipsPage() {
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="bulk-m">Monthly price (£)</Label>
+                  <Label htmlFor="bulk-m">Monthly price ($)</Label>
                   <Input
                     id="bulk-m"
                     type="number"
@@ -589,7 +622,7 @@ export default function AdminMembershipsPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="bulk-a">Annual price (£)</Label>
+                  <Label htmlFor="bulk-a">Annual price ($)</Label>
                   <Input
                     id="bulk-a"
                     type="number"
@@ -608,7 +641,7 @@ export default function AdminMembershipsPage() {
                     'border-emerald-500/50 bg-emerald-500/15 text-emerald-950 dark:text-emerald-100',
                   )}
                 >
-                  Members save £{savings}/year vs monthly
+                  Members save ${savings}/year vs monthly
                 </p>
               ) : null}
               {annualAboveMonthlyYear ? (
@@ -699,7 +732,7 @@ export default function AdminMembershipsPage() {
                   <div>
                     <p className="font-semibold text-foreground">Monthly SKU</p>
                     <p>
-                      £{Number.isFinite(monthlyNum) ? monthlyNum : '—'}
+                      ${Number.isFinite(monthlyNum) ? monthlyNum : '—'}
                       <span className="text-muted-foreground"> /mo</span>
                     </p>
                     {bulkMonthlyDesc.trim() ? (
@@ -718,7 +751,7 @@ export default function AdminMembershipsPage() {
                   <div>
                     <p className="font-semibold text-foreground">Annual SKU</p>
                     <p>
-                      £{Number.isFinite(annualNum) ? annualNum : '—'}
+                      ${Number.isFinite(annualNum) ? annualNum : '—'}
                       <span className="text-muted-foreground"> /yr</span>
                     </p>
                     {bulkAnnualDesc.trim() ? (
@@ -726,7 +759,7 @@ export default function AdminMembershipsPage() {
                     ) : null}
                     {savings != null && savings > 0 ? (
                       <Badge className="mt-1 border-emerald-500/50 bg-emerald-500/15 text-emerald-950 dark:text-emerald-100">
-                        Save £{savings}/year
+                        Save ${savings}/year
                       </Badge>
                     ) : null}
                     <ul className="mt-1 list-inside list-disc space-y-0.5">
@@ -769,6 +802,10 @@ export default function AdminMembershipsPage() {
         }
       >
         <form id="seasonal-plan-form" onSubmit={handleSeasonalSubmit} className="space-y-4">
+          <MembershipPlacementFields
+            value={seasonalPlacement}
+            onChange={setSeasonalPlacement}
+          />
           <div className="space-y-2">
             <Label htmlFor="s-name">Name</Label>
             <Input
@@ -784,7 +821,7 @@ export default function AdminMembershipsPage() {
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="s-price">Price (£)</Label>
+              <Label htmlFor="s-price">Price ($)</Label>
               <Input
                 id="s-price"
                 type="number"
@@ -892,6 +929,10 @@ export default function AdminMembershipsPage() {
       >
         {detailPlan && detailDraft ? (
           <div className="space-y-4">
+            <MembershipPlacementFields
+              value={detailPlacement}
+              onChange={setDetailPlacement}
+            />
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="d-name">Name</Label>
@@ -913,7 +954,7 @@ export default function AdminMembershipsPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="d-price">Price (£)</Label>
+                <Label htmlFor="d-price">Price ($)</Label>
                 <Input
                   id="d-price"
                   type="number"

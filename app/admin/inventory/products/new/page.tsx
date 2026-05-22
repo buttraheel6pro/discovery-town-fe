@@ -133,7 +133,7 @@ function AdminInventoryProductsNewPageInner() {
     couponsWithPackage: false,
     isPerishable: false,
     basketCapacity: '',
-    occasionId: '',
+    occasionIds: [],
     giftPriceUpperLimit: '0',
     isActive: true,
   })
@@ -234,7 +234,8 @@ function AdminInventoryProductsNewPageInner() {
         isPerishable: giftDraft.isPerishable,
         basketCapacity: parsedBasketCapacity,
         giftPriceUpperLimit: toNumberOrUndefined(giftDraft.giftPriceUpperLimit) ?? null,
-        giftOccasionId: giftDraft.occasionId || null,
+        giftOccasionIds: giftDraft.occasionIds,
+        giftOccasionId: giftDraft.occasionIds[0] ?? null,
       }
       addProduct(created)
       router.push(returnTo)

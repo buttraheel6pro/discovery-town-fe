@@ -475,7 +475,7 @@ export default function AccountPage() {
                               {status.label}
                             </span>
                             <p className="text-xs text-muted-foreground mt-0.5">
-                              £{booking.totalPrice}
+                              ${booking.totalPrice}
                             </p>
                           </div>
                         </div>
@@ -522,7 +522,7 @@ export default function AccountPage() {
                               {status.label}
                             </span>
                             <p className="text-xs text-muted-foreground mt-0.5">
-                              £{order.total.toFixed(2)}
+                              ${order.total.toFixed(2)}
                             </p>
                           </div>
                         </div>
@@ -642,7 +642,7 @@ export default function AccountPage() {
                               {status.label}
                             </span>
                             <p className="font-bold text-sm mt-1">
-                              £{booking.totalPrice}
+                              ${booking.totalPrice}
                             </p>
                           </div>
                         </CardContent>
@@ -727,7 +727,7 @@ export default function AccountPage() {
                               {status.label}
                             </span>
                             <p className="font-black text-sm mt-1">
-                              £{order.total.toFixed(2)}
+                              ${order.total.toFixed(2)}
                             </p>
                           </div>
                         </div>
@@ -741,7 +741,7 @@ export default function AccountPage() {
                               <span>
                                 {item.productName} × {item.quantity}
                               </span>
-                              <span>£{item.total.toFixed(2)}</span>
+                              <span>${item.total.toFixed(2)}</span>
                             </div>
                           ))}
                         </div>

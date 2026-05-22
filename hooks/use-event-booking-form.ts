@@ -37,6 +37,14 @@ function createBookingId(): string {
   return `bk-event-${Math.random().toString(16).slice(2, 10)}`
 }
 
+function todayIsoDate(): string {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 export function useEventBookingForm({
   serviceId,
   packages,
@@ -61,7 +69,7 @@ export function useEventBookingForm({
   const [selectedPackageId, setSelectedPackageId] = useState<string | null>(
     defaultPackageId ?? null,
   )
-  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [selectedDate, setSelectedDate] = useState<string | null>(todayIsoDate())
   const [selectedWindow, setSelectedWindow] = useState<AvailableWindow | null>(null)
   const [childrenCount, setChildrenCount] = useState<number>(Math.max(1, defaultChildren))
   const [adultsCount, setAdultsCount] = useState<number>(Math.max(1, defaultAdults))

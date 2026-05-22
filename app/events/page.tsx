@@ -69,7 +69,7 @@ const WE_BRING_PARTY_ITEMS = [
   {
     id: 'bring-inflatables',
     title: 'Inflatables',
-    imageUrl: 'https://images.unsplash.com/photo-1514517220031-58f8ff5d5d17?w=1200&q=80',
+    imageUrl: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=1200&q=80',
     href: '/we-bring-the-party',
   },
   {

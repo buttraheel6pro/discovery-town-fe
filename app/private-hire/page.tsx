@@ -5,7 +5,7 @@ import { PrivateHirePageClient } from '@/app/private-hire/private-hire-page-clie
 export const metadata: Metadata = {
   title: 'Private Hire & Venue Rental',
   description:
-    'Book Discovery Town exclusively for your event. Perfect for birthday parties, corporate events and group sessions in Manchester.',
+    'Book Discovery Town exclusively for your event. Perfect for birthday parties, corporate events and group sessions in Indianapolis.',
   openGraph: {
     title: 'Private Hire | Discovery Town',
     description:

@@ -88,7 +88,7 @@ export function RevenueLineChart({
                 }
               }}
             />
-            <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `£${v}`} />
+            <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${v}`} />
             <Tooltip
               formatter={(v: number | string) => [formatPrice(Number(v)), 'Net']}
               labelFormatter={(d) => {

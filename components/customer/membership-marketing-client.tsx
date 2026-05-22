@@ -24,6 +24,7 @@ import {
   resolvePlanAddOnDisplayLines,
   resolvePlanCouponDisplayLines,
 } from '@/lib/membership-helpers'
+import { filterPlansForPlacement } from '@/lib/membership-placement'
 import { cn } from '@/lib/utils'
 
 export function MembershipMarketingClient() {
@@ -31,10 +32,10 @@ export function MembershipMarketingClient() {
   const { bookingAddOns } = useInventory()
   const [billingAnnual, setBillingAnnual] = useState(false)
 
-  const catalog = useMemo(
-    () => buildMembershipCatalog(membershipPlans),
-    [membershipPlans],
-  )
+  const catalog = useMemo(() => {
+    const placed = filterPlansForPlacement(membershipPlans, 'membership')
+    return buildMembershipCatalog(placed)
+  }, [membershipPlans])
 
   const planExtrasByPlanId = useMemo(() => {
     const m = new Map<string, { addOnLines: string[]; couponLines: string[] }>()
@@ -161,7 +162,7 @@ export function MembershipMarketingClient() {
                     }
                     bottomRight={
                       <span className="rounded-full bg-foreground/90 px-2 py-1 text-xs font-bold text-background">
-                        £{p.price}
+                        ${p.price}
                         {p.billingCycle === 'QUARTERLY' ? '/season' : ''}
                       </span>
                     }
@@ -225,7 +226,7 @@ export function MembershipMarketingClient() {
                   }
                   bottomRight={
                     <span className="rounded-full bg-foreground/90 px-2 py-1 text-xs font-bold text-background">
-                      £{chosen.price}
+                      ${chosen.price}
                       {billingAnnual ? '/yr' : '/mo'}
                     </span>
                   }
@@ -233,7 +234,7 @@ export function MembershipMarketingClient() {
                     <div className="space-y-1.5">
                       {billingAnnual && savings > 0 ? (
                         <span className="inline-block rounded-full border border-emerald-500/50 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-800 dark:text-emerald-100">
-                          Save £{savings}/year
+                          Save ${savings}/year
                         </span>
                       ) : null}
                       {chosen.maxChildren != null ? (

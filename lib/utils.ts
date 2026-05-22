@@ -167,8 +167,8 @@ export function calculateOpenPrice(
   }
 }
 
-export function formatPrice(amount: number, currency = 'GBP'): string {
-  return new Intl.NumberFormat('en-GB', { style: 'currency', currency }).format(
+export function formatPrice(amount: number, currency = 'USD'): string {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(
     amount,
   )
 }

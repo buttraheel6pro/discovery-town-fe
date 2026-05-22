@@ -59,7 +59,7 @@ export function StaffedServiceBooking() {
       return
     }
     setSelectedDuration('dur-2')
-    setTravelAddress('4821 Oak Tree Blvd, Carmel IN 46032')
+    setTravelAddress('9753 Crosspoint Blvd, Indianapolis, Indiana, 46256')
     setCouponDiscount(25)
   }, [searchParams])
 

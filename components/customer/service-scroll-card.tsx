@@ -7,7 +7,21 @@ import { Clock3, MapPin, Users } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ListingCard } from '@/components/customer/listing-card'
+import {
+  isOpenPlayPassCatalogService,
+  OPEN_PLAY_MEMBERSHIP_PASS_SERVICE_ID,
+  OPEN_PLAY_SEASONAL_PASS_SERVICE_ID,
+} from '@/lib/open-play-pass-catalog'
 import { useScheduling } from '@/lib/scheduling-store'
+import { cn } from '@/lib/utils'
+import {
+  isEventSlotCartCheckoutService,
+  isGymClassCartCheckoutService,
+  isPlayClassCartCheckoutService,
+  usesBuyNowListingCta,
+} from '@/lib/play-cart'
+import { isPrivatePlayService } from '@/lib/private-play-packages'
+import { usesEventTicketBookingSidebar } from '@/lib/scheduling-slot-availability'
 import type { SchedulingService } from '@/lib/types'
 
 interface ServiceScrollCardProps {
@@ -15,11 +29,14 @@ interface ServiceScrollCardProps {
 }
 
 function getServiceHref(service: SchedulingService): string {
-  if (service.categoryId === 'cat-private-play') {
-    return '/events/svc-5?privateEvent=1'
+  if (usesEventTicketBookingSidebar(service)) {
+    return `/events/${service.id}`
+  }
+  if (isPrivatePlayService(service)) {
+    return `/facilities/${service.id}`
   }
   if (service.categoryId === 'cat-we-bring-play') {
-    return '/we-bring-to-play'
+    return `/we-bring-to-play?service=${service.id}`
   }
 
   if (
@@ -43,10 +60,23 @@ function getServiceHref(service: SchedulingService): string {
 }
 
 function getCtaLabel(service: SchedulingService): string {
+  if (isPrivatePlayService(service) || usesBuyNowListingCta(service)) {
+    return 'Buy now'
+  }
+  if (service.categoryId === 'cat-we-bring-play') {
+    return 'Book now'
+  }
   if (service.serviceType === 'PRIVATE_HIRE') {
     return 'Plan booking'
   }
   if (service.bookingMode === 'SCHEDULED') {
+    const addsToCartFromDetail =
+      isPlayClassCartCheckoutService(service) ||
+      isGymClassCartCheckoutService(service) ||
+      (isEventSlotCartCheckoutService(service) && !isGymClassCartCheckoutService(service))
+    if (addsToCartFromDetail) {
+      return 'Add to cart'
+    }
     return 'View times'
   }
   return 'Book now'
@@ -54,14 +84,28 @@ function getCtaLabel(service: SchedulingService): string {
 
 export function ServiceScrollCard({ service }: Readonly<ServiceScrollCardProps>) {
   const { packages } = useScheduling()
+  const isPassCatalog = isOpenPlayPassCatalogService(service)
   const activePackageCount = useMemo(
     () => packages.filter((pkg) => pkg.serviceId === service.id && pkg.isActive).length,
     [packages, service.id],
   )
 
+  const priceSuffix =
+    service.id === OPEN_PLAY_MEMBERSHIP_PASS_SERVICE_ID
+      ? '/mo'
+      : service.id === OPEN_PLAY_SEASONAL_PASS_SERVICE_ID
+        ? '/season'
+        : service.pricingModel === 'per_hour'
+          ? '/hr'
+          : service.pricingModel === 'per_person'
+            ? '/person'
+            : ''
+
   return (
-    <div className="w-[280px] shrink-0 snap-start sm:w-[300px]">
+    <div className="flex w-[280px] shrink-0 snap-start self-stretch sm:w-[300px]">
       <ListingCard
+        fillHeight
+        className="w-full"
         href={getServiceHref(service)}
         title={service.name}
         description={service.description ?? ''}
@@ -80,25 +124,37 @@ export function ServiceScrollCard({ service }: Readonly<ServiceScrollCardProps>)
         }
         bottomRight={
           <span className="rounded-md bg-black/70 px-2.5 py-1 text-sm font-bold text-white">
-            £{service.basePrice}
+            ${service.basePrice}
+            {priceSuffix}
           </span>
         }
         meta={
-          <div className="space-y-2 text-xs text-muted-foreground">
+          <div className="flex min-h-[4.25rem] flex-col justify-start space-y-2 text-xs text-muted-foreground">
+            {isPassCatalog ? (
+              <p className="flex items-center gap-1.5">
+                <Clock3 className="h-3.5 w-3.5 shrink-0" />
+                <span>Unlimited play — no slots</span>
+              </p>
+            ) : (
+              <p className="flex items-center gap-1.5">
+                <Clock3 className="h-3.5 w-3.5 shrink-0" />
+                <span>{service.durationMinutes} mins</span>
+              </p>
+            )}
             <p className="flex items-center gap-1.5">
-              <Clock3 className="h-3.5 w-3.5" />
-              <span>{service.durationMinutes} mins</span>
-            </p>
-            <p className="flex items-center gap-1.5">
-              <Users className="h-3.5 w-3.5" />
+              <Users className="h-3.5 w-3.5 shrink-0" />
               <span>Up to {service.capacity} guests</span>
             </p>
-            {service.location ? (
-              <p className="flex items-center gap-1.5">
-                <MapPin className="h-3.5 w-3.5" />
-                <span>{service.location}</span>
-              </p>
-            ) : null}
+            <p
+              className={cn(
+                'flex items-center gap-1.5',
+                !service.location && 'invisible',
+              )}
+              aria-hidden={!service.location}
+            >
+              <MapPin className="h-3.5 w-3.5 shrink-0" />
+              <span className="line-clamp-1">{service.location ?? '—'}</span>
+            </p>
           </div>
         }
         footer={

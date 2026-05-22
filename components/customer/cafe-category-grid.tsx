@@ -9,7 +9,9 @@ import type { CafeCategory } from '@/lib/types'
 
 const TILES: Array<{ category: CafeCategory; emoji: string }> = [
   { category: 'Coffee', emoji: '☕' },
-  { category: 'Cold Drinks', emoji: '🧊' },
+  { category: 'Hot Drinks', emoji: '🍵' },
+  { category: 'Cold Brew', emoji: '🧊' },
+  { category: 'Cold Drinks', emoji: '🥤' },
   { category: 'Specialty', emoji: '✨' },
   { category: 'Pizza', emoji: '🍕' },
   { category: 'Sandwiches', emoji: '🥪' },

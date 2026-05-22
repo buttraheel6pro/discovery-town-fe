@@ -23,7 +23,7 @@ export function CafeLandingClient({
   className,
   variant = 'standalone',
 }: Readonly<CafeLandingClientProps>) {
-  const { cafeProducts, attributeGroups } = useCafe()
+  const { cafeProducts } = useCafe()
   const [specials, setSpecials] = useState<CafeProduct[]>([])
 
   useEffect(() => {
@@ -83,7 +83,7 @@ export function CafeLandingClient({
           </h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {specials.map((p) => (
-              <CafeProductCard key={p.id} product={p} attributeGroups={attributeGroups} />
+              <CafeProductCard key={p.id} product={p} />
             ))}
           </div>
         </section>

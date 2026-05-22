@@ -233,8 +233,8 @@ export default function AdminEventInquiriesPage() {
             <DialogDescription>
               This will confirm the booking and reserve the venue. Deposit required:{' '}
               {approveTarget?.eventPackageId
-                ? `£${(packageMap.get(approveTarget.eventPackageId)?.depositAmount ?? 0).toFixed(2)}`
-                : '£0.00'}
+                ? `$${(packageMap.get(approveTarget.eventPackageId)?.depositAmount ?? 0).toFixed(2)}`
+                : '$0.00'}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

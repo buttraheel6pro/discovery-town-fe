@@ -11,34 +11,24 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/hooks/use-toast'
 import { createEmptyCafeProduct, useCafe } from '@/lib/cafe-store'
+import {
+  cafeCategoryFromInventoryCategoryId,
+  resolveInventoryCategoryId,
+} from '@/lib/cafe-utils'
+import { cafeProductSchema } from '@/lib/schemas/cafe'
 import { useInventory } from '@/lib/inventory-store'
-import type { AttributeGroup, CafeCategory, CafeProduct, Product } from '@/lib/types'
+import type { AttributeGroup, CafeProduct, Product, ProductCategory } from '@/lib/types'
 
-const CAFE_CATEGORIES: CafeCategory[] = [
-  'Coffee',
-  'Cold Drinks',
-  'Specialty',
-  'Pizza',
-  'Sandwiches',
-  'Kids Corner',
-  'Salads & Snacks',
-  'Sweets',
-  'Pastries',
-]
-
-function toCafeCategory(categoryName: string | null | undefined): CafeCategory {
-  if (!categoryName) return 'Coffee'
-  const normalized = categoryName.trim().toLowerCase()
-  const match = CAFE_CATEGORIES.find((entry) => entry.toLowerCase() === normalized)
-  return match ?? 'Coffee'
-}
-
-function inventoryProductToCafeProduct(product: Product, categoryName?: string): CafeProduct {
+function inventoryProductToCafeProduct(
+  product: Product,
+  categoryId: string,
+  productCategories: readonly ProductCategory[],
+): CafeProduct {
   return createEmptyCafeProduct({
     id: product.id,
     name: product.name,
     sku: product.sku,
-    category: toCafeCategory(categoryName),
+    category: cafeCategoryFromInventoryCategoryId(categoryId, productCategories),
     basePrice: product.memberPrice ?? product.price,
     stockCount: product.stockCount,
     description: product.description,
@@ -83,11 +73,6 @@ export function CafeProductEditor({ mode, productId = '' }: Readonly<CafeProduct
     () => products.find((product) => product.id === productId) ?? null,
     [productId, products],
   )
-  const inventoryCategoryName = useMemo(() => {
-    if (!inventoryProduct) return undefined
-    return productCategories.find((entry) => entry.id === inventoryProduct.categoryId)?.name
-  }, [inventoryProduct, productCategories])
-
   const [draft, setDraft] = useState<CafeProduct>(() => createEmptyCafeProduct())
   const [attrErrors, setAttrErrors] = useState<Record<string, string>>({})
   const [returnTo, setReturnTo] = useState('/admin/scheduling/services')
@@ -101,8 +86,14 @@ export function CafeProductEditor({ mode, productId = '' }: Readonly<CafeProduct
       return
     }
     if (!inventoryProduct) return
-    setDraft(inventoryProductToCafeProduct(inventoryProduct, inventoryCategoryName))
-  }, [existing, inventoryCategoryName, inventoryProduct, mode])
+    setDraft(
+      inventoryProductToCafeProduct(
+        inventoryProduct,
+        inventoryProduct.categoryId,
+        productCategories,
+      ),
+    )
+  }, [existing, inventoryProduct, mode, productCategories])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -156,6 +147,30 @@ export function CafeProductEditor({ mode, productId = '' }: Readonly<CafeProduct
     setSelectedSubCategoryId((prev) => prev || resolvedCategoryId)
   }, [resolvedCategoryId])
 
+  useEffect(() => {
+    if (!selectedSubCategoryId) return
+    const cafeCategory = cafeCategoryFromInventoryCategoryId(
+      selectedSubCategoryId,
+      productCategories,
+    )
+    setDraft((current) =>
+      current.category === cafeCategory ? current : { ...current, category: cafeCategory },
+    )
+  }, [productCategories, selectedSubCategoryId])
+
+  useEffect(() => {
+    if (mode !== 'edit' || !existing || inventoryProduct) return
+    const categoryId = resolveInventoryCategoryId(existing.category, productCategories)
+    if (!categoryId) return
+    setSelectedSubCategoryId((prev) => prev || categoryId)
+  }, [existing, inventoryProduct, mode, productCategories])
+
+  function handleSubCategoryChange(nextCategoryId: string) {
+    setSelectedSubCategoryId(nextCategoryId)
+    const cafeCategory = cafeCategoryFromInventoryCategoryId(nextCategoryId, productCategories)
+    setDraft((current) => ({ ...current, category: cafeCategory }))
+  }
+
   const validationErrors = useMemo(() => {
     const errors: Record<string, string> = {}
     if ((draft.availableDaysOfWeek?.length ?? 0) === 0) {
@@ -183,7 +198,17 @@ export function CafeProductEditor({ mode, productId = '' }: Readonly<CafeProduct
       return
     }
 
-    upsertCafeProduct(draft)
+    const cafeCategory = cafeCategoryFromInventoryCategoryId(
+      selectedSubCategoryId,
+      productCategories,
+    )
+    const nowIso = new Date().toISOString()
+    const productToSave = cafeProductSchema.parse({
+      ...draft,
+      category: cafeCategory,
+      updatedAt: nowIso,
+    })
+    upsertCafeProduct(productToSave)
 
     if (inventoryProduct) {
       updateProduct(inventoryProduct.id, {
@@ -199,25 +224,25 @@ export function CafeProductEditor({ mode, productId = '' }: Readonly<CafeProduct
         isActive: inventoryProduct.isActive,
       })
     } else {
-      const nowIso = new Date().toISOString()
       const tenantId = products[0]?.tenantId ?? 'tenant-1'
       addProduct({
-        id: draft.id,
+        id: productToSave.id,
         tenantId,
         categoryId: selectedSubCategoryId,
-        name: draft.name.trim() || 'New cafe product',
-        slug: slugify(draft.name) || draft.id,
-        description: draft.description?.trim() || undefined,
-        sku: draft.sku?.trim() || undefined,
-        price: draft.basePrice,
-        memberPrice: draft.basePrice,
-        stockCount: draft.stockCount ?? 0,
+        name: productToSave.name.trim() || 'New cafe product',
+        slug: slugify(productToSave.name) || productToSave.id,
+        description: productToSave.description?.trim() || undefined,
+        sku: productToSave.sku?.trim() || undefined,
+        price: productToSave.basePrice,
+        memberPrice: productToSave.basePrice,
+        stockCount: productToSave.stockCount ?? 0,
         lowStockThreshold: 10,
         allowBackorders: false,
         isActive: true,
+        availableOnline: true,
         isFeatured: false,
-        imageUrl: draft.imageUrl,
-        createdAt: draft.createdAt ?? nowIso,
+        imageUrl: productToSave.imageUrl,
+        createdAt: productToSave.createdAt ?? nowIso,
         updatedAt: nowIso,
       })
     }
@@ -284,7 +309,7 @@ export function CafeProductEditor({ mode, productId = '' }: Readonly<CafeProduct
             onChange={setDraft}
             selectedSubCategoryId={selectedSubCategoryId}
             subCategoryOptions={cafeSubCategoryOptions}
-            onSubCategoryChange={setSelectedSubCategoryId}
+            onSubCategoryChange={handleSubCategoryChange}
             modifierGroups={modifierGroups}
             attributeGroups={attributeGroups}
             rotationGroups={rotationGroups}

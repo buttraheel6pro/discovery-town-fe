@@ -1,7 +1,16 @@
 /** Client store — local in-memory state for contacts, memberships, packs, and documents. */
 'use client'
 
-import React, { createContext, useContext, useMemo, useState } from 'react'
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from 'react'
 
 import {
   clientDocuments as initialClientDocuments,
@@ -13,6 +22,11 @@ import {
   planAddOns as initialPlanAddOns,
   planCoupons as initialPlanCoupons,
 } from '@/lib/mock-data'
+import { loadInitialContacts, persistContacts } from '@/lib/client-contacts-storage'
+import {
+  loadInitialMembershipPlans,
+  persistMembershipPlans,
+} from '@/lib/client-membership-plans-storage'
 import type {
   ClientDocument,
   CmContact,
@@ -82,18 +96,51 @@ interface ClientStore {
 
 const ClientContext = createContext<ClientStore | null>(null)
 
+function commitMembershipPlans(
+  setMembershipPlans: Dispatch<SetStateAction<MembershipPlan[]>>,
+  next: SetStateAction<MembershipPlan[]>,
+): void {
+  setMembershipPlans((prev) => {
+    const resolved = typeof next === 'function' ? next(prev) : next
+    persistMembershipPlans(resolved)
+    return resolved
+  })
+}
+
 export function ClientProvider({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   const [contacts, setContacts] = useState<CmContact[]>(() =>
-    initialCmContacts.map((c) => ({ ...c })),
+    initialCmContacts.map((c) => ({
+      ...c,
+      relationships: c.relationships?.map((r) => ({ ...r })),
+    })),
   )
+  const [contactsHydrated, setContactsHydrated] = useState(false)
+
+  useEffect(() => {
+    setContacts(loadInitialContacts(initialCmContacts))
+    setContactsHydrated(true)
+  }, [])
+
+  useEffect(() => {
+    if (!contactsHydrated) {
+      return
+    }
+    persistContacts(contacts)
+  }, [contacts, contactsHydrated])
   const [tags, setTags] = useState<ContactTag[]>(() =>
     initialTags.map((t) => ({ ...t })),
   )
   const [membershipPlans, setMembershipPlans] = useState<MembershipPlan[]>(() =>
-    initialMembershipPlans.map((p) => ({ ...p })),
+    initialMembershipPlans.map((p) => ({
+      ...p,
+      benefits: [...p.benefits],
+    })),
   )
+  useLayoutEffect(() => {
+    setMembershipPlans(loadInitialMembershipPlans(initialMembershipPlans))
+  }, [])
   const [planAddOns, setPlanAddOns] = useState<PlanAddOn[]>(() =>
     initialPlanAddOns.map((r) => ({ ...r })),
   )
@@ -334,16 +381,16 @@ export function ClientProvider({
     }
 
     function addMembershipPlan(plan: MembershipPlan) {
-      setMembershipPlans((prev) => [plan, ...prev])
+      commitMembershipPlans(setMembershipPlans, (prev) => [plan, ...prev])
     }
 
     function addMembershipPlansBulk(monthly: MembershipPlan, annual: MembershipPlan) {
-      setMembershipPlans((prev) => [monthly, annual, ...prev])
+      commitMembershipPlans(setMembershipPlans, (prev) => [monthly, annual, ...prev])
     }
 
     function updateMembershipPlan(planId: string, patch: Partial<MembershipPlan>) {
       const updatedAt = new Date().toISOString()
-      setMembershipPlans((prev) =>
+      commitMembershipPlans(setMembershipPlans, (prev) =>
         prev.map((p) =>
           p.id === planId ? { ...p, ...patch, updatedAt } : p,
         ),

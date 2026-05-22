@@ -194,7 +194,7 @@ export function ShopPageClient() {
                   inputMode="decimal"
                   type="number"
                   step="0.01"
-                  placeholder="From £"
+                  placeholder="From $"
                 />
                 <Input
                   value={maxPrice}
@@ -206,7 +206,7 @@ export function ShopPageClient() {
                   inputMode="decimal"
                   type="number"
                   step="0.01"
-                  placeholder="To £"
+                  placeholder="To $"
                 />
               </div>
 

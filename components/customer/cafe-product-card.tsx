@@ -4,9 +4,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { StickyNote } from 'lucide-react'
-import { useMemo } from 'react'
 
-import { CafeAttributeChip } from '@/components/customer/cafe-attribute-chip'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -15,32 +13,24 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { resolveAttributeOptionsForProduct } from '@/lib/cafe-utils'
 import { cn, formatPrice } from '@/lib/utils'
-import type { AttributeGroup, CafeProduct } from '@/lib/types'
+import type { CafeProduct } from '@/lib/types'
 
 export interface CafeProductCardProps {
   readonly product: CafeProduct
-  readonly attributeGroups: AttributeGroup[]
   readonly soldOut?: boolean
 }
 
 export function CafeProductCard({
   product,
-  attributeGroups,
   soldOut = false,
 }: Readonly<CafeProductCardProps>) {
-  const chips = useMemo(
-    () => resolveAttributeOptionsForProduct(product, attributeGroups),
-    [product, attributeGroups],
-  )
   const notes = product.notes?.trim() ?? ''
-  const prep = product.preparationTimeMinutes ?? 0
 
   return (
     <article
       className={cn(
-        'group overflow-hidden rounded-xl border border-border bg-card transition-all duration-300',
+        'group flex h-full flex-col overflow-hidden rounded-xl border border-border bg-card transition-all duration-300',
         soldOut ? 'opacity-70' : 'hover:-translate-y-0.5 hover:shadow-lg',
       )}
     >
@@ -66,7 +56,7 @@ export function CafeProductCard({
         </div>
       </Link>
 
-      <div className="space-y-3 p-5">
+      <div className="flex flex-1 flex-col space-y-3 p-5">
         <div className="space-y-1">
           <Link href={`/shop/${product.id}`}>
             <h3
@@ -83,19 +73,7 @@ export function CafeProductCard({
           ) : null}
         </div>
 
-        {chips.length > 0 ? (
-          <div className="flex flex-wrap gap-1.5">
-            {chips.map((c) => (
-              <CafeAttributeChip key={c.id} option={c} />
-            ))}
-          </div>
-        ) : null}
-
-        {prep > 0 ? (
-          <p className="text-xs text-muted-foreground">Prep: ~{prep} min</p>
-        ) : null}
-
-        <div className="flex items-end justify-between gap-3">
+        <div className="mt-auto flex items-end justify-between gap-3">
           <p className="text-lg font-bold text-foreground">from {formatPrice(product.basePrice)}</p>
           <div className="flex items-center gap-2">
             {notes.length > 0 ? (

@@ -34,7 +34,7 @@ export function GatewayRevenueChart({ data, className }: Readonly<GatewayRevenue
         <ResponsiveContainer width="100%" height="100%">
           <BarChart layout="vertical" data={data} margin={{ left: 16, right: 16, top: 8, bottom: 8 }}>
             <CartesianGrid strokeDasharray="3 3" className="stroke-border" horizontal={false} />
-            <XAxis type="number" tickFormatter={(v) => `£${v}`} tick={{ fontSize: 11 }} />
+            <XAxis type="number" tickFormatter={(v) => `$${v}`} tick={{ fontSize: 11 }} />
             <YAxis type="category" dataKey="gateway" width={100} tick={{ fontSize: 11 }} />
             <Tooltip
               formatter={(v: number | string, _n, p) => {
