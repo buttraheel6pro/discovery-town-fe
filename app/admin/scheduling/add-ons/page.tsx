@@ -5,6 +5,8 @@ import Image from 'next/image'
 import { useMemo, useState } from 'react'
 import { Search, SlidersHorizontal } from 'lucide-react'
 
+import { AddOnTypePickerModal } from '@/components/admin/add-on-type-picker-modal'
+import { ComplexAddOnEditorModal } from '@/components/admin/complex-add-on-editor-modal'
 import { CrudModal } from '@/components/admin/crud-modal'
 import {
   AlertDialog,
@@ -24,6 +26,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { isComplexAddOn, resolveAddOnStructureType } from '@/lib/add-on-structure'
 import { useInventory } from '@/lib/inventory-store'
 import { formatPrice } from '@/lib/utils'
 import type { AddOn } from '@/lib/types'
@@ -71,7 +74,11 @@ export default function AdminSchedulingAddOnsPage() {
     delinkBookingAddOnFromProduct,
   } = useInventory()
 
+  const [typePickerOpen, setTypePickerOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
+  const [complexModalOpen, setComplexModalOpen] = useState(false)
+  const [complexModalMode, setComplexModalMode] = useState<'create' | 'edit'>('create')
+  const [complexEditTarget, setComplexEditTarget] = useState<AddOn | null>(null)
   const [editTarget, setEditTarget] = useState<AddOn | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<AddOn | null>(null)
   const [draft, setDraft] = useState<AddOnDraft>(EMPTY_DRAFT)
@@ -118,11 +125,29 @@ export default function AdminSchedulingAddOnsPage() {
   }, [productById, search, showOnlyActive, showOnlyLinkedToProducts, sortedAddOns])
 
   function openCreateModal(): void {
+    setTypePickerOpen(true)
+  }
+
+  function openSimpleCreateModal(): void {
     setDraft(EMPTY_DRAFT)
+    setTypePickerOpen(false)
     setCreateOpen(true)
   }
 
+  function openComplexCreateModal(): void {
+    setTypePickerOpen(false)
+    setComplexEditTarget(null)
+    setComplexModalMode('create')
+    setComplexModalOpen(true)
+  }
+
   function openEditModal(addOn: AddOn): void {
+    if (isComplexAddOn(addOn)) {
+      setComplexEditTarget(addOn)
+      setComplexModalMode('edit')
+      setComplexModalOpen(true)
+      return
+    }
     setEditTarget(addOn)
     setDraft(addOnToDraft(addOn))
   }
@@ -144,6 +169,7 @@ export default function AdminSchedulingAddOnsPage() {
       isActive: draft.isActive,
       referenceType: draft.inventoryProductId === 'none' ? 'ALL' : 'PRODUCT',
       inventoryProductId: draft.inventoryProductId === 'none' ? null : draft.inventoryProductId,
+      structureType: 'SIMPLE',
     })
     if (draft.inventoryProductId !== 'none') {
       updateProduct(draft.inventoryProductId, {
@@ -255,6 +281,9 @@ export default function AdminSchedulingAddOnsPage() {
                     <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                       <span>{formatPrice(addOn.memberPrice ?? addOn.price)}</span>
                       <Badge variant="outline">{addOn.pricingType}</Badge>
+                      <Badge variant="outline">
+                        {resolveAddOnStructureType(addOn) === 'COMPLEX' ? 'Complex' : 'Simple'}
+                      </Badge>
                       <Badge variant={addOn.isActive ? 'secondary' : 'outline'}>
                         {addOn.isActive ? 'Active' : 'Inactive'}
                       </Badge>
@@ -301,10 +330,24 @@ export default function AdminSchedulingAddOnsPage() {
         </CardContent>
       </Card>
 
+      <AddOnTypePickerModal
+        open={typePickerOpen}
+        onOpenChange={setTypePickerOpen}
+        onSelectSimple={openSimpleCreateModal}
+        onSelectComplex={openComplexCreateModal}
+      />
+
+      <ComplexAddOnEditorModal
+        open={complexModalOpen}
+        onOpenChange={setComplexModalOpen}
+        mode={complexModalMode}
+        editAddOn={complexModalMode === 'edit' ? complexEditTarget : null}
+      />
+
       <CrudModal
         open={createOpen}
         onOpenChange={setCreateOpen}
-        title="New add-on"
+        title="New simple add-on"
         description="Create an add-on that can be used by booking and operations flows."
         size="sm"
         variant="create"
@@ -329,7 +372,7 @@ export default function AdminSchedulingAddOnsPage() {
             setEditTarget(null)
           }
         }}
-        title="Edit add-on"
+        title="Edit simple add-on"
         description={editTarget?.name ?? ''}
         size="sm"
         variant="edit"

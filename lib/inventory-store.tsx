@@ -228,6 +228,7 @@ interface InventoryStore {
     isActive: boolean
     referenceType?: AddOn['referenceType']
     inventoryProductId?: string | null
+    structureType?: AddOn['structureType']
   }) => AddOn
   updateBookingAddOn: (id: string, updates: Partial<AddOn>) => void
   deleteBookingAddOn: (id: string) => void
@@ -399,6 +400,7 @@ export function InventoryProvider({
       isActive: boolean
       referenceType?: AddOn['referenceType']
       inventoryProductId?: string | null
+      structureType?: AddOn['structureType']
     }): AddOn {
       const created: AddOn = {
         id: `addon-admin-${Date.now()}`,
@@ -410,6 +412,7 @@ export function InventoryProvider({
         memberPrice: input.memberPrice ?? null,
         referenceType: input.referenceType ?? 'ALL',
         inventoryProductId: input.inventoryProductId ?? null,
+        structureType: input.structureType ?? 'SIMPLE',
         applicableServiceTypes: [
           'CLASS',
           'PLAY_AREA',
@@ -560,6 +563,7 @@ export function InventoryProvider({
         memberPrice: product.memberPrice ?? null,
         referenceType: 'PRODUCT',
         inventoryProductId: product.id,
+        structureType: 'COMPLEX',
         applicableServiceTypes: [
           'CLASS',
           'PLAY_AREA',

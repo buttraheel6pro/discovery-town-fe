@@ -13,7 +13,25 @@ export const PRIVATE_PLAY_MEETING_ROOMS_SERVICE_ID =
 
 /** Original six party packages (room + whole venue). */
 export const PARTY_ROOM_PACKAGE_IDS = ['pkg-001', 'pkg-002', 'pkg-003'] as const
+
+const PARTY_ROOM_PACKAGE_ID_SET = new Set<string>(PARTY_ROOM_PACKAGE_IDS)
+
+export function isPartyRoomCatalogPackage(pkg: Pick<EventPackage, 'id'>): boolean {
+  return PARTY_ROOM_PACKAGE_ID_SET.has(pkg.id)
+}
+
 export const WHOLE_VENUE_PACKAGE_IDS = ['pkg-004', 'pkg-005', 'pkg-006'] as const
+
+const WHOLE_VENUE_PACKAGE_ID_SET = new Set<string>(WHOLE_VENUE_PACKAGE_IDS)
+
+export function isWholeVenueCatalogPackage(pkg: Pick<EventPackage, 'id'>): boolean {
+  return WHOLE_VENUE_PACKAGE_ID_SET.has(pkg.id)
+}
+
+/** Party room or whole-venue tier deep-linked from the events page cards. */
+export function isEventsPagePreselectedPackage(pkg: Pick<EventPackage, 'id'>): boolean {
+  return isPartyRoomCatalogPackage(pkg) || isWholeVenueCatalogPackage(pkg)
+}
 
 /** Meeting Room Reservation tiers. */
 export const MEETING_ROOM_PACKAGE_IDS = [
@@ -102,6 +120,44 @@ export function resolvePrivateEventHubPackages(
   packages: readonly EventPackage[],
 ): EventPackage[] {
   return filterEventCatalogPackages(packages)
+}
+
+/** Consumer URL for the private-event booking journey (optional pre-selected package). */
+export function buildPrivateEventBookingHref(
+  serviceId: string,
+  packageId?: string | null,
+): string {
+  const base = `/events/${serviceId}?privateEvent=1`
+  if (packageId == null || packageId === '') {
+    return base
+  }
+  return `${base}&package=${encodeURIComponent(packageId)}`
+}
+
+/** Preferred service for private-event booking links (no dedicated events catalog row). */
+export function resolvePrivateEventBookingServiceId(
+  services: readonly Pick<SchedulingService, 'id' | 'serviceType' | 'isActive'>[],
+): string | null {
+  const room = services.find(
+    (entry) => entry.isActive && entry.id === PRIVATE_PLAY_ROOM_SERVICE_ID,
+  )
+  if (room) {
+    return room.id
+  }
+  const hub = services.find(
+    (entry) => entry.isActive && isPrivateEventHubService(entry),
+  )
+  return hub?.id ?? null
+}
+
+/** Whole-venue private party booking links from the events page cards. */
+export function resolveWholeVenuePrivateEventBookingServiceId(
+  services: readonly Pick<SchedulingService, 'id' | 'isActive'>[],
+): string | null {
+  const venue = services.find(
+    (entry) => entry.isActive && entry.id === PRIVATE_PLAY_FULL_VENUE_SERVICE_ID,
+  )
+  return venue?.id ?? null
 }
 
 export function resolvePackagesForSchedulingService(

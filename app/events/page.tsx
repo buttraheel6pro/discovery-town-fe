@@ -7,11 +7,17 @@ import { Search, X } from 'lucide-react'
 import { CustomerFooter } from '@/components/customer/footer'
 import { HorizontalScrollSection } from '@/components/customer/horizontal-scroll-section'
 import { CustomerNavbar } from '@/components/customer/navbar'
+import { PrivatePartyRoomOpenPlaySection } from '@/components/customer/private-party-room-open-play-section'
+import { WholePlacePrivatePartyOpenPlaySection } from '@/components/customer/whole-place-private-party-open-play-section'
 import { PromoLinkGridSection } from '@/components/customer/promo-link-grid-section'
 import { ScrollableSectionBreadcrumbs } from '@/components/customer/scrollable-section-breadcrumbs'
 import { ServiceScrollCard } from '@/components/customer/service-scroll-card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import {
+  buildPrivateEventBookingHref,
+  resolvePrivateEventBookingServiceId,
+} from '@/lib/event-package-catalog'
 import { hasAssignedConsumerSlot, isEventCatalogService } from '@/lib/scheduling-visibility'
 import { useScheduling } from '@/lib/scheduling-store'
 import type { Event } from '@/lib/types'
@@ -112,8 +118,15 @@ export default function EventsPage() {
     [services, slots],
   )
   const featuredPartyServiceId = useMemo(
-    () => eventCatalog.find((entry) => entry.serviceType === 'PARTY_PACKAGE')?.id ?? null,
+    () => resolvePrivateEventBookingServiceId(eventCatalog),
     [eventCatalog],
+  )
+  const privateEventBookingHref = useMemo(
+    () =>
+      featuredPartyServiceId
+        ? buildPrivateEventBookingHref(featuredPartyServiceId)
+        : null,
+    [featuredPartyServiceId],
   )
 
   const filtered = useMemo(() => {
@@ -262,13 +275,7 @@ export default function EventsPage() {
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-3">
-                  <Link
-                    href={
-                      featuredPartyServiceId
-                        ? `/events/${featuredPartyServiceId}?privateEvent=1`
-                        : '/events'
-                    }
-                  >
+                  <Link href={privateEventBookingHref ?? '/events'}>
                     <Button type="button" className="h-11 px-6">
                       Start private event booking
                     </Button>
@@ -286,6 +293,10 @@ export default function EventsPage() {
 
         <section className="bg-background pb-4">
           <div className="mx-auto max-w-7xl space-y-8 px-4 sm:px-6 lg:px-8">
+            <PrivatePartyRoomOpenPlaySection />
+
+            <WholePlacePrivatePartyOpenPlaySection />
+
             <PromoLinkGridSection
               eyebrow="Take Out Party"
               title="Take Out Party"
@@ -306,6 +317,8 @@ export default function EventsPage() {
           </div>
         </section>
 
+        {/* TODO: Re-enable event catalog browse (Parties & Events, Other Events, service scroll) */}
+        {/*
         <section className="bg-background py-12" aria-live="polite" aria-label="Event results">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <p className="mb-6 text-sm text-muted-foreground">
@@ -343,6 +356,7 @@ export default function EventsPage() {
             )}
           </div>
         </section>
+        */}
       </main>
       <CustomerFooter />
     </>

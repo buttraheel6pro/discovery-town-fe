@@ -384,6 +384,14 @@ export interface BookingAttendee {
   checkedInAt?: string;
 }
 
+export const AddOnStructureType = {
+  SIMPLE: "SIMPLE",
+  COMPLEX: "COMPLEX",
+} as const;
+
+export type AddOnStructureType =
+  (typeof AddOnStructureType)[keyof typeof AddOnStructureType];
+
 export interface AddOn {
   id: string;
   tenantId: string;
@@ -394,6 +402,7 @@ export interface AddOn {
   memberPrice?: number | null;
   referenceType?: "ALL" | "PRODUCT";
   inventoryProductId?: string | null;
+  structureType?: AddOnStructureType;
   applicableServiceTypes: ServiceType[];
   isActive: boolean;
   deletedAt?: string | null;

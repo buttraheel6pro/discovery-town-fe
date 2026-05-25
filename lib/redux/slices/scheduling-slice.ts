@@ -287,13 +287,29 @@ function mergeSchedulingWithCatalogDefaults(persisted: SchedulingState): Schedul
     }
   }
 
+  const defaultPackageById = new Map(
+    defaults.packages.map((pkg) => [pkg.id, pkg]),
+  )
   const packageById = new Map<string, EventPackage>()
   for (const pkg of persisted.packages) {
-    packageById.set(pkg.id, pkg)
+    const seed = defaultPackageById.get(pkg.id)
+    packageById.set(
+      pkg.id,
+      seed
+        ? {
+            ...pkg,
+            addOns: seed.addOns.map((link) => ({ ...link })),
+          }
+        : pkg,
+    )
   }
   for (const pkg of defaults.packages) {
     if (!packageById.has(pkg.id)) {
-      packageById.set(pkg.id, pkg)
+      packageById.set(pkg.id, {
+        ...pkg,
+        addOns: pkg.addOns.map((link) => ({ ...link })),
+        features: pkg.features.slice(),
+      })
     }
   }
 

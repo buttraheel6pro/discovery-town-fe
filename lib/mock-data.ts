@@ -1,6 +1,13 @@
 // Discovery Town - Mock Data
 // Family activity centre: play areas, swimming, classes, parties
 
+import {
+  EVENT_MODULE_ADDON_ATTRIBUTE_GROUPS,
+  EVENT_MODULE_ADDON_CAFE_PRODUCTS,
+  EVENT_MODULE_ADDON_MODIFIER_GROUPS,
+  EVENT_MODULE_BOOKING_ADDONS,
+} from "@/lib/mock-event-booking-add-ons";
+
 import type {
   Location,
   ServiceCategory,
@@ -1879,8 +1886,8 @@ const MOCK_SHOP_ATTR_CLOTHES: AttributeGroup[] = [
     selectionType: "single",
     isVariantDimension: true,
     isRequired: true,
-    options: ["Black", "Blue", "White"].map(
-      (label, i) => mockShopOpt(`opt-cloth-col-${i}`, label),
+    options: ["Black", "Blue", "White"].map((label, i) =>
+      mockShopOpt(`opt-cloth-col-${i}`, label),
     ),
   },
   {
@@ -1932,8 +1939,8 @@ const MOCK_SHOP_ATTR_FURNITURE: AttributeGroup[] = [
     selectionType: "single",
     isVariantDimension: true,
     isRequired: true,
-    options: ["Up to 100 kg", "Up to 150 kg", "Heavy duty"].map(
-      (label, i) => mockShopOpt(`opt-furn-wt-${i}`, label),
+    options: ["Up to 100 kg", "Up to 150 kg", "Heavy duty"].map((label, i) =>
+      mockShopOpt(`opt-furn-wt-${i}`, label),
     ),
   },
 ];
@@ -2354,10 +2361,7 @@ function mockGiftProductFields(
       (links.giftOccasionId != null && links.giftOccasionId.length > 0
         ? [links.giftOccasionId]
         : []),
-    giftOccasionId:
-      links.giftOccasionId ??
-      links.giftOccasionIds?.[0] ??
-      null,
+    giftOccasionId: links.giftOccasionId ?? links.giftOccasionIds?.[0] ?? null,
   };
 }
 
@@ -3218,7 +3222,8 @@ export const products: Product[] = [
     categoryId: "pcat-gift-basket-components",
     name: "Gourmet Coffee Beans",
     slug: "gourmet-coffee-beans",
-    description: "12oz bag of gourmet whole-bean coffee (or premium specialty tea).",
+    description:
+      "12oz bag of gourmet whole-bean coffee (or premium specialty tea).",
     sku: "GIFT-COMP-COFFEE-BEANS",
     price: 14.0,
     memberPrice: 12.0,
@@ -3801,7 +3806,8 @@ export const products: Product[] = [
     categoryId: "pcat-gift-basket-components",
     name: "Bath Salts & Eye Mask",
     slug: "bath-salts-eye-mask",
-    description: "Specialized bath salts with a weighted eye mask for stress relief.",
+    description:
+      "Specialized bath salts with a weighted eye mask for stress relief.",
     sku: "GIFT-COMP-BATH-EYE-MASK",
     price: 30.0,
     memberPrice: 26.0,
@@ -4219,8 +4225,7 @@ export const products: Product[] = [
     categoryId: "pcat-gift-basket-components",
     name: "Engraved Memory Box",
     slug: "engraved-memory-box",
-    description:
-      "Hand-painted wooden memory box with engraved initials.",
+    description: "Hand-painted wooden memory box with engraved initials.",
     sku: "GIFT-COMP-MEMORY-BOX",
     price: 52.0,
     memberPrice: 45.0,
@@ -4242,7 +4247,8 @@ export const products: Product[] = [
     categoryId: "pcat-gift-basket-components",
     name: "Coffee Table Book",
     slug: "coffee-table-book",
-    description: "High-end coffee table book on family life or interior design.",
+    description:
+      "High-end coffee table book on family life or interior design.",
     sku: "GIFT-COMP-COFFEE-TABLE-BOOK",
     price: 55.0,
     memberPrice: 50.0,
@@ -4330,7 +4336,8 @@ export const products: Product[] = [
     categoryId: "pcat-gift-basket-components",
     name: "Luxury Bath Products Set",
     slug: "luxury-bath-products-set",
-    description: "Elaborate natural bath products: luxury shampoos, soaps, and lotions.",
+    description:
+      "Elaborate natural bath products: luxury shampoos, soaps, and lotions.",
     sku: "GIFT-COMP-LUX-BATH",
     price: 48.0,
     memberPrice: 42.0,
@@ -4352,7 +4359,8 @@ export const products: Product[] = [
     categoryId: "pcat-gift-basket-components",
     name: "Candle & Diffuser Set",
     slug: "candle-diffuser-set",
-    description: "Designer scented candle with ultrasonic aromatherapy diffuser.",
+    description:
+      "Designer scented candle with ultrasonic aromatherapy diffuser.",
     sku: "GIFT-COMP-CANDLE-DIFFUSER",
     price: 50.0,
     memberPrice: 45.0,
@@ -4723,7 +4731,10 @@ export const products: Product[] = [
     name: offering.name,
     slug: offering.productId.replace(/^prod-/, ""),
     description: offering.description,
-    sku: offering.productId.replace(/^prod-/, "").toUpperCase().replace(/-/g, "_"),
+    sku: offering.productId
+      .replace(/^prod-/, "")
+      .toUpperCase()
+      .replace(/-/g, "_"),
     price: offering.basePrice,
     stockCount: 8,
     lowStockThreshold: 2,
@@ -5257,6 +5268,9 @@ export const addOns: AddOn[] = [
     isActive: true,
   },
 ];
+
+/** Events-module booking add-ons (evt-addon-* — separate from scheduling addOns). */
+export const eventModuleBookingAddOns: AddOn[] = EVENT_MODULE_BOOKING_ADDONS;
 
 // ============================================
 // COUPONS
@@ -7943,7 +7957,7 @@ const playSectionServices: SchedulingService[] = [
     bookingMode: "SCHEDULED",
     name: "Fall Harvest Festival 🎃",
     description:
-      "Theme: Autumn fun, gentle spooky, and cozy harvest.\n\nActivities: Mini pumpkin decorating station, \"Pin the Nose on the Scarecrow,\" Fall-themed sensory bins (corn kernels, dried leaves), and a costume parade for the kids.\n\nConcessions: Apple cider (hot and cold), donut holes, and caramel popcorn.",
+      'Theme: Autumn fun, gentle spooky, and cozy harvest.\n\nActivities: Mini pumpkin decorating station, "Pin the Nose on the Scarecrow," Fall-themed sensory bins (corn kernels, dried leaves), and a costume parade for the kids.\n\nConcessions: Apple cider (hot and cold), donut holes, and caramel popcorn.',
     durationMinutes: 180,
     capacity: 90,
     basePrice: 30,
@@ -7977,7 +7991,7 @@ const playSectionServices: SchedulingService[] = [
     bookingMode: "SCHEDULED",
     name: "Winter Wonderland Ball ❄️",
     description:
-      "Theme: Snow, ice, and elegant fun (no matter the weather outside!).\n\nActivities: Snowflake making station, \"Frozen\" character visit/photo op, indoor \"snowball fight\" using soft white socks or plastic balls, and a simple LED light dance floor.\n\nAttire: Encourage semi-formal or character-themed dress.",
+      'Theme: Snow, ice, and elegant fun (no matter the weather outside!).\n\nActivities: Snowflake making station, "Frozen" character visit/photo op, indoor "snowball fight" using soft white socks or plastic balls, and a simple LED light dance floor.\n\nAttire: Encourage semi-formal or character-themed dress.',
     durationMinutes: 180,
     capacity: 90,
     basePrice: 32,
@@ -8009,9 +8023,9 @@ const playSectionServices: SchedulingService[] = [
     )!,
     serviceType: "WORKSHOP",
     bookingMode: "SCHEDULED",
-    name: "Spring \"Blooming\" Bash 🌸",
+    name: 'Spring "Blooming" Bash 🌸',
     description:
-      "Theme: Flowers, bright colors, and nature.\n\nActivities: Seed planting station (take-home pots), face painting with butterfly or flower designs, \"Bunny Hop\" relay races, and a bubble performer.",
+      'Theme: Flowers, bright colors, and nature.\n\nActivities: Seed planting station (take-home pots), face painting with butterfly or flower designs, "Bunny Hop" relay races, and a bubble performer.',
     durationMinutes: 180,
     capacity: 90,
     basePrice: 30,
@@ -8045,7 +8059,7 @@ const playSectionServices: SchedulingService[] = [
     bookingMode: "SCHEDULED",
     name: "Super Slime & Science Extravaganza 🧪",
     description:
-      "Theme: Hands-on creation and mad science.\n\nActivities: Multiple stations for making different types of slime (e.g., fluffy, glitter, glow-in-the-dark), a simple \"volcano\" eruption science demonstration, and build-your-own cardboard robots.\n\nStaffing: Hire one or two dedicated science entertainers/presenters.",
+      'Theme: Hands-on creation and mad science.\n\nActivities: Multiple stations for making different types of slime (e.g., fluffy, glitter, glow-in-the-dark), a simple "volcano" eruption science demonstration, and build-your-own cardboard robots.\n\nStaffing: Hire one or two dedicated science entertainers/presenters.',
     durationMinutes: 180,
     capacity: 100,
     basePrice: 32,
@@ -8215,7 +8229,7 @@ const playSectionServices: SchedulingService[] = [
     bookingMode: "SCHEDULED",
     name: "Deep Sea Discovery Day 🐠",
     description:
-      "Theme: Underwater creatures and ocean exploration.\n\nActivities: Large projection screen showing ocean scenes, a \"fishing\" game with magnetic poles, blue-themed sensory bins (water beads, plastic fish), and a craft station to make paper plate fish or sea creatures.",
+      'Theme: Underwater creatures and ocean exploration.\n\nActivities: Large projection screen showing ocean scenes, a "fishing" game with magnetic poles, blue-themed sensory bins (water beads, plastic fish), and a craft station to make paper plate fish or sea creatures.',
     durationMinutes: 180,
     capacity: 100,
     basePrice: 32,
@@ -8249,7 +8263,7 @@ const playSectionServices: SchedulingService[] = [
     bookingMode: "SCHEDULED",
     name: "Mini Maker Faire 🔨",
     description:
-      "Theme: Building, inventing, and engineering.\n\nActivities: Large table with LEGO bricks or DUPLO blocks for group building challenge, a simple woodworking station (pre-drilled shapes and plastic screws/tools), and a \"design a town\" activity using sidewalk chalk (if outdoors) or craft paper.\n\nTip: Partner with a local hardware store for tool/safety demonstrations.",
+      'Theme: Building, inventing, and engineering.\n\nActivities: Large table with LEGO bricks or DUPLO blocks for group building challenge, a simple woodworking station (pre-drilled shapes and plastic screws/tools), and a "design a town" activity using sidewalk chalk (if outdoors) or craft paper.\n\nTip: Partner with a local hardware store for tool/safety demonstrations.',
     durationMinutes: 180,
     capacity: 80,
     basePrice: 30,
@@ -9742,15 +9756,16 @@ export const eventPackagesMock: EventPackage[] = [
     basePrice: 300,
     features: [
       "2 Hours (Party Room)",
-      "General admission for all guests to the full play cafe",
-      "Party room setup and cleanup",
+      "Up to 8 Children",
+      "Up to 16 Adults",
+      "General Admission for all guests to the full play cafe",
+      "Party room setup/cleanup",
       "Solid-color plates, napkins, cups, utensils, and tablecloths",
       "Ice water pitchers for all guests",
       "Basic table covers",
       "$15 per additional child (up to capacity)",
-      "Package price: $300",
     ],
-    addOns: [{ addOnId: "addon-020", included: false }],
+    addOns: [],
     isActive: true,
     createdAt: "2025-01-01T00:00:00Z",
     minChildSeats: 1,
@@ -9768,21 +9783,22 @@ export const eventPackagesMock: EventPackage[] = [
     serviceId: "svc-event-party-booking",
     displayPages: ["play"],
     schedulingCategoryIds: ["cat-private-play"],
-    tier: "SILVER",
+    tier: "GOLD",
     name: "The Classic Fun",
     basePrice: 425,
     features: [
       "2 Hours (Party Room)",
-      "Dedicated Party Host (light assistance with guests and cleanup)",
-      "Full general play admission for all guests",
+      "Up to 12 Children",
+      "Up to 24 Adults",
+      "Dedicated Party Host (Light assistance with guests/cleanup)",
+      "Full General Play Admission for all guests",
       "Basic solid-color paper products and utensils provided",
-      "Ice water pitchers + 1 juice box per child",
-      "Unlimited drip coffee and tea for adults",
-      'Basic table covers + basic "Happy Birthday" banner',
+      "Ice water pitchers + 1 Juice Box per Child",
+      "Unlimited Drip Coffee & Tea for adults",
+      'Basic table covers + Basic "Happy Birthday" Banner',
       "$25 per additional child (up to capacity)",
-      "Package range: $425 - $495",
     ],
-    addOns: [{ addOnId: "addon-025", included: true }],
+    addOns: [],
     isActive: true,
     createdAt: "2025-01-01T00:00:00Z",
     minChildSeats: 1,
@@ -9800,25 +9816,23 @@ export const eventPackagesMock: EventPackage[] = [
     serviceId: "svc-event-party-booking",
     displayPages: ["play"],
     schedulingCategoryIds: ["cat-private-play"],
-    tier: "GOLD",
+    tier: "PLATINUM",
     name: "The VIP Play",
     basePrice: 675,
     features: [
       "2 Hours (Party Room)",
-      "Dedicated Party Host + Runner (full service and guest flow management)",
-      "Full general play admission for all guests",
+      "Up to 18 Children",
+      "Up to 36 Adults",
+      "Dedicated Party Host + Runner (Full service & guest flow management)",
+      "Full General Play Admission for all guests",
       "Basic solid-color paper products and utensils provided",
-      "Ice water pitchers + 1 juice box per child",
-      "Unlimited drip coffee and tea for adults",
-      "2 large 1-topping pizzas",
-      'Basic table covers + basic "Happy Birthday" banner + themed digital invitations',
+      "Ice water pitchers + 1 Juice Box per Child",
+      "Unlimited Drip Coffee & Tea for adults",
+      "2 Large 1-Topping Pizzas",
+      'Basic table covers + Basic "Happy Birthday" Banner + Themed Digital Invitations',
       "$30 per additional child (up to capacity)",
-      "Package range: $675 - $795",
     ],
-    addOns: [
-      { addOnId: "addon-001", included: true },
-      { addOnId: "addon-019", included: true },
-    ],
+    addOns: [],
     isActive: true,
     createdAt: "2025-01-01T00:00:00Z",
     minChildSeats: 1,
@@ -9840,17 +9854,16 @@ export const eventPackagesMock: EventPackage[] = [
     name: "The Midnight Play",
     basePrice: 2095,
     features: [
-      "Up to 50 guests (children + adults)",
-      "Exclusive access to ENTIRE facility and 2 party rooms",
-      "2.5 hours party time + 30 min setup and cleanup",
-      "3 dedicated staff members (hosts and baristas)",
-      "Unlimited ice water + unlimited drip coffee and tea",
+      "Up to 50 Guests (Children + Adults)",
+      "Exclusive access to ENTIRE facility and 2 Party Rooms",
+      "2.5 Hours Party Time + 30 min Setup/Cleanup",
+      "3 Dedicated Staff Members (Hosts/Baristas)",
+      "Unlimited Ice Water. Unlimited Drip Coffee/Tea",
       "Basic paper products and table covers for up to 50 guests",
       "Background music",
-      "Package range: $2,095 - $2,395",
-      "$500 non-refundable deposit",
+      "$500 Non-refundable deposit",
     ],
-    addOns: [{ addOnId: "addon-021", included: true }],
+    addOns: [],
     isActive: true,
     createdAt: "2025-01-01T00:00:00Z",
     depositAmount: 500,
@@ -9871,23 +9884,17 @@ export const eventPackagesMock: EventPackage[] = [
     name: "The All-Star Takeover",
     basePrice: 3100,
     features: [
-      "Up to 75 guests (children + adults)",
-      "Exclusive access to ENTIRE facility and 2 party rooms",
-      "2.5 hours party time + 30 min setup and cleanup",
-      "4 dedicated staff members (hosts, baristas, and runner)",
-      "4 large 1-topping pizzas + unlimited premium drink package (lemonade and iced tea)",
-      "Basic paper products and table covers for up to 75 guests + standard 6ft balloon garland",
-      "2 dozen custom cupcakes",
-      "Background music + basic staff-led group game",
-      "Package range: $3,100 - $3,500",
-      "$750 non-refundable deposit",
+      "Up to 75 Guests (Children + Adults)",
+      "Exclusive access to ENTIRE facility and 2 Party Rooms",
+      "2.5 Hours Party Time + 30 min Setup/Cleanup",
+      "4 Dedicated Staff Members (Hosts/Baristas/Runner)",
+      "4 Large 1-Topping Pizzas. Unlimited Premium Drink Package (Lemonade/Iced Tea)",
+      "Basic paper products and table covers for up to 75 guests. Standard Balloon Garland (6ft)",
+      "2 Dozen Custom Cupcakes",
+      "Background music + Basic staff-led group game",
+      "$750 Non-refundable deposit",
     ],
-    addOns: [
-      { addOnId: "addon-001", included: true },
-      { addOnId: "addon-004", included: true },
-      { addOnId: "addon-013", included: true },
-      { addOnId: "addon-006", included: true },
-    ],
+    addOns: [],
     isActive: true,
     createdAt: "2025-01-01T00:00:00Z",
     depositAmount: 750,
@@ -9908,27 +9915,17 @@ export const eventPackagesMock: EventPackage[] = [
     name: "The Ultimate Exclusive",
     basePrice: 4500,
     features: [
-      "Up to 100 guests (children + adults)",
-      "Exclusive access to ENTIRE facility and 2 party rooms",
-      "3 hours party time + 30 min setup and cleanup",
-      "5 dedicated staff members (manager, hosts, runner, barista)",
-      "6 large 1-topping pizzas + unlimited premium drink package + adult appetizer tray",
-      "Premium themed paperware for all guests + custom 10ft balloon garland + premium photo backdrop",
-      "3 dozen custom cupcakes + premium goodie bags for up to 20 children",
-      "1 hour character appearance (Princess/Superhero) OR face painter",
-      "Package range: $4,500 - $4,995",
-      "$1,000 non-refundable deposit",
+      "Up to 100 Guests (Children + Adults)",
+      "Exclusive access to ENTIRE facility and 2 Party Rooms",
+      "3 Hours Party Time + 30 min Setup/Cleanup",
+      "5 Dedicated Staff Members (Manager, Hosts, Runner, Barista)",
+      "6 Large 1-Topping Pizzas. Unlimited Premium Drink Package. Adult Appetizer Tray",
+      "Premium Themed Paperware for all guests. Custom 10ft Balloon Garland. Premium Photo Backdrop",
+      "3 Dozen Custom Cupcakes. Premium Goodie Bags for up to 20 children",
+      "1 Hour Character Appearance (Princess/Superhero) OR Face Painter",
+      "$1,000 Non-refundable deposit",
     ],
-    addOns: [
-      { addOnId: "addon-001", included: true },
-      { addOnId: "addon-004", included: true },
-      { addOnId: "addon-002", included: true },
-      { addOnId: "addon-013", included: true },
-      { addOnId: "addon-012", included: true },
-      { addOnId: "addon-006", included: true },
-      { addOnId: "addon-015", included: true },
-      { addOnId: "addon-018", included: true },
-    ],
+    addOns: [],
     isActive: true,
     createdAt: "2025-01-01T00:00:00Z",
     depositAmount: 1000,
@@ -10054,7 +10051,7 @@ export interface EventPackageOptionalAddOn {
 
 export const eventPackageOptionalAddOnsMock: EventPackageOptionalAddOn[] = [
   {
-    id: "addon-001",
+    id: "evt-addon-001",
     name: "Additional Pizza",
     description: "Large 1-topping pizza.",
     price: 22,
@@ -10063,7 +10060,7 @@ export const eventPackageOptionalAddOnsMock: EventPackageOptionalAddOn[] = [
     isPopular: true,
   },
   {
-    id: "addon-002",
+    id: "evt-addon-002",
     name: "Premium Pizza Toppings",
     description:
       "Gourmet options (for example, BBQ Chicken or specialty veggie).",
@@ -10072,7 +10069,7 @@ export const eventPackageOptionalAddOnsMock: EventPackageOptionalAddOn[] = [
     category: "FOOD_BEVERAGE",
   },
   {
-    id: "addon-003",
+    id: "evt-addon-003",
     name: "Adult Appetizer Tray",
     description: "Fresh fruit, veggie and dip, or cheese and cracker tray.",
     price: 35,
@@ -10080,7 +10077,7 @@ export const eventPackageOptionalAddOnsMock: EventPackageOptionalAddOn[] = [
     category: "FOOD_BEVERAGE",
   },
   {
-    id: "addon-004",
+    id: "evt-addon-004",
     name: "Snack Basket",
     description: "Individual chips, pretzels, or goldfish (serves 10 kids).",
     price: 18,
@@ -10088,7 +10085,7 @@ export const eventPackageOptionalAddOnsMock: EventPackageOptionalAddOn[] = [
     category: "FOOD_BEVERAGE",
   },
   {
-    id: "addon-005",
+    id: "evt-addon-005",
     name: "Premium Drink Package",
     description: "Unlimited lemonade and flavored iced tea for all guests.",
     price: 45,
@@ -10096,7 +10093,7 @@ export const eventPackageOptionalAddOnsMock: EventPackageOptionalAddOn[] = [
     category: "FOOD_BEVERAGE",
   },
   {
-    id: "addon-006",
+    id: "evt-addon-006",
     name: "Specialty Coffee Bar",
     description:
       "Premium coffee, espresso, syrups, and flavored creamer station.",
@@ -10105,15 +10102,16 @@ export const eventPackageOptionalAddOnsMock: EventPackageOptionalAddOn[] = [
     category: "FOOD_BEVERAGE",
   },
   {
-    id: "addon-007",
+    id: "evt-addon-007",
     name: "Outside Food/Catering Fee",
-    description: "Fee for outside food beyond birthday cake and dessert.",
+    description:
+      "If you allow outside food beyond birthday cake/dessert. $40 - $60",
     price: 40,
     pricingLabel: "$40 - $60",
     category: "FOOD_BEVERAGE",
   },
   {
-    id: "addon-008",
+    id: "evt-addon-008",
     name: "Custom Cupcakes",
     description: "Dozen custom-colored or themed cupcakes from a local bakery.",
     price: 40,
@@ -10121,7 +10119,7 @@ export const eventPackageOptionalAddOnsMock: EventPackageOptionalAddOn[] = [
     category: "DESSERT",
   },
   {
-    id: "addon-009",
+    id: "evt-addon-009",
     name: "Gourmet Donut Wall",
     description: "Decorative donut wall rental with 2-3 dozen donuts.",
     price: 55,
@@ -10129,7 +10127,7 @@ export const eventPackageOptionalAddOnsMock: EventPackageOptionalAddOn[] = [
     category: "DESSERT",
   },
   {
-    id: "addon-010",
+    id: "evt-addon-010",
     name: "Ice Cream Cups",
     description: "Premium ice cream cups or popsicles (per 12).",
     price: 30,
@@ -10137,7 +10135,7 @@ export const eventPackageOptionalAddOnsMock: EventPackageOptionalAddOn[] = [
     category: "DESSERT",
   },
   {
-    id: "addon-011",
+    id: "evt-addon-011",
     name: '"Make Your Own" Station',
     description: "Cookie or cupcake decorating station with supplies.",
     price: 6,
@@ -10145,7 +10143,7 @@ export const eventPackageOptionalAddOnsMock: EventPackageOptionalAddOn[] = [
     category: "DESSERT",
   },
   {
-    id: "addon-012",
+    id: "evt-addon-012",
     name: "Simple Balloon Bouquet",
     description: "6 helium balloons, 3 colors, tied to the table.",
     price: 15,
@@ -10154,7 +10152,7 @@ export const eventPackageOptionalAddOnsMock: EventPackageOptionalAddOn[] = [
     isPopular: true,
   },
   {
-    id: "addon-024",
+    id: "evt-addon-024",
     name: "Themed Paperware",
     description:
       "Plates, napkins, cups, and utensils to match a specific theme (for example, Unicorns or Dinosaurs).",
@@ -10163,7 +10161,7 @@ export const eventPackageOptionalAddOnsMock: EventPackageOptionalAddOn[] = [
     category: "DECOR",
   },
   {
-    id: "addon-025",
+    id: "evt-addon-025",
     name: "Premium Backdrop",
     description: "Themed fabric or plastic backdrop for photos and cake table.",
     price: 50,
@@ -10171,7 +10169,7 @@ export const eventPackageOptionalAddOnsMock: EventPackageOptionalAddOn[] = [
     category: "DECOR",
   },
   {
-    id: "addon-013",
+    id: "evt-addon-013",
     name: "Standard Balloon Garland",
     description: "A small 6-foot, 3-color, air-filled balloon garland.",
     price: 120,
@@ -10179,7 +10177,7 @@ export const eventPackageOptionalAddOnsMock: EventPackageOptionalAddOn[] = [
     category: "DECOR",
   },
   {
-    id: "addon-014",
+    id: "evt-addon-014",
     name: "High Chair Banner",
     description: '"ONE" or themed banner for the birthday child high chair.',
     price: 15,
@@ -10187,7 +10185,7 @@ export const eventPackageOptionalAddOnsMock: EventPackageOptionalAddOn[] = [
     category: "DECOR",
   },
   {
-    id: "addon-015",
+    id: "evt-addon-015",
     name: "Goodie Bags",
     description: "Pre-assembled bags with 3-4 simple toys or treats.",
     price: 5,
@@ -10195,7 +10193,7 @@ export const eventPackageOptionalAddOnsMock: EventPackageOptionalAddOn[] = [
     category: "ENTERTAINMENT",
   },
   {
-    id: "addon-016",
+    id: "evt-addon-016",
     name: "Themed Craft Activity",
     description:
       "A 30-minute staff-led craft (for example, coloring, simple painting, bracelet making).",
@@ -10204,7 +10202,7 @@ export const eventPackageOptionalAddOnsMock: EventPackageOptionalAddOn[] = [
     category: "ENTERTAINMENT",
   },
   {
-    id: "addon-017",
+    id: "evt-addon-017",
     name: "Face Painter / Balloon Artist",
     description: "1 hour professional service.",
     price: 150,
@@ -10213,7 +10211,7 @@ export const eventPackageOptionalAddOnsMock: EventPackageOptionalAddOn[] = [
     isPopular: true,
   },
   {
-    id: "addon-018",
+    id: "evt-addon-018",
     name: "Character Appearance",
     description:
       "A costumed character (Princess, Superhero, Mascot) for 30 minutes.",
@@ -10222,7 +10220,7 @@ export const eventPackageOptionalAddOnsMock: EventPackageOptionalAddOn[] = [
     category: "ENTERTAINMENT",
   },
   {
-    id: "addon-019",
+    id: "evt-addon-019",
     name: "Digital Invitations",
     description: "Professionally designed, customizable digital file.",
     price: 25,
@@ -10230,7 +10228,7 @@ export const eventPackageOptionalAddOnsMock: EventPackageOptionalAddOn[] = [
     category: "ENTERTAINMENT",
   },
   {
-    id: "addon-020",
+    id: "evt-addon-020",
     name: "Additional 30 Minutes",
     description: "Extends the private room time slot.",
     price: 75,
@@ -10238,7 +10236,7 @@ export const eventPackageOptionalAddOnsMock: EventPackageOptionalAddOn[] = [
     category: "LOGISTICS",
   },
   {
-    id: "addon-021",
+    id: "evt-addon-021",
     name: "Additional Party Host",
     description: "Extra host for larger or more involved parties.",
     price: 50,
@@ -10246,7 +10244,7 @@ export const eventPackageOptionalAddOnsMock: EventPackageOptionalAddOn[] = [
     category: "LOGISTICS",
   },
   {
-    id: "addon-022",
+    id: "evt-addon-022",
     name: "Extra Child Guest",
     description: "Per child over the package limit.",
     price: 15,
@@ -10254,7 +10252,7 @@ export const eventPackageOptionalAddOnsMock: EventPackageOptionalAddOn[] = [
     category: "LOGISTICS",
   },
   {
-    id: "addon-023",
+    id: "evt-addon-023",
     name: "Grip Socks",
     description:
       "Branded non-slip socks for children and adults (often safety required).",
@@ -10353,7 +10351,11 @@ const CAMP_DAILY_START_HOUR = 9;
 const CAMP_DAILY_START_MINUTE = 0;
 const CAMP_DAILY_DURATION_MINUTES = 360;
 
-function firstMondayOnOrAfter(year: number, monthIndex: number, minDay: number): number {
+function firstMondayOnOrAfter(
+  year: number,
+  monthIndex: number,
+  minDay: number,
+): number {
   let day = minDay;
   while (new Date(year, monthIndex, day).getDay() !== 1) {
     day += 1;
@@ -10941,11 +10943,15 @@ function buildSpecialPlayEventSlots(): SchedulingSlot[] {
     "svc-special-character-events": "Character meet-and-greet session",
     "svc-special-preschool-play-date": "Preschool play date — snack included",
     "svc-special-holiday-festivals": "Holiday festival activities",
-    "svc-special-fall-harvest-festival": "Fall Harvest Festival — costume parade",
-    "svc-special-winter-wonderland-ball": "Winter Wonderland Ball — LED dance floor",
-    "svc-special-spring-blooming-bash": "Spring Blooming Bash — seed planting take-home",
+    "svc-special-fall-harvest-festival":
+      "Fall Harvest Festival — costume parade",
+    "svc-special-winter-wonderland-ball":
+      "Winter Wonderland Ball — LED dance floor",
+    "svc-special-spring-blooming-bash":
+      "Spring Blooming Bash — seed planting take-home",
     "svc-special-slime-science-extravaganza": "Slime and science stations",
-    "svc-special-junior-carnival-circus": "Carnival booths and circus entertainment",
+    "svc-special-junior-carnival-circus":
+      "Carnival booths and circus entertainment",
     "svc-special-dance-party": "Dance floor and movement games",
     "svc-special-bubble-party": "Bubble stations and runway",
     "svc-special-balloon-drop-party": "Balloon drop countdown",
@@ -11017,7 +11023,8 @@ function buildCampPlaySlots(): SchedulingSlot[] {
       serviceId: "svc-camp-winter-break",
       month: 12,
       dateMode: "first-monday" as const,
-      notes: "Winter break camp — full month of December, weekdays 9:00 AM – 3:00 PM",
+      notes:
+        "Winter break camp — full month of December, weekdays 9:00 AM – 3:00 PM",
       monthLong: true,
     },
     {
@@ -11025,7 +11032,8 @@ function buildCampPlaySlots(): SchedulingSlot[] {
       serviceId: "svc-camp-spring-break",
       month: 3,
       dateMode: "first-monday" as const,
-      notes: "Spring break camp — full month of March, weekdays 9:00 AM – 3:00 PM",
+      notes:
+        "Spring break camp — full month of March, weekdays 9:00 AM – 3:00 PM",
       monthLong: true,
     },
     {
@@ -14162,6 +14170,7 @@ export const MOCK_MODIFIER_GROUPS: ModifierGroup[] = [
       },
     ],
   },
+  ...EVENT_MODULE_ADDON_MODIFIER_GROUPS,
 ];
 
 function mockCafeAttrOpt(id: string, label: string): AttributeOption {
@@ -14331,6 +14340,7 @@ export const MOCK_ATTRIBUTE_GROUPS: AttributeGroup[] = [
       mockCafeAttrOpt("ao-048", "Light Toast"),
     ],
   },
+  ...EVENT_MODULE_ADDON_ATTRIBUTE_GROUPS,
 ];
 
 /** Optional ingredient exclusions — pizzas & sandwiches. */
@@ -17456,6 +17466,7 @@ export const MOCK_CAFE_PRODUCTS: CafeProduct[] = [
     createdAt: cafeNowIso(),
     updatedAt: cafeNowIso(),
   },
+  ...EVENT_MODULE_ADDON_CAFE_PRODUCTS,
 ];
 
 export const MOCK_ROTATION_GROUPS: RotationGroup[] = [

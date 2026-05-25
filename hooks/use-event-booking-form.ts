@@ -1,11 +1,18 @@
 /** Party booking hook for event package selection, pricing, and submission. */
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
+import { eventPackageOptionalAddOnsMock } from '@/lib/mock-data'
 import { useScheduling } from '@/lib/scheduling-store'
+import {
+  buildEventBookingAddOnLines,
+  getPackageIncludedAddOnIds,
+  type EventAddOnConfigurationResult,
+} from '@/lib/event-booking-add-ons'
 import type {
   AvailableWindow,
+  CartModifierSelection,
   Coupon,
   EventOccasion,
   EventPackage,
@@ -31,6 +38,11 @@ interface UseEventBookingFormParams {
 interface OptionalAddOnSelection {
   unitPrice: number
   quantity: number
+  summary: string
+  selectedModifiers: CartModifierSelection[]
+  selectedByGroup: Record<string, string[]>
+  selectedAttributesByGroup: Record<string, string[]>
+  customerNote: string | null
 }
 
 function createBookingId(): string {
@@ -83,6 +95,28 @@ export function useEventBookingForm({
     [packages, selectedPackageId],
   )
 
+  const packageIncludedAddOnIds = useMemo(
+    () => getPackageIncludedAddOnIds(selectedPackage),
+    [selectedPackage],
+  )
+
+  useEffect(() => {
+    if (packageIncludedAddOnIds.size === 0) {
+      return
+    }
+    setOptionalAddOns((prev) => {
+      let changed = false
+      const next = { ...prev }
+      for (const addOnId of packageIncludedAddOnIds) {
+        if (next[addOnId]) {
+          delete next[addOnId]
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
+  }, [packageIncludedAddOnIds, selectedPackageId])
+
   const childIncludedCap = selectedPackage?.maxChildSeats ?? childrenCount
   const adultIncludedCap = selectedPackage?.maxAdultSeats ?? adultsCount
   const additionalChildPrice = selectedPackage?.additionalChildPrice ?? 0
@@ -127,7 +161,15 @@ export function useEventBookingForm({
         delete next[addOnId]
         return next
       }
-      next[addOnId] = { unitPrice: Math.max(0, price), quantity: 1 }
+      next[addOnId] = {
+        unitPrice: Math.max(0, price),
+        quantity: 1,
+        summary: addOnId,
+        selectedModifiers: [],
+        selectedByGroup: {},
+        selectedAttributesByGroup: {},
+        customerNote: null,
+      }
       return next
     })
   }
@@ -143,7 +185,38 @@ export function useEventBookingForm({
       next[addOnId] = {
         unitPrice: Math.max(0, unitPrice),
         quantity: safeQuantity,
+        summary: prev[addOnId]?.summary ?? addOnId,
+        selectedModifiers: prev[addOnId]?.selectedModifiers ?? [],
+        selectedByGroup: prev[addOnId]?.selectedByGroup ?? {},
+        selectedAttributesByGroup: prev[addOnId]?.selectedAttributesByGroup ?? {},
+        customerNote: prev[addOnId]?.customerNote ?? null,
       }
+      return next
+    })
+  }
+
+  function setOptionalAddOnFromConfiguration(
+    addOnId: string,
+    configuration: EventAddOnConfigurationResult,
+  ): void {
+    setOptionalAddOns((prev) => ({
+      ...prev,
+      [addOnId]: {
+        unitPrice: Math.max(0, configuration.unitPrice),
+        quantity: 1,
+        summary: configuration.summary,
+        selectedModifiers: [...configuration.selectedModifiers],
+        selectedByGroup: { ...configuration.selectedByGroup },
+        selectedAttributesByGroup: { ...configuration.selectedAttributesByGroup },
+        customerNote: configuration.customerNote,
+      },
+    }))
+  }
+
+  function clearOptionalAddOn(addOnId: string): void {
+    setOptionalAddOns((prev) => {
+      const next = { ...prev }
+      delete next[addOnId]
       return next
     })
   }
@@ -190,16 +263,10 @@ export function useEventBookingForm({
       notes: notes.trim().length > 0 ? notes.trim() : null,
       specialInstructions: null,
       source: 'ONLINE',
-      addOns: selectedPackage.addOns.map((addOn) => ({
-        id: `bo-${selectedPackage.id}-${addOn.addOnId}`,
-        name: addOn.addOnId,
-        quantity: addOn.included ? 1 : (optionalAddOns[addOn.addOnId]?.quantity ?? 1),
-        unitPrice: addOn.included ? 0 : (optionalAddOns[addOn.addOnId]?.unitPrice ?? 0),
-        totalPrice: addOn.included
-          ? 0
-          : (optionalAddOns[addOn.addOnId]?.unitPrice ?? 0) *
-            (optionalAddOns[addOn.addOnId]?.quantity ?? 1),
-      })),
+      addOns: buildEventBookingAddOnLines(selectedPackage, optionalAddOns, (addOnId) => {
+        const fromCatalog = eventPackageOptionalAddOnsMock.find((entry) => entry.id === addOnId)
+        return fromCatalog?.name ?? addOnId
+      }),
       createdAt: nowIso,
       couponCode: couponCode ?? null,
       actedByStaffId: null,
@@ -230,6 +297,8 @@ export function useEventBookingForm({
     optionalAddOns,
     toggleOptionalAddOn,
     setOptionalAddOnQuantity,
+    setOptionalAddOnFromConfiguration,
+    clearOptionalAddOn,
     notes,
     setNotes,
     couponCode,

@@ -5,8 +5,10 @@ import {
   buildCafeCatalogInventoryProducts,
   isCafeCatalogProductId,
 } from '@/lib/cafe-utils'
+import { EVENT_MODULE_ADDON_PRODUCTS } from '@/lib/mock-event-booking-add-ons'
 import {
-  addOns as seedAddOns,
+  addOns as legacySeedAddOns,
+  eventModuleBookingAddOns,
   MOCK_CAFE_PRODUCTS,
   productCategories as baseProductCategories,
   products as baseProducts,
@@ -69,7 +71,7 @@ function cloneInitialState(): InventoryState {
     productCategories,
     tenantId,
   )
-  const nonCafeProducts = [...baseProducts, ...shopProducts].filter(
+  const nonCafeProducts = [...baseProducts, ...shopProducts, ...EVENT_MODULE_ADDON_PRODUCTS].filter(
     (product) => !isCafeCatalogProductId(product.id),
   )
 
@@ -78,7 +80,7 @@ function cloneInitialState(): InventoryState {
       withFallbackImageUrl({ ...product }),
     ),
     productCategories,
-    bookingAddOns: seedAddOns.map((addOn) => ({
+    bookingAddOns: [...legacySeedAddOns, ...eventModuleBookingAddOns].map((addOn) => ({
       ...addOn,
       applicableServiceTypes: [...addOn.applicableServiceTypes],
     })),
@@ -97,7 +99,9 @@ const inventorySlice = createSlice({
         productCategories: (action.payload.productCategories ?? []).map((category) => ({
           ...category,
         })),
-        bookingAddOns: (action.payload.bookingAddOns ?? seedAddOns).map((addOn) => ({
+        bookingAddOns: (
+          action.payload.bookingAddOns ?? [...legacySeedAddOns, ...eventModuleBookingAddOns]
+        ).map((addOn) => ({
           ...addOn,
           applicableServiceTypes: [...addOn.applicableServiceTypes],
         })),

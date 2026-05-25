@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useMemo, useState, use } from 'react'
+import { Suspense, useEffect, useMemo, useState, use } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
@@ -24,6 +24,7 @@ import { EventBookingWidget } from '@/components/customer/event-booking-widget'
 import { CustomerNavbar } from '@/components/customer/navbar'
 import { CustomerFooter } from '@/components/customer/footer'
 import { PackageSelector } from '@/components/customer/package-selector'
+import { PrivatePlayPackageDetail } from '@/components/customer/private-play-package-detail'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -51,6 +52,7 @@ import {
 } from '@/lib/play-cart'
 import {
   isMeetingRoomCatalogPackage,
+  isEventsPagePreselectedPackage,
   isPrivateEventHubService,
   meetingRoomPackagesFromCatalog,
   partyRoomPackagesFromCatalog,
@@ -167,6 +169,11 @@ function EventDetailContent({
   const isPartyPackageFlow = service.serviceType === 'PARTY_PACKAGE'
   const isPrivateEventJourney =
     isPartyPackageFlow && searchParams.get('privateEvent') === '1'
+  const packageFromUrl =
+    searchParams.get('package') ?? searchParams.get('packageId')
+  const [privateSelectedPackageId, setPrivateSelectedPackageId] = useState<string | null>(
+    () => packageFromUrl,
+  )
 
   const activePackages = useMemo(() => {
     if (isPrivateEventJourney && isPrivateEventHubService(service)) {
@@ -174,6 +181,17 @@ function EventDetailContent({
     }
     return resolvePackagesForSchedulingService(service, packages)
   }, [isPrivateEventJourney, packages, service])
+
+  useEffect(() => {
+    if (!isPrivateEventJourney || packageFromUrl == null) {
+      return
+    }
+    const isValid = activePackages.some((entry) => entry.id === packageFromUrl)
+    if (isValid) {
+      setPrivateSelectedPackageId(packageFromUrl)
+    }
+  }, [activePackages, isPrivateEventJourney, packageFromUrl])
+
   const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null)
   const selectedPackage = useMemo(
     () => activePackages.find((p) => p.id === selectedPackageId) ?? null,
@@ -194,7 +212,6 @@ function EventDetailContent({
   const [registered, setRegistered] = useState(false)
   const [addedEventToCart, setAddedEventToCart] = useState(false)
   const [waitlistOpen, setWaitlistOpen] = useState(false)
-  const [privateSelectedPackageId, setPrivateSelectedPackageId] = useState<string | null>(null)
   const [privateFlowSummary, setPrivateFlowSummary] = useState<{
     occasion: EventOccasion
     birthdayName: string
@@ -300,6 +317,21 @@ function EventDetailContent({
   }, [isPrivateEventJourney, packages, service])
   const privateSelectedPackage =
     activePackages.find((entry) => entry.id === privateSelectedPackageId) ?? null
+  const isPreselectedPackageFlow = useMemo(
+    () =>
+      Boolean(
+        packageFromUrl &&
+          privateSelectedPackage &&
+          isEventsPagePreselectedPackage(privateSelectedPackage),
+      ),
+    [packageFromUrl, privateSelectedPackage],
+  )
+  const privateBookingPackages = useMemo(() => {
+    if (isPreselectedPackageFlow && privateSelectedPackage) {
+      return [privateSelectedPackage]
+    }
+    return activePackages
+  }, [activePackages, isPreselectedPackageFlow, privateSelectedPackage])
   const agendaItems = service.agenda ?? []
   const tags = service.tags ?? []
 
@@ -372,7 +404,9 @@ function EventDetailContent({
                 className="text-3xl sm:text-4xl font-black text-white text-balance"
                 style={{ fontFamily: 'var(--font-barlow)' }}
               >
-                {service.name}
+                {isPreselectedPackageFlow && privateSelectedPackage
+                  ? privateSelectedPackage.name
+                  : service.name}
               </h1>
             </div>
             <Button
@@ -430,14 +464,18 @@ function EventDetailContent({
             ))}
           </div>
 
-          <section>
-            <h2 className="text-xl font-bold mb-3">About this Event</h2>
-            <p className="text-muted-foreground leading-relaxed">
-              {service.description ?? '—'}
-            </p>
-          </section>
+          {!isPreselectedPackageFlow ? (
+            <>
+              <section>
+                <h2 className="text-xl font-bold mb-3">About this Event</h2>
+                <p className="text-muted-foreground leading-relaxed">
+                  {service.description ?? '—'}
+                </p>
+              </section>
 
-          <Separator />
+              <Separator />
+            </>
+          ) : null}
 
           <BookingAmenitiesSection
             serviceAmenities={service.amenities}
@@ -445,68 +483,96 @@ function EventDetailContent({
           />
 
           {isPrivateEventJourney ? (
-            <section className="rounded-xl border border-border bg-card p-4 sm:p-5">
-              <h2 className="text-xl font-bold mb-3">Choose your package</h2>
-              <div className="space-y-5">
-                {privateRoomPackages.length > 0 ? (
-                  <div className="space-y-2">
-                    <p className="text-sm font-semibold text-foreground">
-                      {isPrivatePlayService(service)
-                        ? privatePlayPackageSectionTitle(service.id)
-                        : 'Private room booking'}
+            <section className="space-y-5">
+              {isPreselectedPackageFlow && privateSelectedPackage ? (
+                <>
+                  <PrivatePlayPackageDetail
+                    package={privateSelectedPackage}
+                    defaultDurationMinutes={service.durationMinutes}
+                  />
+                  <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
+                    <p className="font-semibold text-foreground">Booking progress</p>
+                    <p className="mt-1 text-muted-foreground">
+                      Occasion: {privateFlowSummary?.occasion?.replace(/_/g, ' ') ?? 'Not set'}
                     </p>
-                    <PackageSelector
-                      packages={privateRoomPackages}
-                      selectedId={privateSelectedPackageId}
-                      onSelect={setPrivateSelectedPackageId}
-                      variant="full"
-                    />
-                  </div>
-                ) : null}
-                {wholeVenuePackages.length > 0 ? (
-                  <div className="space-y-2">
-                    <p className="text-sm font-semibold text-foreground">Whole venue</p>
-                    <PackageSelector
-                      packages={wholeVenuePackages}
-                      selectedId={privateSelectedPackageId}
-                      onSelect={setPrivateSelectedPackageId}
-                      variant="full"
-                    />
-                  </div>
-                ) : null}
-                {meetingRoomPackages.length > 0 ? (
-                  <div className="space-y-2">
-                    <p className="text-sm font-semibold text-foreground">
-                      Meeting room packages
+                    <p className="text-muted-foreground">
+                      Date & time: {privateFlowSummary?.date ?? 'Not set'}{' '}
+                      {privateFlowSummary?.timeRange ? `· ${privateFlowSummary.timeRange}` : ''}
                     </p>
-                    <PackageSelector
-                      packages={meetingRoomPackages}
-                      selectedId={privateSelectedPackageId}
-                      onSelect={setPrivateSelectedPackageId}
-                      variant="full"
-                    />
+                    <p className="text-muted-foreground">
+                      Guests: {privateFlowSummary?.children ?? 0} children ·{' '}
+                      {privateFlowSummary?.adults ?? 0} adults
+                    </p>
+                    <p className="text-muted-foreground">
+                      Add-ons: {privateFlowSummary?.selectedAddOnCount ?? 0} selected
+                    </p>
                   </div>
-                ) : null}
-                <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
-                  <p className="font-semibold text-foreground">
-                    Selected package: {privateSelectedPackage?.name ?? 'Not selected'}
-                  </p>
-                  <p className="mt-1 text-muted-foreground">
-                    Occasion: {privateFlowSummary?.occasion?.replace('_', ' ') ?? 'Not set'}
-                  </p>
-                  <p className="text-muted-foreground">
-                    Date & time: {privateFlowSummary?.date ?? 'Not set'}{' '}
-                    {privateFlowSummary?.timeRange ? `· ${privateFlowSummary.timeRange}` : ''}
-                  </p>
-                  <p className="text-muted-foreground">
-                    Guests: {privateFlowSummary?.children ?? 0} children ·{' '}
-                    {privateFlowSummary?.adults ?? 0} adults
-                  </p>
-                  <p className="text-muted-foreground">
-                    Add-ons: {privateFlowSummary?.selectedAddOnCount ?? 0} selected
-                  </p>
+                </>
+              ) : (
+                <div className="rounded-xl border border-border bg-card p-4 sm:p-5">
+                  <h2 className="mb-3 text-xl font-bold">Choose your package</h2>
+                  <div className="space-y-5">
+                    {privateRoomPackages.length > 0 ? (
+                      <div className="space-y-2">
+                        <p className="text-sm font-semibold text-foreground">
+                          {isPrivatePlayService(service)
+                            ? privatePlayPackageSectionTitle(service.id)
+                            : 'Private room booking'}
+                        </p>
+                        <PackageSelector
+                          packages={privateRoomPackages}
+                          selectedId={privateSelectedPackageId}
+                          onSelect={setPrivateSelectedPackageId}
+                          variant="full"
+                        />
+                      </div>
+                    ) : null}
+                    {wholeVenuePackages.length > 0 ? (
+                      <div className="space-y-2">
+                        <p className="text-sm font-semibold text-foreground">Whole venue</p>
+                        <PackageSelector
+                          packages={wholeVenuePackages}
+                          selectedId={privateSelectedPackageId}
+                          onSelect={setPrivateSelectedPackageId}
+                          variant="full"
+                        />
+                      </div>
+                    ) : null}
+                    {meetingRoomPackages.length > 0 ? (
+                      <div className="space-y-2">
+                        <p className="text-sm font-semibold text-foreground">
+                          Meeting room packages
+                        </p>
+                        <PackageSelector
+                          packages={meetingRoomPackages}
+                          selectedId={privateSelectedPackageId}
+                          onSelect={setPrivateSelectedPackageId}
+                          variant="full"
+                        />
+                      </div>
+                    ) : null}
+                    <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
+                      <p className="font-semibold text-foreground">
+                        Selected package: {privateSelectedPackage?.name ?? 'Not selected'}
+                      </p>
+                      <p className="mt-1 text-muted-foreground">
+                        Occasion: {privateFlowSummary?.occasion?.replace(/_/g, ' ') ?? 'Not set'}
+                      </p>
+                      <p className="text-muted-foreground">
+                        Date & time: {privateFlowSummary?.date ?? 'Not set'}{' '}
+                        {privateFlowSummary?.timeRange ? `· ${privateFlowSummary.timeRange}` : ''}
+                      </p>
+                      <p className="text-muted-foreground">
+                        Guests: {privateFlowSummary?.children ?? 0} children ·{' '}
+                        {privateFlowSummary?.adults ?? 0} adults
+                      </p>
+                      <p className="text-muted-foreground">
+                        Add-ons: {privateFlowSummary?.selectedAddOnCount ?? 0} selected
+                      </p>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              )}
             </section>
           ) : null}
 
@@ -580,7 +646,7 @@ function EventDetailContent({
                       ? PRIVATE_PLAY_MEETING_ROOMS_SERVICE_ID
                       : service.id
                   }
-                  bookingPackages={activePackages}
+                  bookingPackages={privateBookingPackages}
                   embedded
                   showOccasionStep
                   showPackageStep={false}

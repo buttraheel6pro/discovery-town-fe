@@ -1,6 +1,7 @@
 /** Event booking widget for six-step party booking and checkout flow. */
 'use client'
 
+import Image from 'next/image'
 import { useMemo, useState } from 'react'
 import { useEffect } from 'react'
 import type { ComponentType } from 'react'
@@ -8,8 +9,10 @@ import Link from 'next/link'
 import { Building2, Cake, CalendarDays, Church, PartyPopper, School, Ticket, Users } from 'lucide-react'
 
 import { BookingFlowCouponSection } from '@/components/customer/booking-flow-coupon-section'
+import { EventAddOnConfiguratorModal } from '@/components/customer/event-add-on-configurator-modal'
 import { OpenBookingAvailabilitySection } from '@/components/customer/open-booking-availability-section'
 import { PackageSelector } from '@/components/customer/package-selector'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -25,11 +28,20 @@ import { useEventBookingForm } from '@/hooks/use-event-booking-form'
 import { useToast } from '@/hooks/use-toast'
 import { useClients } from '@/lib/client-store'
 import { useInventory } from '@/lib/inventory-store'
+import {
+  buildEventOptionalAddOnList,
+  getPackageIncludedAddOnIds,
+  resolveEventAddOnCafeProduct,
+  resolveEventAddOnImageUrl,
+  type EventOptionalAddOnListItem,
+} from '@/lib/event-booking-add-ons'
 import { resolvePackagesForSchedulingService } from '@/lib/event-package-catalog'
 import {
   eventPackageOptionalAddOnsMock,
   generateOpenAvailabilityForDuration,
-  sampleEventAddOns,
+  MOCK_ATTRIBUTE_GROUPS,
+  MOCK_CAFE_PRODUCTS,
+  MOCK_MODIFIER_GROUPS,
 } from '@/lib/mock-data'
 import { windowsFromSchedulingSlots } from '@/lib/scheduling-slot-availability'
 import { useScheduling } from '@/lib/scheduling-store'
@@ -136,13 +148,14 @@ export function EventBookingWidget({
   onProgressChange,
 }: Readonly<EventBookingWidgetProps>) {
   const { toast } = useToast()
-  const { addCustomCartItem } = useInventory()
+  const { addCustomCartItem, bookingAddOns, products: inventoryProducts } = useInventory()
   const { contacts, subscriptions } = useClients()
   const { slots, services, packages: storePackages } = useScheduling()
   const [step, setStep] = useState<Step>(showOccasionStep ? 1 : showPackageStep ? 2 : 3)
   const [bookingComplete, setBookingComplete] = useState(false)
   const [weekOffset, setWeekOffset] = useState(0)
   const [customizeModalOpen, setCustomizeModalOpen] = useState(false)
+  const [configuratorAddOnId, setConfiguratorAddOnId] = useState<string | null>(null)
 
   const bookingService = useMemo(
     () => services.find((entry) => entry.id === serviceId) ?? null,
@@ -227,25 +240,52 @@ export function EventBookingWidget({
     }
   }, [form.selectedDate, form.setSelectedDate])
 
+  const includedAddOnIds = useMemo(
+    () => getPackageIncludedAddOnIds(form.selectedPackage),
+    [form.selectedPackage],
+  )
+
   const includedAddOns = useMemo(() => {
-    if (!form.selectedPackage) return []
+    if (!form.selectedPackage) {
+      return [] as Array<{ id: string; name: string }>
+    }
     return form.selectedPackage.addOns
       .filter((entry) => entry.included)
-      .map((entry) => sampleEventAddOns.find((addOn) => addOn.id === entry.addOnId))
-      .filter((entry) => entry !== undefined)
-  }, [form.selectedPackage])
+      .map((entry) => {
+        const fromAdmin = bookingAddOns.find((addOn) => addOn.id === entry.addOnId)
+        const fromCatalog = eventPackageOptionalAddOnsMock.find(
+          (addOn) => addOn.id === entry.addOnId,
+        )
+        return {
+          id: entry.addOnId,
+          name: fromAdmin?.name ?? fromCatalog?.name ?? entry.addOnId,
+        }
+      })
+  }, [bookingAddOns, form.selectedPackage])
 
-  const optionalAddOns = useMemo(() => {
-    const includedIds = new Set(
-      (form.selectedPackage?.addOns ?? [])
-        .filter((entry) => entry.included)
-        .map((entry) => entry.addOnId),
-    )
+  const optionalAddOns = useMemo(
+    () =>
+      buildEventOptionalAddOnList(
+        bookingAddOns,
+        eventPackageOptionalAddOnsMock,
+        includedAddOnIds,
+      ),
+    [bookingAddOns, includedAddOnIds],
+  )
 
-    // Always show the full catalog in Step 5 modal, while still preventing duplicate
-    // selection for items already included in the selected package.
-    return eventPackageOptionalAddOnsMock.filter((entry) => !includedIds.has(entry.id))
-  }, [form.selectedPackage])
+  const configuratorItem = useMemo((): EventOptionalAddOnListItem | null => {
+    if (!configuratorAddOnId) {
+      return null
+    }
+    return optionalAddOns.find((entry) => entry.id === configuratorAddOnId) ?? null
+  }, [configuratorAddOnId, optionalAddOns])
+
+  const configuratorCafeProduct = useMemo(() => {
+    if (!configuratorItem) {
+      return null
+    }
+    return resolveEventAddOnCafeProduct(configuratorItem.bookingAddOn, MOCK_CAFE_PRODUCTS)
+  }, [configuratorItem])
   const pricingResetKey = useMemo(
     () =>
       [
@@ -329,8 +369,11 @@ export function EventBookingWidget({
 
   const selectedOptionalItems = useMemo(
     () =>
-      eventPackageOptionalAddOnsMock
+      optionalAddOns
         .map((addOn) => {
+          if (includedAddOnIds.has(addOn.id)) {
+            return null
+          }
           const selection = form.optionalAddOns[addOn.id]
           const quantity = selection?.quantity ?? 0
           if (quantity <= 0) {
@@ -340,11 +383,29 @@ export function EventBookingWidget({
             ...addOn,
             quantity,
             lineTotal: selection.unitPrice * quantity,
+            summary: selection.summary,
           }
         })
         .filter((entry) => entry !== null),
-    [form.optionalAddOns],
+    [form.optionalAddOns, includedAddOnIds, optionalAddOns],
   )
+
+  const configuratorExisting = useMemo(() => {
+    if (!configuratorAddOnId) {
+      return null
+    }
+    const selection = form.optionalAddOns[configuratorAddOnId]
+    if (!selection || selection.quantity <= 0) {
+      return null
+    }
+    return {
+      unitPrice: selection.unitPrice,
+      summary: selection.summary,
+      selectedByGroup: selection.selectedByGroup,
+      selectedAttributesByGroup: selection.selectedAttributesByGroup,
+      customerNote: selection.customerNote ?? '',
+    }
+  }, [configuratorAddOnId, form.optionalAddOns])
 
   useEffect(() => {
     if (step === 5 && !bookingComplete) {
@@ -584,7 +645,8 @@ export function EventBookingWidget({
           <div className="space-y-4 lg:col-span-2">
             <h3 className="text-lg font-semibold text-foreground">Customize your party</h3>
             <p className="text-sm text-muted-foreground">
-              Add optional upgrades by section. Selected quantities appear in your booking summary.
+              Add optional upgrades from your event add-on catalog. Each selection is configured
+              once with a Done button before continuing.
             </p>
             <div className="rounded-md border border-border bg-muted/20 p-3 text-sm">
               <p className="font-semibold text-foreground">Selected add-ons</p>
@@ -595,8 +657,8 @@ export function EventBookingWidget({
                       key={item.id}
                       className="flex items-center justify-between gap-2 text-muted-foreground"
                     >
-                      <span className="line-clamp-1">
-                        {item.name} x{item.quantity}
+                      <span className="line-clamp-2">
+                        {item.summary}
                       </span>
                       <span className="font-medium text-foreground">
                         {formatPrice(item.lineTotal)}
@@ -610,18 +672,18 @@ export function EventBookingWidget({
                 </p>
               )}
             </div>
-            <div className="space-y-2 rounded-md border border-emerald-200 bg-emerald-50 p-3">
-              <p className="text-sm font-semibold text-emerald-700">Included</p>
-              {includedAddOns.length > 0 ? (
-                includedAddOns.map((entry) => (
+            {includedAddOns.length > 0 ? (
+              <div className="space-y-2 rounded-md border border-emerald-200 bg-emerald-50 p-3">
+                <p className="text-sm font-semibold text-emerald-700">
+                  Included with package (no extra charge)
+                </p>
+                {includedAddOns.map((entry) => (
                   <p key={entry.id} className="text-sm text-emerald-700">
                     {entry.name}
                   </p>
-                ))
-              ) : (
-                <p className="text-sm text-emerald-700">No included add-ons in this package.</p>
-              )}
-            </div>
+                ))}
+              </div>
+            ) : null}
             <Button type="button" variant="outline" onClick={() => setCustomizeModalOpen(true)}>
               Choose add-ons
             </Button>
@@ -641,8 +703,8 @@ export function EventBookingWidget({
               <DialogHeader>
                 <DialogTitle>Customize your party</DialogTitle>
                 <DialogDescription>
-                  Browse add-ons by section and set quantities. Your selections update the summary
-                  and total instantly.
+                  Choose event add-ons from your admin catalog. Tap Select add-on to configure
+                  options, then Done to save each selection.
                 </DialogDescription>
               </DialogHeader>
 
@@ -663,56 +725,66 @@ export function EventBookingWidget({
                       </div>
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                         {sectionItems.map((addOn) => {
-                          const quantity = form.optionalAddOns[addOn.id]?.quantity ?? 0
+                          const selection = form.optionalAddOns[addOn.id]
+                          const isSelected = (selection?.quantity ?? 0) > 0
+                          const cardImageUrl = resolveEventAddOnImageUrl(
+                            addOn.bookingAddOn,
+                            MOCK_CAFE_PRODUCTS,
+                            inventoryProducts,
+                          )
                           return (
                             <article
                               key={addOn.id}
-                              className="rounded-xl border border-border bg-card p-4"
+                              className="flex h-full flex-col overflow-hidden rounded-xl border border-border bg-card"
                             >
+                              <div className="relative h-32 w-full bg-muted">
+                                <Image
+                                  src={cardImageUrl}
+                                  alt=""
+                                  fill
+                                  className="object-cover"
+                                  sizes="(max-width: 640px) 100vw, 280px"
+                                />
+                              </div>
+                              <div className="flex flex-1 flex-col p-4">
                               <div className="space-y-2">
-                                <p className="text-sm font-semibold text-foreground">{addOn.name}</p>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="text-sm font-semibold text-foreground">
+                                    {addOn.name}
+                                  </p>
+                                  {addOn.isPopular ? (
+                                    <Badge variant="secondary" className="text-[10px]">
+                                      Popular
+                                    </Badge>
+                                  ) : null}
+                                  {isSelected ? (
+                                    <Badge className="text-[10px]">Selected</Badge>
+                                  ) : null}
+                                </div>
                                 <p className="text-xs text-muted-foreground">{addOn.description}</p>
-                                <p className="text-xs font-medium text-foreground">{addOn.pricingLabel}</p>
+                                <p className="text-xs font-medium text-foreground">
+                                  {addOn.pricingLabel}
+                                </p>
                               </div>
-                              <div className="mt-4 flex items-center justify-between gap-2">
+                              <div className="mt-4 flex flex-1 flex-col justify-end gap-2">
                                 <Button
                                   type="button"
-                                  variant="outline"
-                                  size="icon"
-                                  className="h-8 w-8"
-                                  onClick={() =>
-                                    form.setOptionalAddOnQuantity(addOn.id, addOn.price, quantity - 1)
-                                  }
-                                  disabled={quantity <= 0}
-                                  aria-label={`Decrease ${addOn.name}`}
+                                  variant={isSelected ? 'outline' : 'default'}
+                                  className="w-full"
+                                  onClick={() => setConfiguratorAddOnId(addOn.id)}
                                 >
-                                  -
+                                  {isSelected ? 'Edit selection' : 'Select add-on'}
                                 </Button>
-                                <span className="w-10 text-center text-sm font-semibold text-foreground">
-                                  {quantity}
-                                </span>
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="icon"
-                                  className="h-8 w-8"
-                                  onClick={() =>
-                                    form.setOptionalAddOnQuantity(addOn.id, addOn.price, quantity + 1)
-                                  }
-                                  aria-label={`Increase ${addOn.name}`}
-                                >
-                                  +
-                                </Button>
+                                {isSelected ? (
+                                  <p className="text-xs text-muted-foreground">
+                                    {formatPrice(selection?.unitPrice ?? addOn.price)}
+                                  </p>
+                                ) : (
+                                  <p className="text-xs text-muted-foreground">
+                                    From {formatPrice(addOn.price)}
+                                  </p>
+                                )}
                               </div>
-                              <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
-                                <span>Unit: {formatPrice(addOn.price)}</span>
-                                <span>
-                                  Total:{' '}
-                                  {formatPrice(
-                                    (form.optionalAddOns[addOn.id]?.unitPrice ?? addOn.price) *
-                                      quantity,
-                                  )}
-                                </span>
                               </div>
                             </article>
                           )
@@ -724,12 +796,36 @@ export function EventBookingWidget({
               </div>
 
               <div className="flex items-center justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => setCustomizeModalOpen(false)}>
+                <Button type="button" onClick={() => setCustomizeModalOpen(false)}>
                   Done
                 </Button>
               </div>
             </DialogContent>
           </Dialog>
+
+          <EventAddOnConfiguratorModal
+            open={configuratorAddOnId !== null}
+            onOpenChange={(open) => {
+              if (!open) {
+                setConfiguratorAddOnId(null)
+              }
+            }}
+            item={configuratorItem}
+            cafeProduct={configuratorCafeProduct}
+            cafeProducts={MOCK_CAFE_PRODUCTS}
+            modifierGroups={MOCK_MODIFIER_GROUPS}
+            attributeGroups={MOCK_ATTRIBUTE_GROUPS}
+            inventoryProducts={inventoryProducts}
+            existing={configuratorExisting}
+            onDone={(addOnId, configuration) => {
+              form.setOptionalAddOnFromConfiguration(addOnId, configuration)
+              setConfiguratorAddOnId(null)
+            }}
+            onRemove={(addOnId) => {
+              form.clearOptionalAddOn(addOnId)
+              setConfiguratorAddOnId(null)
+            }}
+          />
         </div>
       ) : null}
 
