@@ -2,6 +2,9 @@
 // Family activity centre: play areas, swimming, classes, parties
 
 import {
+  expandOperatingHoursToWindows,
+} from "@/lib/open-booking-slot-windows";
+import {
   EVENT_MODULE_ADDON_ATTRIBUTE_GROUPS,
   EVENT_MODULE_ADDON_CAFE_PRODUCTS,
   EVENT_MODULE_ADDON_MODIFIER_GROUPS,
@@ -6817,7 +6820,7 @@ export const schedulingCategories: SchedulingCategory[] = [
     name: "Parties & Events",
     icon: "PartyPopper",
     displayOrder: 5,
-    isActive: true,
+    isActive: false,
     requiresAttendee: false,
     membersOnly: true,
     depositPercent: 30,
@@ -6900,7 +6903,7 @@ export const schedulingCategories: SchedulingCategory[] = [
     id: "cat-camps-play",
     name: "Camps",
     icon: "TentTree",
-    displayOrder: 10,
+    displayOrder: 11,
     isActive: true,
     requiresAttendee: true,
     membersOnly: false,
@@ -6917,6 +6920,33 @@ export const schedulingCategories: SchedulingCategory[] = [
       {
         id: "cao-camp-lunch",
         categoryId: "cat-camps-play",
+        addOnId: "ao-e-1",
+        isOptional: true,
+        isFree: false,
+      },
+    ],
+  },
+  {
+    id: "cat-summer-camp-play",
+    name: "Summer Camp",
+    icon: "Sun",
+    displayOrder: 10,
+    isActive: true,
+    requiresAttendee: true,
+    membersOnly: false,
+    specialInstructionsEnabled: true,
+    waitlistEnabled: true,
+    linkedAddOns: [
+      {
+        id: "cao-summer-camp-juice-free",
+        categoryId: "cat-summer-camp-play",
+        addOnId: "ao-ps-juice",
+        isOptional: true,
+        isFree: true,
+      },
+      {
+        id: "cao-summer-camp-lunch",
+        categoryId: "cat-summer-camp-play",
         addOnId: "ao-e-1",
         isOptional: true,
         isFree: false,
@@ -6947,7 +6977,7 @@ export const schedulingCategories: SchedulingCategory[] = [
     id: "cat-parents-night",
     name: "Parents Night Out",
     icon: "MoonStar",
-    displayOrder: 11,
+    displayOrder: 12,
     isActive: true,
     requiresAttendee: true,
     membersOnly: false,
@@ -6958,7 +6988,7 @@ export const schedulingCategories: SchedulingCategory[] = [
     id: "cat-field-trips",
     name: "Field Trips",
     icon: "Bus",
-    displayOrder: 12,
+    displayOrder: 13,
     isActive: true,
     requiresAttendee: true,
     membersOnly: false,
@@ -6978,7 +7008,29 @@ export const schedulingCategories: SchedulingCategory[] = [
     id: "cat-we-bring-play",
     name: "We Bring Play To You",
     icon: "Truck",
-    displayOrder: 13,
+    displayOrder: 14,
+    isActive: true,
+    requiresAttendee: false,
+    membersOnly: false,
+    specialInstructionsEnabled: true,
+    waitlistEnabled: true,
+  },
+  {
+    id: "cat-event-private-party-room-open-play",
+    name: "Private Party Room & Open Play",
+    icon: "PartyPopper",
+    displayOrder: 50,
+    isActive: true,
+    requiresAttendee: false,
+    membersOnly: false,
+    specialInstructionsEnabled: true,
+    waitlistEnabled: true,
+  },
+  {
+    id: "cat-event-whole-place-private-party-open-play",
+    name: "The Whole Place Private Party & Open Play",
+    icon: "Building2",
+    displayOrder: 51,
     isActive: true,
     requiresAttendee: false,
     membersOnly: false,
@@ -7637,6 +7689,334 @@ const coreSchedulingServices: SchedulingService[] = [
   },
 ];
 
+/** Play / Summer Camp 2026 — one listing card per themed week (per-event booking). */
+export const SUMMER_CAMP_WEEK_SERVICE_IDS = [
+  "svc-summer-camp-week-1",
+  "svc-summer-camp-week-2",
+  "svc-summer-camp-week-3",
+  "svc-summer-camp-week-4",
+  "svc-summer-camp-week-5",
+] as const;
+
+const summerCampPlayCategory = schedulingCategories.find(
+  (category) => category.id === "cat-summer-camp-play",
+)!;
+
+const summerCampPlayWeekServices: SchedulingService[] = [
+  {
+    id: "svc-summer-camp-week-1",
+    locationId: "loc-1",
+    categoryId: "cat-summer-camp-play",
+    category: summerCampPlayCategory,
+    serviceType: "CAMP",
+    bookingMode: "SCHEDULED",
+    eventBookingScheduleMode: "PER_EVENT",
+    name: "Week 1: June 1st–5th · Little Homesteaders 🌾",
+    description:
+      "Saddle up for a simpler kind of summer! At Little Homesteaders, we're heading back to the frontier where days are slower, play is imaginative, and hard work feels like fun. Campers will learn old-fashioned skills like churning butter, making handmade crafts, and caring for real live farm animals.",
+    durationMinutes: 360,
+    capacity: 40,
+    basePrice: 295,
+    subscriptionPrice: null,
+    requiresWaiver: true,
+    ageMin: 5,
+    ageMax: 12,
+    isActive: true,
+    minDurationMinutes: null,
+    maxDurationMinutes: null,
+    slotIncrementMinutes: null,
+    maxConcurrent: null,
+    minAdvanceHours: 24,
+    maxAdvanceHours: 2160,
+    pricingModel: "flat",
+    imageUrl:
+      "https://images.unsplash.com/photo-1724057877556-47385cd1f862?w=1200&q=80",
+    tags: ["summer-camp", "week-1", "homestead"],
+    sport: "CAMP",
+    eventStatus: "PUBLISHED",
+    location: "Discovery Town - Main Venue",
+    organizer: "James Wilson",
+    addOns: sampleClassAddOns,
+  },
+  {
+    id: "svc-summer-camp-week-2",
+    locationId: "loc-1",
+    categoryId: "cat-summer-camp-play",
+    category: summerCampPlayCategory,
+    serviceType: "CAMP",
+    bookingMode: "SCHEDULED",
+    eventBookingScheduleMode: "PER_EVENT",
+    name: "Week 2: June 15th–19th · Hurst, We Have a Problem 🚀",
+    description:
+      "Our little astronauts are blasting off for a week of out-of-this-world fun! Campers will launch rockets, dig for moon rocks, and solve \"space problems\" through hands-on STEM play.",
+    durationMinutes: 360,
+    capacity: 40,
+    basePrice: 295,
+    subscriptionPrice: null,
+    requiresWaiver: true,
+    ageMin: 5,
+    ageMax: 12,
+    isActive: true,
+    minDurationMinutes: null,
+    maxDurationMinutes: null,
+    slotIncrementMinutes: null,
+    maxConcurrent: null,
+    minAdvanceHours: 24,
+    maxAdvanceHours: 2160,
+    pricingModel: "flat",
+    imageUrl:
+      "https://images.unsplash.com/photo-1645536908932-652fbd998029?w=1200&q=80",
+    tags: ["summer-camp", "week-2", "space"],
+    sport: "CAMP",
+    eventStatus: "PUBLISHED",
+    location: "Discovery Town - Main Venue",
+    organizer: "James Wilson",
+    addOns: sampleClassAddOns,
+  },
+  {
+    id: "svc-summer-camp-week-3",
+    locationId: "loc-1",
+    categoryId: "cat-summer-camp-play",
+    category: summerCampPlayCategory,
+    serviceType: "CAMP",
+    bookingMode: "SCHEDULED",
+    eventBookingScheduleMode: "PER_EVENT",
+    name: "Week 3: June 29th–July 3rd · Millennial Made Kids 🥑",
+    description:
+      "Millennial Made Kids is a playful ode to millennial parents everywhere. Our days will be filled with charcuterie board making, planting succulents (and keeping them alive), goat yoga, and yes, even time for a little self-care! This camp is fun, fresh, and a little nostalgic. It's modern childhood done the Project Play way.",
+    durationMinutes: 360,
+    capacity: 40,
+    basePrice: 295,
+    subscriptionPrice: null,
+    requiresWaiver: true,
+    ageMin: 5,
+    ageMax: 12,
+    isActive: true,
+    minDurationMinutes: null,
+    maxDurationMinutes: null,
+    slotIncrementMinutes: null,
+    maxConcurrent: null,
+    minAdvanceHours: 24,
+    maxAdvanceHours: 2160,
+    pricingModel: "flat",
+    imageUrl:
+      "https://images.unsplash.com/photo-1516627145497-ae6968895b74?w=1200&q=80",
+    tags: ["summer-camp", "week-3", "millennial"],
+    sport: "CAMP",
+    eventStatus: "PUBLISHED",
+    location: "Discovery Town - Main Venue",
+    organizer: "James Wilson",
+    addOns: sampleClassAddOns,
+  },
+  {
+    id: "svc-summer-camp-week-4",
+    locationId: "loc-1",
+    categoryId: "cat-summer-camp-play",
+    category: summerCampPlayCategory,
+    serviceType: "CAMP",
+    bookingMode: "SCHEDULED",
+    eventBookingScheduleMode: "PER_EVENT",
+    name: "Week 4: July 13th–17th · Playchella 🎨",
+    description:
+      "This week we're turning up the music with a week-long celebration filled with art, music, movement, and all the messy play. We'll wrap up our festival week with a fun, low-pressure talent show where every child shines!",
+    durationMinutes: 360,
+    capacity: 40,
+    basePrice: 295,
+    subscriptionPrice: null,
+    requiresWaiver: true,
+    ageMin: 5,
+    ageMax: 12,
+    isActive: true,
+    minDurationMinutes: null,
+    maxDurationMinutes: null,
+    slotIncrementMinutes: null,
+    maxConcurrent: null,
+    minAdvanceHours: 24,
+    maxAdvanceHours: 2160,
+    pricingModel: "flat",
+    imageUrl:
+      "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=1200&q=80",
+    tags: ["summer-camp", "week-4", "festival"],
+    sport: "CAMP",
+    eventStatus: "PUBLISHED",
+    location: "Discovery Town - Main Venue",
+    organizer: "James Wilson",
+    addOns: sampleClassAddOns,
+  },
+  {
+    id: "svc-summer-camp-week-5",
+    locationId: "loc-1",
+    categoryId: "cat-summer-camp-play",
+    category: summerCampPlayCategory,
+    serviceType: "CAMP",
+    bookingMode: "SCHEDULED",
+    eventBookingScheduleMode: "PER_EVENT",
+    name: "Week 5: July 27th–31st · The Popular Lab 🧪",
+    description:
+      "Step into a world where science feels a little like magic and brains, heart, and courage come out to play! From bubbly potions to gravity-defying physics challenges, children discover that being curious, courageous, and a little different is what makes a great scientist. It's part lab, part imagination, and a whole lot of wicked fun.",
+    durationMinutes: 360,
+    capacity: 40,
+    basePrice: 295,
+    subscriptionPrice: null,
+    requiresWaiver: true,
+    ageMin: 5,
+    ageMax: 12,
+    isActive: true,
+    minDurationMinutes: null,
+    maxDurationMinutes: null,
+    slotIncrementMinutes: null,
+    maxConcurrent: null,
+    minAdvanceHours: 24,
+    maxAdvanceHours: 2160,
+    pricingModel: "flat",
+    imageUrl:
+      "https://images.unsplash.com/photo-1532094349884-543bc11b234d?w=1200&q=80",
+    tags: ["summer-camp", "week-5", "science"],
+    sport: "CAMP",
+    eventStatus: "PUBLISHED",
+    location: "Discovery Town - Main Venue",
+    organizer: "James Wilson",
+    addOns: sampleClassAddOns,
+  },
+];
+
+/** Play / Parents Night Out — scheduled Saturdays 4:00–7:00 PM, per-day booking. */
+export const PARENTS_NIGHT_OUT_SERVICE_ID = "svc-parents-night-out" as const;
+
+/** Play / Field Trips — package service shell (admin: Package service). */
+export const FIELD_TRIP_PRESCHOOL_SCHOOL_SERVICE_ID =
+  "svc-field-trip-preschool-school" as const;
+
+const fieldTripPreschoolSchoolPackageService: SchedulingService = {
+  id: FIELD_TRIP_PRESCHOOL_SCHOOL_SERVICE_ID,
+  locationId: "loc-1",
+  categoryId: "cat-field-trips",
+  category: schedulingCategories.find(
+    (category) => category.id === "cat-field-trips",
+  )!,
+  serviceType: "PARTY_PACKAGE",
+  bookingMode: "SCHEDULED",
+  bookingOfferingKind: "SERVICE",
+  isPackageService: true,
+  name: "Preschool or School Field Trip",
+  description: "Structured field trip programme for preschools and schools.",
+  durationMinutes: 180,
+  capacity: 60,
+  basePrice: 12,
+  subscriptionPrice: null,
+  requiresWaiver: false,
+  ageMin: 3,
+  ageMax: 13,
+  isActive: true,
+  minDurationMinutes: null,
+  maxDurationMinutes: null,
+  slotIncrementMinutes: null,
+  maxConcurrent: null,
+  minAdvanceHours: 48,
+  maxAdvanceHours: 2160,
+  pricingModel: "per_person",
+  imageUrl:
+    "https://images.unsplash.com/photo-1577896851231-70ef18881754?w=1200&q=80",
+  tags: ["field-trip", "school"],
+  sport: "FAMILY_EVENT",
+  eventStatus: "PUBLISHED",
+  addOns: sampleFacilityAddOns,
+};
+
+/** Tiers linked to {@link FIELD_TRIP_PRESCHOOL_SCHOOL_SERVICE_ID}. */
+export const fieldTripPreschoolSchoolPackages: EventPackage[] = [
+  {
+    id: "pkg-field-trip-001",
+    serviceId: FIELD_TRIP_PRESCHOOL_SCHOOL_SERVICE_ID,
+    displayPages: ["play"],
+    schedulingCategoryIds: ["cat-field-trips"],
+    tier: "SILVER",
+    name: "Small Group Visit",
+    basePrice: 12,
+    features: [
+      "3-hour structured programme (9:00 AM – 12:00 PM or 12:30 – 3:30 PM)",
+      "Up to 20 students",
+      "Up to 4 chaperones included",
+      "Guided play rotations and group activities",
+      "Dedicated field trip host",
+      "Ice water for all guests",
+      "$12 per additional student (up to capacity)",
+    ],
+    addOns: [],
+    isActive: true,
+    createdAt: "2025-01-01T00:00:00Z",
+    minChildSeats: 10,
+    maxChildSeats: 20,
+    minAdultSeats: 1,
+    maxAdultSeats: 4,
+    additionalChildPrice: 12,
+    duration: 180,
+    setupTime: 15,
+    staffCount: 1,
+    partyRooms: 0,
+  },
+  {
+    id: "pkg-field-trip-002",
+    serviceId: FIELD_TRIP_PRESCHOOL_SCHOOL_SERVICE_ID,
+    displayPages: ["play"],
+    schedulingCategoryIds: ["cat-field-trips"],
+    tier: "GOLD",
+    name: "Standard Field Trip",
+    basePrice: 16,
+    features: [
+      "3-hour structured programme with snack break",
+      "Up to 40 students",
+      "Up to 8 chaperones included",
+      "STEM and movement activity stations",
+      "Dedicated field trip host + activity leader",
+      "Group lunch area reservation",
+      "$16 per additional student (up to capacity)",
+    ],
+    addOns: [],
+    isActive: true,
+    createdAt: "2025-01-01T00:00:00Z",
+    minChildSeats: 15,
+    maxChildSeats: 40,
+    minAdultSeats: 2,
+    maxAdultSeats: 8,
+    additionalChildPrice: 16,
+    duration: 180,
+    setupTime: 20,
+    staffCount: 2,
+    partyRooms: 0,
+  },
+  {
+    id: "pkg-field-trip-003",
+    serviceId: FIELD_TRIP_PRESCHOOL_SCHOOL_SERVICE_ID,
+    displayPages: ["play"],
+    schedulingCategoryIds: ["cat-field-trips"],
+    tier: "PLATINUM",
+    name: "Full Campus Experience",
+    basePrice: 18,
+    features: [
+      "3-hour premium programme with snack and craft",
+      "Up to 60 students",
+      "Up to 12 chaperones included",
+      "Exclusive use of activity hall during visit",
+      "Two activity leaders + field trip coordinator",
+      "Optional boxed lunch add-on available at checkout",
+      "$18 per additional student (up to capacity)",
+    ],
+    addOns: [],
+    isActive: true,
+    createdAt: "2025-01-01T00:00:00Z",
+    minChildSeats: 20,
+    maxChildSeats: 60,
+    minAdultSeats: 2,
+    maxAdultSeats: 12,
+    additionalChildPrice: 18,
+    duration: 180,
+    setupTime: 25,
+    staffCount: 3,
+    partyRooms: 0,
+  },
+];
+
 const playSectionServices: SchedulingService[] = [
   {
     id: "svc-open-play-2-hour-pass",
@@ -7646,6 +8026,7 @@ const playSectionServices: SchedulingService[] = [
       (category) => category.id === "cat-open-play",
     )!,
     serviceType: "OPEN_PLAY",
+    bookingOfferingKind: "PASS",
     bookingMode: "OPEN",
     name: "2 Hours Pass",
     description:
@@ -7683,6 +8064,7 @@ const playSectionServices: SchedulingService[] = [
       (category) => category.id === "cat-open-play",
     )!,
     serviceType: "OPEN_PLAY",
+    bookingOfferingKind: "PASS",
     bookingMode: "OPEN",
     name: "Sibling Pass",
     description: "$10 per sibling, or free if under 6 months old.",
@@ -7717,6 +8099,7 @@ const playSectionServices: SchedulingService[] = [
       (category) => category.id === "cat-open-play",
     )!,
     serviceType: "OPEN_PLAY",
+    bookingOfferingKind: "PASS",
     bookingMode: "OPEN",
     name: "Multi-Pass",
     description: "5 general admission tickets for $50.",
@@ -7754,6 +8137,7 @@ const playSectionServices: SchedulingService[] = [
     )!,
     serviceType: "PARTY_PACKAGE",
     bookingMode: "SCHEDULED",
+    isPackageService: true,
     name: "Private Party Room + Open Play",
     description:
       "Choose this option to book a private room with open play access (See Events).",
@@ -7787,6 +8171,7 @@ const playSectionServices: SchedulingService[] = [
     )!,
     serviceType: "PARTY_PACKAGE",
     bookingMode: "SCHEDULED",
+    isPackageService: true,
     name: "Whole Place Private Party + Private Play",
     description:
       "Reserve the whole venue for a fully private party and play session (See Events).",
@@ -7812,6 +8197,77 @@ const playSectionServices: SchedulingService[] = [
     addOns: sampleEventAddOns,
   },
   {
+    id: "svc-event-party-room-packages",
+    locationId: "loc-1",
+    categoryId: "cat-event-private-party-room-open-play",
+    category: schedulingCategories.find(
+      (category) => category.id === "cat-event-private-party-room-open-play",
+    )!,
+    serviceType: "PARTY_PACKAGE",
+    bookingMode: "SCHEDULED",
+    isPackageService: true,
+    eventsOnly: true,
+    eventBookingScheduleMode: "PER_HOUR",
+    name: "Events — Party Room Package Booking",
+    description:
+      "Select a party room package tier for private room celebrations with open play for all guests.",
+    durationMinutes: 120,
+    capacity: 40,
+    basePrice: 300,
+    subscriptionPrice: null,
+    requiresWaiver: false,
+    ageMin: null,
+    ageMax: null,
+    isActive: true,
+    minDurationMinutes: null,
+    maxDurationMinutes: null,
+    slotIncrementMinutes: null,
+    maxConcurrent: null,
+    minAdvanceHours: 24,
+    maxAdvanceHours: 2160,
+    pricingModel: "flat",
+    imageUrl:
+      "https://images.unsplash.com/photo-1461896836934-ffe607ba8211?w=1200&q=80",
+    tags: ["events", "party-room", "package-only"],
+    sport: "FAMILY_EVENT",
+    addOns: sampleEventAddOns,
+  },
+  {
+    id: "svc-event-whole-venue-packages",
+    locationId: "loc-1",
+    categoryId: "cat-event-whole-place-private-party-open-play",
+    category: schedulingCategories.find(
+      (category) => category.id === "cat-event-whole-place-private-party-open-play",
+    )!,
+    serviceType: "PARTY_PACKAGE",
+    bookingMode: "SCHEDULED",
+    isPackageService: true,
+    eventsOnly: true,
+    name: "Events — Whole Venue Package Booking",
+    description:
+      "Select a whole-venue package tier for exclusive facility private parties and open play.",
+    durationMinutes: 180,
+    capacity: 100,
+    basePrice: 2095,
+    subscriptionPrice: null,
+    requiresWaiver: false,
+    ageMin: null,
+    ageMax: null,
+    isActive: true,
+    minDurationMinutes: null,
+    maxDurationMinutes: null,
+    slotIncrementMinutes: null,
+    maxConcurrent: null,
+    minAdvanceHours: 24,
+    maxAdvanceHours: 2160,
+    pricingModel: "flat",
+    imageUrl:
+      "https://images.unsplash.com/photo-1517649763962-0c623066013b?w=1200&q=80",
+    tags: ["events", "whole-venue", "package-only"],
+    sport: "FAMILY_EVENT",
+    addOns: sampleEventAddOns,
+  },
+  {
     id: "svc-private-play-meeting-rooms",
     locationId: "loc-1",
     categoryId: "cat-private-play",
@@ -7820,6 +8276,7 @@ const playSectionServices: SchedulingService[] = [
     )!,
     serviceType: "PARTY_PACKAGE",
     bookingMode: "SCHEDULED",
+    isPackageService: true,
     name: "Meeting Room Reservation",
     description:
       "Reserve a single meeting room or multiple rooms for conferences (See Events).",
@@ -8339,7 +8796,7 @@ const playSectionServices: SchedulingService[] = [
     requiresWaiver: false,
     ageMin: 5,
     ageMax: 12,
-    isActive: true,
+    isActive: false,
     minDurationMinutes: null,
     maxDurationMinutes: null,
     slotIncrementMinutes: null,
@@ -8456,15 +8913,17 @@ const playSectionServices: SchedulingService[] = [
     eventStatus: "PUBLISHED",
     addOns: sampleClassAddOns,
   },
+  ...summerCampPlayWeekServices,
   {
-    id: "svc-parents-night-out",
+    id: PARENTS_NIGHT_OUT_SERVICE_ID,
     locationId: "loc-1",
     categoryId: "cat-parents-night",
     category: schedulingCategories.find(
       (category) => category.id === "cat-parents-night",
     )!,
     serviceType: "OPEN_PLAY",
-    bookingMode: "OPEN",
+    bookingMode: "SCHEDULED",
+    eventBookingScheduleMode: "PER_DAY",
     name: "Parents Night Out",
     description:
       "Saturday 4:00-7:00 PM, ages 6 months to 7 years. $50 per child, $40 sibling add-on.",
@@ -8476,10 +8935,10 @@ const playSectionServices: SchedulingService[] = [
     ageMin: 0,
     ageMax: 7,
     isActive: true,
-    minDurationMinutes: 180,
-    maxDurationMinutes: 180,
-    slotIncrementMinutes: 30,
-    maxConcurrent: 30,
+    minDurationMinutes: null,
+    maxDurationMinutes: null,
+    slotIncrementMinutes: null,
+    maxConcurrent: null,
     minAdvanceHours: 12,
     maxAdvanceHours: 2160,
     pricingModel: "per_person",
@@ -8487,43 +8946,12 @@ const playSectionServices: SchedulingService[] = [
       "https://images.unsplash.com/photo-1541802645635-11f2286a7482?w=1200&q=80",
     tags: ["parents-night", "drop-off"],
     sport: "OPEN_PLAY",
+    eventStatus: "PUBLISHED",
     siblingPrice: "40",
     maxPassCount: 10,
     addOns: sampleFacilityAddOns,
   },
-  {
-    id: "svc-field-trip-preschool-school",
-    locationId: "loc-1",
-    categoryId: "cat-field-trips",
-    category: schedulingCategories.find(
-      (category) => category.id === "cat-field-trips",
-    )!,
-    serviceType: "OPEN_PLAY",
-    bookingMode: "SCHEDULED",
-    name: "Preschool or School Field Trip",
-    description: "Structured field trip programme for preschools and schools.",
-    durationMinutes: 180,
-    capacity: 60,
-    basePrice: 16,
-    subscriptionPrice: null,
-    requiresWaiver: false,
-    ageMin: 3,
-    ageMax: 13,
-    isActive: true,
-    minDurationMinutes: null,
-    maxDurationMinutes: null,
-    slotIncrementMinutes: null,
-    maxConcurrent: null,
-    minAdvanceHours: 48,
-    maxAdvanceHours: 2160,
-    pricingModel: "per_person",
-    imageUrl:
-      "https://images.unsplash.com/photo-1577896851231-70ef18881754?w=1200&q=80",
-    tags: ["field-trip", "school"],
-    sport: "OPEN_PLAY",
-    eventStatus: "PUBLISHED",
-    addOns: sampleFacilityAddOns,
-  },
+  fieldTripPreschoolSchoolPackageService,
   ...WE_BRING_PLAY_OFFERINGS.map((offering) => ({
     id: offering.serviceId,
     locationId: "loc-1",
@@ -9748,7 +10176,7 @@ export const schedulingServices: SchedulingService[] = [
 export const eventPackagesMock: EventPackage[] = [
   {
     id: "pkg-001",
-    serviceId: "svc-event-party-booking",
+    serviceId: "svc-private-play-room-open-play",
     displayPages: ["play"],
     schedulingCategoryIds: ["cat-private-play"],
     tier: "SILVER",
@@ -9780,7 +10208,7 @@ export const eventPackagesMock: EventPackage[] = [
   },
   {
     id: "pkg-002",
-    serviceId: "svc-event-party-booking",
+    serviceId: "svc-private-play-room-open-play",
     displayPages: ["play"],
     schedulingCategoryIds: ["cat-private-play"],
     tier: "GOLD",
@@ -9813,7 +10241,7 @@ export const eventPackagesMock: EventPackage[] = [
   },
   {
     id: "pkg-003",
-    serviceId: "svc-event-party-booking",
+    serviceId: "svc-private-play-room-open-play",
     displayPages: ["play"],
     schedulingCategoryIds: ["cat-private-play"],
     tier: "PLATINUM",
@@ -9846,8 +10274,107 @@ export const eventPackagesMock: EventPackage[] = [
     partyRooms: 1,
   },
   {
+    id: "pkg-evt-room-001",
+    serviceId: "svc-event-party-room-packages",
+    displayPages: ["events"],
+    schedulingCategoryIds: ["cat-event-private-party-room-open-play"],
+    tier: "SILVER",
+    name: "The Mini-Play",
+    basePrice: 300,
+    features: [
+      "2 Hours (Party Room)",
+      "Up to 8 Children",
+      "Up to 16 Adults",
+      "General Admission for all guests to the full play cafe",
+      "Party room setup/cleanup",
+      "Solid-color plates, napkins, cups, utensils, and tablecloths",
+      "Ice water pitchers for all guests",
+      "Basic table covers",
+      "$15 per additional child (up to capacity)",
+    ],
+    addOns: [],
+    isActive: true,
+    createdAt: "2025-01-01T00:00:00Z",
+    minChildSeats: 1,
+    maxChildSeats: 8,
+    minAdultSeats: 0,
+    maxAdultSeats: 16,
+    additionalChildPrice: 15,
+    duration: 120,
+    setupTime: 20,
+    staffCount: 0,
+    partyRooms: 1,
+  },
+  {
+    id: "pkg-evt-room-002",
+    serviceId: "svc-event-party-room-packages",
+    displayPages: ["events"],
+    schedulingCategoryIds: ["cat-event-private-party-room-open-play"],
+    tier: "GOLD",
+    name: "The Classic Fun",
+    basePrice: 425,
+    features: [
+      "2 Hours (Party Room)",
+      "Up to 12 Children",
+      "Up to 24 Adults",
+      "Dedicated Party Host (Light assistance with guests/cleanup)",
+      "Full General Play Admission for all guests",
+      "Basic solid-color paper products and utensils provided",
+      "Ice water pitchers + 1 Juice Box per Child",
+      "Unlimited Drip Coffee & Tea for adults",
+      'Basic table covers + Basic "Happy Birthday" Banner',
+      "$25 per additional child (up to capacity)",
+    ],
+    addOns: [],
+    isActive: true,
+    createdAt: "2025-01-01T00:00:00Z",
+    minChildSeats: 1,
+    maxChildSeats: 12,
+    minAdultSeats: 0,
+    maxAdultSeats: 24,
+    additionalChildPrice: 25,
+    duration: 120,
+    setupTime: 20,
+    staffCount: 1,
+    partyRooms: 1,
+  },
+  {
+    id: "pkg-evt-room-003",
+    serviceId: "svc-event-party-room-packages",
+    displayPages: ["events"],
+    schedulingCategoryIds: ["cat-event-private-party-room-open-play"],
+    tier: "PLATINUM",
+    name: "The VIP Play",
+    basePrice: 675,
+    features: [
+      "2 Hours (Party Room)",
+      "Up to 18 Children",
+      "Up to 36 Adults",
+      "Dedicated Party Host + Runner (Full service & guest flow management)",
+      "Full General Play Admission for all guests",
+      "Basic solid-color paper products and utensils provided",
+      "Ice water pitchers + 1 Juice Box per Child",
+      "Unlimited Drip Coffee & Tea for adults",
+      "2 Large 1-Topping Pizzas",
+      'Basic table covers + Basic "Happy Birthday" Banner + Themed Digital Invitations',
+      "$30 per additional child (up to capacity)",
+    ],
+    addOns: [],
+    isActive: true,
+    createdAt: "2025-01-01T00:00:00Z",
+    minChildSeats: 1,
+    maxChildSeats: 18,
+    minAdultSeats: 0,
+    maxAdultSeats: 36,
+    additionalChildPrice: 30,
+    duration: 120,
+    setupTime: 20,
+    staffCount: 2,
+    partyRooms: 1,
+  },
+  {
     id: "pkg-004",
-    serviceId: "svc-event-party-booking",
+    serviceId: "svc-private-play-full-venue",
     displayPages: ["play"],
     schedulingCategoryIds: ["cat-private-play"],
     tier: "GOLD",
@@ -9877,7 +10404,7 @@ export const eventPackagesMock: EventPackage[] = [
   },
   {
     id: "pkg-005",
-    serviceId: "svc-event-party-booking",
+    serviceId: "svc-private-play-full-venue",
     displayPages: ["play"],
     schedulingCategoryIds: ["cat-private-play"],
     tier: "PLATINUM",
@@ -9908,9 +10435,101 @@ export const eventPackagesMock: EventPackage[] = [
   },
   {
     id: "pkg-006",
-    serviceId: "svc-event-party-booking",
+    serviceId: "svc-private-play-full-venue",
     displayPages: ["play"],
     schedulingCategoryIds: ["cat-private-play"],
+    tier: "PLATINUM",
+    name: "The Ultimate Exclusive",
+    basePrice: 4500,
+    features: [
+      "Up to 100 Guests (Children + Adults)",
+      "Exclusive access to ENTIRE facility and 2 Party Rooms",
+      "3 Hours Party Time + 30 min Setup/Cleanup",
+      "5 Dedicated Staff Members (Manager, Hosts, Runner, Barista)",
+      "6 Large 1-Topping Pizzas. Unlimited Premium Drink Package. Adult Appetizer Tray",
+      "Premium Themed Paperware for all guests. Custom 10ft Balloon Garland. Premium Photo Backdrop",
+      "3 Dozen Custom Cupcakes. Premium Goodie Bags for up to 20 children",
+      "1 Hour Character Appearance (Princess/Superhero) OR Face Painter",
+      "$1,000 Non-refundable deposit",
+    ],
+    addOns: [],
+    isActive: true,
+    createdAt: "2025-01-01T00:00:00Z",
+    depositAmount: 1000,
+    depositNonRefundable: true,
+    isWholeVenue: true,
+    requiresApproval: true,
+    duration: 180,
+    setupTime: 30,
+    staffCount: 5,
+    partyRooms: 2,
+  },
+  {
+    id: "pkg-evt-venue-004",
+    serviceId: "svc-event-whole-venue-packages",
+    displayPages: ["events"],
+    schedulingCategoryIds: ["cat-event-whole-place-private-party-open-play"],
+    tier: "GOLD",
+    name: "The Midnight Play",
+    basePrice: 2095,
+    features: [
+      "Up to 50 Guests (Children + Adults)",
+      "Exclusive access to ENTIRE facility and 2 Party Rooms",
+      "2.5 Hours Party Time + 30 min Setup/Cleanup",
+      "3 Dedicated Staff Members (Hosts/Baristas)",
+      "Unlimited Ice Water. Unlimited Drip Coffee/Tea",
+      "Basic paper products and table covers for up to 50 guests",
+      "Background music",
+      "$500 Non-refundable deposit",
+    ],
+    addOns: [],
+    isActive: true,
+    createdAt: "2025-01-01T00:00:00Z",
+    depositAmount: 500,
+    depositNonRefundable: true,
+    isWholeVenue: true,
+    requiresApproval: true,
+    duration: 150,
+    setupTime: 30,
+    staffCount: 3,
+    partyRooms: 2,
+  },
+  {
+    id: "pkg-evt-venue-005",
+    serviceId: "svc-event-whole-venue-packages",
+    displayPages: ["events"],
+    schedulingCategoryIds: ["cat-event-whole-place-private-party-open-play"],
+    tier: "PLATINUM",
+    name: "The All-Star Takeover",
+    basePrice: 3100,
+    features: [
+      "Up to 75 Guests (Children + Adults)",
+      "Exclusive access to ENTIRE facility and 2 Party Rooms",
+      "2.5 Hours Party Time + 30 min Setup/Cleanup",
+      "4 Dedicated Staff Members (Hosts/Baristas/Runner)",
+      "4 Large 1-Topping Pizzas. Unlimited Premium Drink Package (Lemonade/Iced Tea)",
+      "Basic paper products and table covers for up to 75 guests. Standard Balloon Garland (6ft)",
+      "2 Dozen Custom Cupcakes",
+      "Background music + Basic staff-led group game",
+      "$750 Non-refundable deposit",
+    ],
+    addOns: [],
+    isActive: true,
+    createdAt: "2025-01-01T00:00:00Z",
+    depositAmount: 750,
+    depositNonRefundable: true,
+    isWholeVenue: true,
+    requiresApproval: true,
+    duration: 150,
+    setupTime: 30,
+    staffCount: 4,
+    partyRooms: 2,
+  },
+  {
+    id: "pkg-evt-venue-006",
+    serviceId: "svc-event-whole-venue-packages",
+    displayPages: ["events"],
+    schedulingCategoryIds: ["cat-event-whole-place-private-party-open-play"],
     tier: "PLATINUM",
     name: "The Ultimate Exclusive",
     basePrice: 4500,
@@ -10032,6 +10651,7 @@ export const eventPackagesMock: EventPackage[] = [
     staffCount: 2,
     partyRooms: 3,
   },
+  ...fieldTripPreschoolSchoolPackages,
 ];
 
 export interface EventPackageOptionalAddOn {
@@ -10045,7 +10665,8 @@ export interface EventPackageOptionalAddOn {
     | "DESSERT"
     | "DECOR"
     | "ENTERTAINMENT"
-    | "LOGISTICS";
+    | "LOGISTICS"
+    | "OTHER";
   isPopular?: boolean;
 }
 
@@ -10415,25 +11036,6 @@ function lastDayOfMonth(year: number, monthIndex: number): number {
   return new Date(year, monthIndex + 1, 0).getDate();
 }
 
-/** Full calendar month — used for month-long camp programmes. */
-function campMonthSlotTimes(
-  year: number,
-  monthIndex: number,
-): { startAt: string; endAt: string } {
-  const lastDay = lastDayOfMonth(year, monthIndex);
-  const start = new Date(
-    year,
-    monthIndex,
-    1,
-    CAMP_DAILY_START_HOUR,
-    CAMP_DAILY_START_MINUTE,
-    0,
-    0,
-  );
-  const end = new Date(year, monthIndex, lastDay, 15, 0, 0, 0);
-  return { startAt: start.toISOString(), endAt: end.toISOString() };
-}
-
 /** Single camp day (e.g. MLK Day). */
 function campSessionSlotTimes(
   year: number,
@@ -10747,7 +11349,7 @@ function buildGymClassSlots(): SchedulingSlot[] {
   return slots;
 }
 
-/** Recurring Private Play slots so SCHEDULED party packages appear on /play. */
+/** Recurring Private Play + Events package slots for SCHEDULED party bookings. */
 function buildPrivatePlaySlots(): SchedulingSlot[] {
   const seeds: GymSlotSeed[] = [
     {
@@ -10765,7 +11367,28 @@ function buildPrivatePlaySlots(): SchedulingSlot[] {
       durationMinutes: 120,
     },
     {
+      serviceId: "svc-event-party-room-packages",
+      weekdays: [6],
+      hour: 10,
+      minute: 0,
+      durationMinutes: 120,
+    },
+    {
+      serviceId: "svc-event-party-room-packages",
+      weekdays: [0],
+      hour: 14,
+      minute: 0,
+      durationMinutes: 120,
+    },
+    {
       serviceId: "svc-private-play-full-venue",
+      weekdays: [5],
+      hour: 17,
+      minute: 0,
+      durationMinutes: 180,
+    },
+    {
+      serviceId: "svc-event-whole-venue-packages",
       weekdays: [5],
       hour: 17,
       minute: 0,
@@ -11007,7 +11630,117 @@ function buildSpecialPlayEventSlots(): SchedulingSlot[] {
   return slots;
 }
 
-/** One monthly camp session per service (9:00 AM – 3:00 PM) for cat-camps-play listings. */
+interface SummerCampWeekSlotSeed {
+  readonly serviceId: string;
+  readonly startYmd: string;
+  readonly endYmd: string;
+  readonly slotIdPrefix: string;
+  readonly notes: string;
+}
+
+function enumerateCampWeekdayDatesBetween(
+  startYmd: string,
+  endYmd: string,
+): string[] {
+  const dates: string[] = [];
+  const start = new Date(`${startYmd}T12:00:00`);
+  const end = new Date(`${endYmd}T12:00:00`);
+  for (let probe = new Date(start); probe <= end; probe.setDate(probe.getDate() + 1)) {
+    const weekday = probe.getDay();
+    if (weekday === 0 || weekday === 6) {
+      continue;
+    }
+    const year = probe.getFullYear();
+    const month = String(probe.getMonth() + 1).padStart(2, "0");
+    const day = String(probe.getDate()).padStart(2, "0");
+    dates.push(`${year}-${month}-${day}`);
+  }
+  return dates;
+}
+
+function campSessionSlotTimesFromYmd(ymd: string): { startAt: string; endAt: string } {
+  const [year, month, day] = ymd.split("-").map(Number);
+  return campSessionSlotTimes(year, month - 1, day);
+}
+
+/** Summer Camp 2026 — weekday slots per themed week (9:00 AM – 3:00 PM). */
+function buildSummerCampPlayWeekSlots(): SchedulingSlot[] {
+  const weekSeeds: SummerCampWeekSlotSeed[] = [
+    {
+      serviceId: "svc-summer-camp-week-1",
+      startYmd: "2026-06-01",
+      endYmd: "2026-06-05",
+      slotIdPrefix: "slot-summer-camp-w1",
+      notes: "Little Homesteaders — weekdays 9:00 AM – 3:00 PM",
+    },
+    {
+      serviceId: "svc-summer-camp-week-2",
+      startYmd: "2026-06-15",
+      endYmd: "2026-06-19",
+      slotIdPrefix: "slot-summer-camp-w2",
+      notes: "Hurst, We Have a Problem — weekdays 9:00 AM – 3:00 PM",
+    },
+    {
+      serviceId: "svc-summer-camp-week-3",
+      startYmd: "2026-06-29",
+      endYmd: "2026-07-03",
+      slotIdPrefix: "slot-summer-camp-w3",
+      notes: "Millennial Made Kids — weekdays 9:00 AM – 3:00 PM",
+    },
+    {
+      serviceId: "svc-summer-camp-week-4",
+      startYmd: "2026-07-13",
+      endYmd: "2026-07-17",
+      slotIdPrefix: "slot-summer-camp-w4",
+      notes: "Playchella — weekdays 9:00 AM – 3:00 PM",
+    },
+    {
+      serviceId: "svc-summer-camp-week-5",
+      startYmd: "2026-07-27",
+      endYmd: "2026-07-31",
+      slotIdPrefix: "slot-summer-camp-w5",
+      notes: "The Popular Lab — weekdays 9:00 AM – 3:00 PM",
+    },
+  ];
+
+  const slots: SchedulingSlot[] = [];
+  let staffIndex = 0;
+
+  for (const seed of weekSeeds) {
+    const service = schedulingServiceById(seed.serviceId);
+    const sessionDates = enumerateCampWeekdayDatesBetween(seed.startYmd, seed.endYmd);
+
+    for (const ymd of sessionDates) {
+      const { startAt, endAt } = campSessionSlotTimesFromYmd(ymd);
+      const staffName = GYM_STAFF_NAMES[staffIndex % GYM_STAFF_NAMES.length];
+      staffIndex += 1;
+      slots.push({
+        id: `${seed.slotIdPrefix}-${ymd}`,
+        serviceId: seed.serviceId,
+        service,
+        locationId: "loc-1",
+        staffId: "staff-2",
+        staffName,
+        startAt,
+        endAt,
+        capacityOverride: null,
+        priceOverride: null,
+        bookedCount: 0,
+        checkInCount: 0,
+        effectiveCapacity: service.capacity,
+        effectivePrice: service.basePrice,
+        status: "SCHEDULED",
+        isActive: true,
+        isRecurring: false,
+        notes: seed.notes,
+      });
+    }
+  }
+
+  return slots;
+}
+
+/** Camp sessions for cat-camps-play — one slot per camp day (matches admin session rows). */
 function buildCampPlaySlots(): SchedulingSlot[] {
   const campSeeds = [
     {
@@ -11015,7 +11748,7 @@ function buildCampPlaySlots(): SchedulingSlot[] {
       serviceId: "svc-camp-summer",
       month: 6,
       dateMode: "first-monday" as const,
-      notes: "Summer camp — full month of June, weekdays 9:00 AM – 3:00 PM",
+      notes: "Summer camp — weekdays 9:00 AM – 3:00 PM",
       monthLong: true,
     },
     {
@@ -11023,8 +11756,7 @@ function buildCampPlaySlots(): SchedulingSlot[] {
       serviceId: "svc-camp-winter-break",
       month: 12,
       dateMode: "first-monday" as const,
-      notes:
-        "Winter break camp — full month of December, weekdays 9:00 AM – 3:00 PM",
+      notes: "Winter break camp — weekdays 9:00 AM – 3:00 PM",
       monthLong: true,
     },
     {
@@ -11032,8 +11764,7 @@ function buildCampPlaySlots(): SchedulingSlot[] {
       serviceId: "svc-camp-spring-break",
       month: 3,
       dateMode: "first-monday" as const,
-      notes:
-        "Spring break camp — full month of March, weekdays 9:00 AM – 3:00 PM",
+      notes: "Spring break camp — weekdays 9:00 AM – 3:00 PM",
       monthLong: true,
     },
     {
@@ -11046,18 +11777,58 @@ function buildCampPlaySlots(): SchedulingSlot[] {
     },
   ];
 
-  return campSeeds.map((seed, index) => {
+  const slots: SchedulingSlot[] = [];
+
+  campSeeds.forEach((seed, index) => {
     const { year, monthIndex, day } = resolveUpcomingCampSessionDate(
       seed.month,
       seed.dateMode,
     );
-    const { startAt, endAt } = seed.monthLong
-      ? campMonthSlotTimes(year, monthIndex)
-      : campSessionSlotTimes(year, monthIndex, day);
     const service = schedulingServiceById(seed.serviceId);
     const staffName = GYM_STAFF_NAMES[index % GYM_STAFF_NAMES.length];
+    const bookedCount = Math.min(
+      10,
+      Math.max(0, Math.floor(service.capacity * 0.12)),
+    );
 
-    return {
+    if (seed.monthLong) {
+      const lastDay = new Date(year, monthIndex + 1, 0).getDate();
+      for (let campDay = 1; campDay <= lastDay; campDay += 1) {
+        const probe = new Date(year, monthIndex, campDay);
+        const weekday = probe.getDay();
+        if (weekday === 0 || weekday === 6) {
+          continue;
+        }
+        const month = String(monthIndex + 1).padStart(2, "0");
+        const dayPart = String(campDay).padStart(2, "0");
+        const ymd = `${year}-${month}-${dayPart}`;
+        const { startAt, endAt } = campSessionSlotTimes(year, monthIndex, campDay);
+        slots.push({
+          id: `${seed.slotId}-${ymd}`,
+          serviceId: seed.serviceId,
+          service,
+          locationId: "loc-1",
+          staffId: "staff-2",
+          staffName,
+          startAt,
+          endAt,
+          capacityOverride: null,
+          priceOverride: null,
+          bookedCount,
+          checkInCount: 0,
+          effectiveCapacity: service.capacity,
+          effectivePrice: service.basePrice,
+          status: "SCHEDULED",
+          isActive: true,
+          isRecurring: false,
+          notes: seed.notes,
+        });
+      }
+      return;
+    }
+
+    const { startAt, endAt } = campSessionSlotTimes(year, monthIndex, day);
+    slots.push({
       id: seed.slotId,
       serviceId: seed.serviceId,
       service,
@@ -11068,10 +11839,7 @@ function buildCampPlaySlots(): SchedulingSlot[] {
       endAt,
       capacityOverride: null,
       priceOverride: null,
-      bookedCount: Math.min(
-        10,
-        Math.max(0, Math.floor(service.capacity * 0.12)),
-      ),
+      bookedCount,
       checkInCount: 0,
       effectiveCapacity: service.capacity,
       effectivePrice: service.basePrice,
@@ -11079,22 +11847,87 @@ function buildCampPlaySlots(): SchedulingSlot[] {
       isActive: true,
       isRecurring: false,
       notes: seed.notes,
-    };
+    });
   });
+
+  return slots;
+}
+
+/** Saturday 4:00–7:00 PM sessions for Parents Night Out (per-day customer selection). */
+function buildParentsNightOutSlots(): SchedulingSlot[] {
+  const seeds: GymSlotSeed[] = [
+    {
+      serviceId: PARENTS_NIGHT_OUT_SERVICE_ID,
+      weekdays: [6],
+      hour: 16,
+      minute: 0,
+      durationMinutes: 180,
+    },
+  ];
+  const slots: SchedulingSlot[] = [];
+  let seq = 0;
+  const nowMs = Date.now();
+  for (let dayOffset = 1; dayOffset <= 42; dayOffset += 1) {
+    const probe = new Date();
+    probe.setHours(12, 0, 0, 0);
+    probe.setDate(probe.getDate() + dayOffset);
+    const dow = probe.getDay();
+    for (const seed of seeds) {
+      if (!seed.weekdays.includes(dow)) {
+        continue;
+      }
+      const { startAt, endAt } = gymLocalSlot(
+        dayOffset,
+        seed.hour,
+        seed.minute,
+        seed.durationMinutes,
+      );
+      if (new Date(startAt).getTime() < nowMs) {
+        continue;
+      }
+      seq += 1;
+      const service = schedulingServiceById(seed.serviceId);
+      const staffName = GYM_STAFF_NAMES[seq % GYM_STAFF_NAMES.length];
+      slots.push({
+        id: `slot-parents-night-${String(seq).padStart(4, "0")}`,
+        serviceId: seed.serviceId,
+        service,
+        locationId: "loc-1",
+        staffId: "staff-2",
+        staffName,
+        startAt,
+        endAt,
+        capacityOverride: null,
+        priceOverride: null,
+        bookedCount: Math.min(
+          10,
+          Math.max(0, Math.floor(service.capacity * 0.2)),
+        ),
+        checkInCount: 0,
+        effectiveCapacity: service.capacity,
+        effectivePrice: service.basePrice,
+        status: "SCHEDULED",
+        isActive: true,
+        isRecurring: true,
+        notes: "Parents Night Out — Saturday 4:00–7:00 PM",
+      });
+    }
+  }
+  return slots;
 }
 
 /** Recurring field trip sessions so cat-field-trips appears on /play. */
 function buildFieldTripSlots(): SchedulingSlot[] {
   const seeds: GymSlotSeed[] = [
     {
-      serviceId: "svc-field-trip-preschool-school",
+      serviceId: FIELD_TRIP_PRESCHOOL_SCHOOL_SERVICE_ID,
       weekdays: [2, 3, 4],
       hour: 10,
       minute: 0,
       durationMinutes: 180,
     },
     {
-      serviceId: "svc-field-trip-preschool-school",
+      serviceId: FIELD_TRIP_PRESCHOOL_SCHOOL_SERVICE_ID,
       weekdays: [1, 5],
       hour: 9,
       minute: 30,
@@ -11395,7 +12228,9 @@ export const schedulingSlots: SchedulingSlot[] = [
   ...buildPrivatePlaySlots(),
   ...buildSpecialPlayEventSlots(),
   ...buildCampPlaySlots(),
+  ...buildSummerCampPlayWeekSlots(),
   ...buildFieldTripSlots(),
+  ...buildParentsNightOutSlots(),
 ];
 
 export const schedulingBookings: SchedulingBooking[] = [
@@ -12555,9 +13390,7 @@ export const contactNotes: ContactNote[] = [
   },
 ];
 
-const PARENTS_NIGHT_OUT_SERVICE_ID = "svc-parents-night-out";
-
-/** Saturday 4:00–7:00 PM only — matches Parents Night Out programme copy. */
+/** Saturday 4:00–7:00 PM only — legacy open-booking API helper. */
 function generateParentsNightOutAvailability(
   dateStr: string,
 ): AvailableWindowsResponse {
@@ -12605,34 +13438,27 @@ export function generateOpenAvailability(
   }
 
   const operatingHours = { open: "08:00", close: "21:00" };
-  const [year, month, day] = dateStr.split("-").map(Number);
-  const base = new Date(year, month - 1, day);
   const now = new Date();
-
   const openMin = 8 * 60;
   const closeMin = 21 * 60;
-  const increment = service.slotIncrementMinutes ?? 30;
-  const minDuration = service.minDurationMinutes ?? 60;
   const maxConcurrent = service.maxConcurrent ?? 1;
 
-  const windows: AvailableWindow[] = [];
-
-  for (let m = openMin; m + minDuration <= closeMin; m += increment) {
-    const startDate = new Date(base);
-    startDate.setHours(Math.floor(m / 60), m % 60, 0, 0);
-    const endDate = new Date(startDate.getTime() + minDuration * 60_000);
-
-    if (startDate <= now) continue;
-
+  const windows = expandOperatingHoursToWindows(
+    service,
+    dateStr,
+    openMin,
+    closeMin,
+    { now: now.getTime(), spotsRemaining: maxConcurrent },
+  ).map((window) => {
+    const start = new Date(window.startAt);
+    const m = start.getHours() * 60 + start.getMinutes();
     const isUnavailable = m === 10 * 60 || m === 14 * 60;
     const isLimited = m === 9 * 60 || m === 16 * 60;
-
-    windows.push({
-      startAt: startDate.toISOString(),
-      endAt: endDate.toISOString(),
+    return {
+      ...window,
       spotsRemaining: isUnavailable ? 0 : isLimited ? 1 : maxConcurrent,
-    });
-  }
+    };
+  });
 
   return { date: dateStr, serviceId: service.id, windows, operatingHours };
 }
@@ -12647,41 +13473,43 @@ export function generateOpenAvailabilityForDuration(
   dateStr: string,
   durationMinutes: number,
 ): AvailableWindowsResponse {
-  const operatingHours = { open: "08:00", close: "21:00" };
-  const [year, month, day] = dateStr.split("-").map(Number);
-  const base = new Date(year, month - 1, day);
-  const now = new Date();
+  if (service.id === PARENTS_NIGHT_OUT_SERVICE_ID) {
+    return generateParentsNightOutAvailability(dateStr);
+  }
 
+  const operatingHours = { open: "08:00", close: "21:00" };
+  const now = new Date();
   const openMin = 8 * 60;
   const closeMin = 21 * 60;
   const increment = service.slotIncrementMinutes ?? 30;
   const maxConcurrent = service.maxConcurrent ?? 1;
 
-  const windows: AvailableWindow[] = [];
-
-  for (let m = openMin; m + durationMinutes <= closeMin; m += increment) {
-    const startDate = new Date(base);
-    startDate.setHours(Math.floor(m / 60), m % 60, 0, 0);
-    const endDate = new Date(startDate.getTime() + durationMinutes * 60_000);
-
-    if (startDate <= now) continue;
-
+  const windows = expandOperatingHoursToWindows(
+    service,
+    dateStr,
+    openMin,
+    closeMin,
+    {
+      durationMinutes,
+      now: now.getTime(),
+      spotsRemaining: maxConcurrent,
+    },
+  ).map((window) => {
+    const start = new Date(window.startAt);
+    const m = start.getHours() * 60 + start.getMinutes();
     let isUnavailable = false;
-    for (let step = m; step < m + durationMinutes; step += increment) {
+    for (let step = m; step < m + durationMinutes; step += increment || durationMinutes) {
       if (step === 10 * 60 || step === 14 * 60) {
         isUnavailable = true;
         break;
       }
     }
-
     const isLimited = !isUnavailable && (m === 9 * 60 || m === 16 * 60);
-
-    windows.push({
-      startAt: startDate.toISOString(),
-      endAt: endDate.toISOString(),
+    return {
+      ...window,
       spotsRemaining: isUnavailable ? 0 : isLimited ? 1 : maxConcurrent,
-    });
-  }
+    };
+  });
 
   return { date: dateStr, serviceId: service.id, windows, operatingHours };
 }

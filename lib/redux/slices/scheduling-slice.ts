@@ -3,6 +3,9 @@ import { createSlice, type PayloadAction } from '@reduxjs/toolkit'
 
 import {
   eventPackagesMock,
+  FIELD_TRIP_PRESCHOOL_SCHOOL_SERVICE_ID,
+  PARENTS_NIGHT_OUT_SERVICE_ID,
+  SUMMER_CAMP_WEEK_SERVICE_IDS,
   schedulingBookings,
   schedulingCategories,
   schedulingOccasions,
@@ -48,23 +51,49 @@ const CAMP_PLAY_CATALOG_SYNC_IDS = [
   'svc-camp-mlk-day',
 ] as const
 
-const CAMP_PLAY_CANONICAL_SLOT_IDS = new Set<string>([
+const CAMP_PLAY_SLOT_ID_PREFIXES = [
   'slot-camp-summer',
   'slot-camp-winter-break',
   'slot-camp-spring-break',
   'slot-camp-mlk-day',
+] as const
+
+const SUMMER_CAMP_SLOT_ID_PREFIXES = [
+  'slot-summer-camp-w1',
+  'slot-summer-camp-w2',
+  'slot-summer-camp-w3',
+  'slot-summer-camp-w4',
+  'slot-summer-camp-w5',
+] as const
+
+function isCampPlayDefaultSlotId(slotId: string): boolean {
+  return CAMP_PLAY_SLOT_ID_PREFIXES.some(
+    (prefix) => slotId === prefix || slotId.startsWith(`${prefix}-`),
+  )
+}
+
+function isSummerCampPlayDefaultSlotId(slotId: string): boolean {
+  return SUMMER_CAMP_SLOT_ID_PREFIXES.some(
+    (prefix) => slotId === prefix || slotId.startsWith(`${prefix}-`),
+  )
+}
+
+const SUMMER_CAMP_WEEK_SERVICE_ID_SET = new Set<string>(SUMMER_CAMP_WEEK_SERVICE_IDS)
+
+const CAMP_PLAY_SERVICE_IDS = new Set<string>([
+  ...CAMP_PLAY_CATALOG_SYNC_IDS,
+  ...SUMMER_CAMP_WEEK_SERVICE_IDS,
 ])
 
-const CAMP_PLAY_SERVICE_IDS = new Set<string>(CAMP_PLAY_CATALOG_SYNC_IDS)
+const PARENTS_NIGHT_CATALOG_SYNC_IDS = [PARENTS_NIGHT_OUT_SERVICE_ID] as const
 
-const PARENTS_NIGHT_CATALOG_SYNC_IDS = ['svc-parents-night-out'] as const
-
-const FIELD_TRIP_CATALOG_SYNC_IDS = ['svc-field-trip-preschool-school'] as const
+const FIELD_TRIP_CATALOG_SYNC_IDS = [FIELD_TRIP_PRESCHOOL_SCHOOL_SERVICE_ID] as const
 
 /** Refresh listing fields from catalog when mock data changes (e.g. image URLs). */
 const CATALOG_LISTING_SYNC_SERVICE_IDS: ReadonlySet<string> = new Set([
   ...SPECIAL_PLAY_SERVICE_ORDER,
   ...CAMP_PLAY_CATALOG_SYNC_IDS,
+  ...SUMMER_CAMP_WEEK_SERVICE_IDS,
   ...PARENTS_NIGHT_CATALOG_SYNC_IDS,
   ...FIELD_TRIP_CATALOG_SYNC_IDS,
   ...WE_BRING_PLAY_SERVICE_IDS,
@@ -174,6 +203,11 @@ interface DuplicatePackagePayload {
   packageId: string
   copyId: string
   nowIso: string
+  target?: {
+    serviceId: string
+    displayPages?: EventPackage['displayPages']
+    schedulingCategoryIds?: string[]
+  }
 }
 
 interface UpdateOccasionPayload {
@@ -245,25 +279,55 @@ function mergeSchedulingWithCatalogDefaults(persisted: SchedulingState): Schedul
       requiresWaiver: catalogService.requiresWaiver,
     }
 
-    if (service.id === 'svc-parents-night-out') {
-      const upgradedBookingMode =
-        existing.bookingMode === 'SCHEDULED' && catalogService.bookingMode === 'OPEN'
-          ? catalogService.bookingMode
-          : existing.bookingMode
-
+    if (service.id === PARENTS_NIGHT_OUT_SERVICE_ID) {
       serviceById.set(service.id, {
         ...listingPatch,
-        bookingMode: upgradedBookingMode,
-        durationMinutes: existing.durationMinutes ?? catalogService.durationMinutes,
-        pricingModel: existing.pricingModel ?? catalogService.pricingModel,
-        minDurationMinutes:
-          existing.minDurationMinutes ?? catalogService.minDurationMinutes,
-        maxDurationMinutes:
-          existing.maxDurationMinutes ?? catalogService.maxDurationMinutes,
-        slotIncrementMinutes:
-          existing.slotIncrementMinutes ?? catalogService.slotIncrementMinutes,
-        maxConcurrent: existing.maxConcurrent ?? catalogService.maxConcurrent,
-        siblingPrice: existing.siblingPrice ?? catalogService.siblingPrice,
+        bookingMode: catalogService.bookingMode,
+        eventBookingScheduleMode: catalogService.eventBookingScheduleMode,
+        durationMinutes: catalogService.durationMinutes,
+        pricingModel: catalogService.pricingModel,
+        minDurationMinutes: catalogService.minDurationMinutes,
+        maxDurationMinutes: catalogService.maxDurationMinutes,
+        slotIncrementMinutes: catalogService.slotIncrementMinutes,
+        maxConcurrent: catalogService.maxConcurrent,
+        siblingPrice: catalogService.siblingPrice,
+        maxPassCount: catalogService.maxPassCount,
+        eventStatus: catalogService.eventStatus ?? existing.eventStatus,
+      })
+      continue
+    }
+
+    if (SUMMER_CAMP_WEEK_SERVICE_ID_SET.has(service.id)) {
+      serviceById.set(service.id, {
+        ...listingPatch,
+        serviceType: catalogService.serviceType,
+        bookingMode: catalogService.bookingMode,
+        eventBookingScheduleMode: catalogService.eventBookingScheduleMode,
+        durationMinutes: catalogService.durationMinutes,
+        capacity: catalogService.capacity,
+        basePrice: catalogService.basePrice,
+        slotIncrementMinutes: catalogService.slotIncrementMinutes,
+        eventStatus: catalogService.eventStatus ?? existing.eventStatus,
+        location: catalogService.location ?? existing.location,
+        organizer: catalogService.organizer ?? existing.organizer,
+      })
+      continue
+    }
+
+    if (service.id === FIELD_TRIP_PRESCHOOL_SCHOOL_SERVICE_ID) {
+      serviceById.set(service.id, {
+        ...listingPatch,
+        serviceType: catalogService.serviceType,
+        bookingMode: catalogService.bookingMode,
+        bookingOfferingKind: catalogService.bookingOfferingKind ?? 'SERVICE',
+        isPackageService: catalogService.isPackageService === true,
+        durationMinutes: catalogService.durationMinutes,
+        capacity: catalogService.capacity,
+        basePrice: catalogService.basePrice,
+        pricingModel: catalogService.pricingModel,
+        sport: catalogService.sport,
+        ageMin: catalogService.ageMin ?? existing.ageMin,
+        ageMax: catalogService.ageMax ?? existing.ageMax,
       })
       continue
     }
@@ -275,13 +339,18 @@ function mergeSchedulingWithCatalogDefaults(persisted: SchedulingState): Schedul
   for (const slot of persisted.slots) {
     if (
       CAMP_PLAY_SERVICE_IDS.has(slot.serviceId) &&
-      !CAMP_PLAY_CANONICAL_SLOT_IDS.has(slot.id)
+      !isCampPlayDefaultSlotId(slot.id) &&
+      !isSummerCampPlayDefaultSlotId(slot.id)
     ) {
       continue
     }
     slotById.set(slot.id, slot)
   }
   for (const slot of defaults.slots) {
+    if (isSummerCampPlayDefaultSlotId(slot.id)) {
+      slotById.set(slot.id, slot)
+      continue
+    }
     if (!slotById.has(slot.id)) {
       slotById.set(slot.id, slot)
     }
@@ -298,6 +367,11 @@ function mergeSchedulingWithCatalogDefaults(persisted: SchedulingState): Schedul
       seed
         ? {
             ...pkg,
+            serviceId: seed.serviceId,
+            displayPages: seed.displayPages ? [...seed.displayPages] : pkg.displayPages,
+            schedulingCategoryIds: seed.schedulingCategoryIds
+              ? [...seed.schedulingCategoryIds]
+              : pkg.schedulingCategoryIds,
             addOns: seed.addOns.map((link) => ({ ...link })),
           }
         : pkg,
@@ -706,7 +780,7 @@ const schedulingSlice = createSlice({
       state.packages = state.packages.filter((pkg) => pkg.id !== packageId)
     },
     duplicatePackage(state, action: PayloadAction<DuplicatePackagePayload>) {
-      const { packageId, copyId, nowIso } = action.payload
+      const { packageId, copyId, nowIso, target } = action.payload
       const source = state.packages.find((pkg) => pkg.id === packageId) ?? null
       if (!source) {
         return
@@ -718,6 +792,13 @@ const schedulingSlice = createSlice({
         createdAt: nowIso,
         features: source.features.slice(),
         addOns: source.addOns.slice(),
+        ...(target
+          ? {
+              serviceId: target.serviceId,
+              displayPages: target.displayPages,
+              schedulingCategoryIds: target.schedulingCategoryIds,
+            }
+          : {}),
       }
       state.packages.unshift(copy)
     },

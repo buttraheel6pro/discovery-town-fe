@@ -1,12 +1,10 @@
-/** Radio list + detail panel for Private Play package selection (Open Play pass UX). */
+/** Classic horizontal tabs + connected detail panel for Private Play packages. */
 'use client'
 
 import { useEffect, useMemo } from 'react'
 
 import { PrivatePlayPackageDetail } from '@/components/customer/private-play-package-detail'
-import { Label } from '@/components/ui/label'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { cn, formatPrice } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import type { EventPackage } from '@/lib/types'
 
 function sortPackages(packages: readonly EventPackage[]): EventPackage[] {
@@ -18,17 +16,8 @@ function sortPackages(packages: readonly EventPackage[]): EventPackage[] {
   return [...packages].sort((a, b) => tierOrder[a.tier] - tierOrder[b.tier])
 }
 
-function tierBadgeClass(tier: EventPackage['tier']): string {
-  switch (tier) {
-    case 'SILVER':
-      return 'bg-slate-100 text-slate-700'
-    case 'GOLD':
-      return 'bg-amber-100 text-amber-800'
-    case 'PLATINUM':
-      return 'bg-purple-100 text-purple-700'
-    default:
-      return 'bg-muted text-muted-foreground'
-  }
+function formatTierLabel(tier: EventPackage['tier']): string {
+  return tier.charAt(0) + tier.slice(1).toLowerCase()
 }
 
 export interface PrivatePlayPackageSelectorProps {
@@ -74,66 +63,58 @@ export function PrivatePlayPackageSelector({
   }
 
   return (
-    <div className={cn('space-y-6', className)}>
+    <div className={cn('w-full', className)}>
       {sectionTitle ? (
-        <p className="text-sm font-semibold text-foreground">{sectionTitle}</p>
+        <p className="mb-1 text-sm font-semibold text-foreground">{sectionTitle}</p>
       ) : null}
-      <p className="text-sm font-medium text-muted-foreground">
+      <p className="mb-4 text-sm font-medium text-muted-foreground">
         Select a package to view full details
       </p>
 
-      <RadioGroup
-        value={selectedId ?? ''}
-        onValueChange={onSelect}
-        className="space-y-2"
-        aria-label="Private Play packages"
-      >
-        {sorted.map((pkg) => {
-          const inputId = `private-play-pkg-${pkg.id}`
-          return (
-            <div
-              key={pkg.id}
-              className={cn(
-                'flex items-start gap-3 rounded-xl border border-border bg-card px-4 py-4 transition-colors',
-                selectedId === pkg.id && 'border-accent bg-accent/5 ring-1 ring-accent/30',
-              )}
-            >
-              <RadioGroupItem
-                value={pkg.id}
-                id={inputId}
-                className="mt-1"
-                aria-label={pkg.name}
-              />
-              <Label
-                htmlFor={inputId}
-                className="flex flex-1 cursor-pointer flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"
+      <div className="overflow-hidden">
+        <div role="tablist" aria-label="Private Play packages" className="flex flex-wrap items-end">
+          {sorted.map((pkg) => {
+            const isSelected = selectedId === pkg.id
+            return (
+              <button
+                key={pkg.id}
+                type="button"
+                role="tab"
+                aria-selected={isSelected}
+                aria-controls={`private-play-pkg-panel-${pkg.id}`}
+                id={`private-play-pkg-tab-${pkg.id}`}
+                onClick={() => onSelect(pkg.id)}
+                className={cn(
+                  'rounded-t-lg px-5 py-2.5 text-xs font-bold uppercase tracking-wide transition-colors',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                  isSelected
+                    ? 'relative z-10 bg-primary text-primary-foreground'
+                    : 'bg-muted text-muted-foreground hover:bg-secondary hover:text-foreground',
+                )}
               >
-                <span className="flex flex-wrap items-center gap-2">
-                  <span
-                    className={cn(
-                      'inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider',
-                      tierBadgeClass(pkg.tier),
-                    )}
-                  >
-                    {pkg.tier}
-                  </span>
-                  <span className="text-base font-semibold text-foreground">{pkg.name}</span>
-                </span>
-                <span className="text-sm text-muted-foreground">
-                  {formatPrice(pkg.basePrice)}
-                </span>
-              </Label>
-            </div>
-          )
-        })}
-      </RadioGroup>
+                {formatTierLabel(pkg.tier)}
+              </button>
+            )
+          })}
+        </div>
 
-      {selectedPackage ? (
-        <PrivatePlayPackageDetail
-          package={selectedPackage}
-          defaultDurationMinutes={defaultDurationMinutes}
-        />
-      ) : null}
+        <div className="h-0.5 w-full bg-primary" aria-hidden />
+
+        {selectedPackage ? (
+          <div
+            role="tabpanel"
+            id={`private-play-pkg-panel-${selectedPackage.id}`}
+            aria-labelledby={`private-play-pkg-tab-${selectedPackage.id}`}
+            className="border border-border bg-card p-6 sm:p-8"
+          >
+            <PrivatePlayPackageDetail
+              package={selectedPackage}
+              defaultDurationMinutes={defaultDurationMinutes}
+              embedded
+            />
+          </div>
+        ) : null}
+      </div>
     </div>
   )
 }

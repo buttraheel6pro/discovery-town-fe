@@ -3,25 +3,28 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useMemo, useState } from 'react'
-import { Menu, Search, ShoppingCart, User, X, Zap } from 'lucide-react'
+import { Menu, Search, ShoppingCart, User, X } from 'lucide-react'
 
+import { DiscoveryLogo } from '@/components/discovery-logo'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { useCustomerNavLabels } from '@/hooks/use-customer-nav-labels'
 import { isLoginBypassEnabled } from '@/lib/config/auth'
+import {
+  isCustomerNavItemVisible,
+  productTypeToNavLabelKey,
+  type CustomerNavLabelKey,
+} from '@/lib/customer-nav-labels'
+
+const PLAY_NAV_KEY: CustomerNavLabelKey = 'play'
 import { useInventory } from '@/lib/inventory-store'
+import { hasConsumerVisibleProductType } from '@/lib/product-visibility'
 import { cn } from '@/lib/utils'
 
 interface NavbarLinkItem {
   readonly label: string
   readonly href: string
   readonly description?: string
-}
-
-const PRODUCT_TYPE_LABELS: Record<string, string> = {
-  shop: 'Shop',
-  gifts: 'Gifts',
-  rentals: 'Rentals',
-  'cafe&food': 'Cafe & Food',
 }
 
 function toStoreSlug(productType: string): string {
@@ -36,33 +39,82 @@ export function CustomerNavbar() {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
   const { cart, productCategories } = useInventory()
+  const { labels, hidden } = useCustomerNavLabels()
 
   const storeItems = useMemo<NavbarLinkItem[]>(() => {
-    const productTypeValues = [...new Set(productCategories.map((category) => category.productType ?? 'shop'))]
+    const productTypeValues = [
+      ...new Set(productCategories.map((category) => category.productType ?? 'shop')),
+    ]
       .filter((productType) => productType !== 'rentals')
+      .filter((productType) => hasConsumerVisibleProductType(productType, productCategories))
     const sortedProductTypes = productTypeValues.sort((left, right) => left.localeCompare(right))
 
-    const dynamicItems = sortedProductTypes.map((productType) => ({
-      label: PRODUCT_TYPE_LABELS[productType] ?? productType,
-      href: `/store/${toStoreSlug(productType)}`,
-      description: `Browse ${PRODUCT_TYPE_LABELS[productType] ?? productType} collections`,
-    }))
+    const dynamicItems = sortedProductTypes.flatMap((productType) => {
+      const navKey = productTypeToNavLabelKey(productType)
+      if (navKey == null || !isCustomerNavItemVisible(navKey, hidden)) {
+        return []
+      }
+      const label = labels[navKey]
+      return [{
+        label,
+        href: `/store/${toStoreSlug(productType)}`,
+        description: `Browse ${label} collections`,
+      }]
+    })
 
-    return [
-      { label: 'Rentals', href: '/rentals', description: 'Equipment, staffed services, and event rentals.' },
-      ...dynamicItems,
+    const items: NavbarLinkItem[] = [...dynamicItems]
+    if (
+      hasConsumerVisibleProductType('rentals', productCategories) &&
+      isCustomerNavItemVisible('rentals', hidden)
+    ) {
+      items.unshift({
+        label: labels.rentals,
+        href: '/rentals',
+        description: 'Equipment, staffed services, and event rentals.',
+      })
+    }
+    return items
+  }, [hidden, labels, productCategories])
+
+  const discoverItems: NavbarLinkItem[] = useMemo(() => {
+    const discoverConfig: Array<{
+      key: CustomerNavLabelKey
+      href: string
+      description: string
+    }> = [
+      {
+        key: 'play',
+        href: '/play',
+        description: 'Open play, private play, camps, and more.',
+      },
+      {
+        key: 'gym',
+        href: '/gym',
+        description: 'Classes for all ages, from babies to seniors.',
+      },
+      {
+        key: 'events',
+        href: '/events',
+        description: 'Discover events and private venue booking.',
+      },
     ]
-  }, [productCategories])
 
-  const discoverItems: NavbarLinkItem[] = [
-    { label: 'Play', href: '/play', description: 'Open play, private play, camps, and more.' },
-    { label: 'Gym', href: '/gym', description: 'Classes for all ages, from babies to seniors.' },
-    { label: 'Events', href: '/events', description: 'Discover events and private venue booking.' },
-  ]
+    return discoverConfig.flatMap((item) => {
+      if (!isCustomerNavItemVisible(item.key, hidden)) {
+        return []
+      }
+      return [{
+        label: labels[item.key],
+        href: item.href,
+        description: item.description,
+      }]
+    })
+  }, [hidden, labels])
 
   const allTopLevelLinks: NavbarLinkItem[] = [...discoverItems, ...storeItems]
   const cartCount = cart.items.reduce((sum, item) => sum + item.quantity, 0)
   const bypassLogin = isLoginBypassEnabled()
+  const isPlayNavVisible = isCustomerNavItemVisible(PLAY_NAV_KEY, hidden)
 
   return (
     <>
@@ -72,17 +124,7 @@ export function CustomerNavbar() {
         aria-label="Main navigation"
       >
         <div className="flex items-center justify-between h-16">
-          <Link href="/" className="flex items-center gap-2 shrink-0">
-            <div className="w-8 h-8 bg-accent rounded-sm flex items-center justify-center">
-              <Zap className="w-5 h-5 text-accent-foreground" fill="currentColor" />
-            </div>
-            <span
-              className="text-lg font-black tracking-tight text-foreground"
-              style={{ fontFamily: "var(--font-barlow)" }}
-            >
-              Discovery Town
-            </span>
-          </Link>
+          <DiscoveryLogo priority />
 
           <div className="hidden md:flex items-center gap-1">
             {allTopLevelLinks.map((link) => (
@@ -136,14 +178,16 @@ export function CustomerNavbar() {
                 </Button>
               </Link>
             )}
-            <Link href="/play">
-              <Button
-                size="sm"
-                className="bg-accent text-accent-foreground hover:bg-accent/90 font-semibold"
-              >
-                Book Now
-              </Button>
-            </Link>
+            {isPlayNavVisible ? (
+              <Link href="/play">
+                <Button
+                  size="sm"
+                  className="bg-accent text-accent-foreground hover:bg-accent/90 font-semibold"
+                >
+                  Book Now
+                </Button>
+              </Link>
+            ) : null}
           </div>
 
           <Button
@@ -199,14 +243,16 @@ export function CustomerNavbar() {
                   </Button>
                 </Link>
               )}
-              <Link href="/play" className="flex-1">
-                <Button
-                  size="sm"
-                  className="w-full bg-accent text-accent-foreground hover:bg-accent/90"
-                >
-                  Book Now
-                </Button>
-              </Link>
+              {isPlayNavVisible ? (
+                <Link href="/play" className="flex-1">
+                  <Button
+                    size="sm"
+                    className="w-full bg-accent text-accent-foreground hover:bg-accent/90"
+                  >
+                    Book Now
+                  </Button>
+                </Link>
+              ) : null}
             </div>
           </div>
         )}

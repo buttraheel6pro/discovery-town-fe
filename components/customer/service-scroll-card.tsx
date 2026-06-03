@@ -20,20 +20,27 @@ import {
   isPlayClassCartCheckoutService,
   usesBuyNowListingCta,
 } from '@/lib/play-cart'
-import { isPrivatePlayService } from '@/lib/private-play-packages'
+import {
+  isPrivatePlayService,
+  shouldUsePrivatePlayDetailLayout,
+  usesPlayPackageBookingLayout,
+} from '@/lib/private-play-packages'
 import { usesEventTicketBookingSidebar } from '@/lib/scheduling-slot-availability'
-import type { SchedulingService } from '@/lib/types'
+import type { EventPackage, SchedulingService } from '@/lib/types'
 
 interface ServiceScrollCardProps {
   readonly service: SchedulingService
 }
 
-function getServiceHref(service: SchedulingService): string {
+function getServiceHref(
+  service: SchedulingService,
+  packages: readonly EventPackage[],
+): string {
+  if (shouldUsePrivatePlayDetailLayout(service, packages)) {
+    return `/facilities/${service.id}`
+  }
   if (usesEventTicketBookingSidebar(service)) {
     return `/events/${service.id}`
-  }
-  if (isPrivatePlayService(service)) {
-    return `/facilities/${service.id}`
   }
   if (service.categoryId === 'cat-we-bring-play') {
     return `/we-bring-to-play?service=${service.id}`
@@ -59,8 +66,14 @@ function getServiceHref(service: SchedulingService): string {
   return `/events/${service.id}`
 }
 
-function getCtaLabel(service: SchedulingService): string {
-  if (isPrivatePlayService(service) || usesBuyNowListingCta(service)) {
+function getCtaLabel(
+  service: SchedulingService,
+  packages: readonly EventPackage[],
+): string {
+  if (isPrivatePlayService(service) || usesPlayPackageBookingLayout(service, packages)) {
+    return 'Buy now'
+  }
+  if (usesBuyNowListingCta(service)) {
     return 'Buy now'
   }
   if (service.categoryId === 'cat-we-bring-play') {
@@ -106,7 +119,7 @@ export function ServiceScrollCard({ service }: Readonly<ServiceScrollCardProps>)
       <ListingCard
         fillHeight
         className="w-full"
-        href={getServiceHref(service)}
+        href={getServiceHref(service, packages)}
         title={service.name}
         description={service.description ?? ''}
         imageUrl={service.imageUrl ?? undefined}
@@ -162,7 +175,7 @@ export function ServiceScrollCard({ service }: Readonly<ServiceScrollCardProps>)
             className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
             size="sm"
           >
-            {getCtaLabel(service)}
+            {getCtaLabel(service, packages)}
           </Button>
         }
       />

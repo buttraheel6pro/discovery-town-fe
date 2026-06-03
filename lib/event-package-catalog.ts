@@ -1,18 +1,40 @@
 /** Event package catalog — IDs, tiers, and per-service package resolution. */
+import { isPackageServiceOffering } from '@/lib/scheduling-listing-kind'
 import type { EventPackage, SchedulingService } from '@/lib/types'
 
 const PRIVATE_PLAY_CATEGORY_ID = 'cat-private-play'
 
+export const EVENT_PRIVATE_PARTY_ROOM_SUBCATEGORY_ID =
+  'cat-event-private-party-room-open-play' as const
+
+export const EVENT_WHOLE_PLACE_SUBCATEGORY_ID =
+  'cat-event-whole-place-private-party-open-play' as const
+
 export const EVENT_PARTY_BOOKING_SERVICE_ID = 'svc-event-party-booking' as const
 export const LEGACY_PARTY_SERVICE_ID = 'svc-5' as const
 
+/** Play (/play) — private party room & whole venue booking entry points. */
 export const PRIVATE_PLAY_ROOM_SERVICE_ID = 'svc-private-play-room-open-play' as const
 export const PRIVATE_PLAY_FULL_VENUE_SERVICE_ID = 'svc-private-play-full-venue' as const
+
+/** Events (/events) — package-only shells (distinct names from play services). */
+export const EVENT_PARTY_ROOM_PACKAGES_SERVICE_ID = 'svc-event-party-room-packages' as const
+export const EVENT_WHOLE_VENUE_PACKAGES_SERVICE_ID = 'svc-event-whole-venue-packages' as const
 export const PRIVATE_PLAY_MEETING_ROOMS_SERVICE_ID =
   'svc-private-play-meeting-rooms' as const
 
+/** Play — preschool / school field trip package shell (see mock-data). */
+export { FIELD_TRIP_PRESCHOOL_SCHOOL_SERVICE_ID } from '@/lib/mock-data'
+
 /** Original six party packages (room + whole venue). */
-export const PARTY_ROOM_PACKAGE_IDS = ['pkg-001', 'pkg-002', 'pkg-003'] as const
+export const PARTY_ROOM_PACKAGE_IDS = [
+  'pkg-evt-room-001',
+  'pkg-evt-room-002',
+  'pkg-evt-room-003',
+] as const
+
+/** Legacy party room tiers (play hub); kept for persisted bookings and deep links. */
+export const LEGACY_PARTY_ROOM_PACKAGE_IDS = ['pkg-001', 'pkg-002', 'pkg-003'] as const
 
 const PARTY_ROOM_PACKAGE_ID_SET = new Set<string>(PARTY_ROOM_PACKAGE_IDS)
 
@@ -20,7 +42,14 @@ export function isPartyRoomCatalogPackage(pkg: Pick<EventPackage, 'id'>): boolea
   return PARTY_ROOM_PACKAGE_ID_SET.has(pkg.id)
 }
 
-export const WHOLE_VENUE_PACKAGE_IDS = ['pkg-004', 'pkg-005', 'pkg-006'] as const
+export const WHOLE_VENUE_PACKAGE_IDS = [
+  'pkg-evt-venue-004',
+  'pkg-evt-venue-005',
+  'pkg-evt-venue-006',
+] as const
+
+/** Legacy whole-venue tiers on Play (svc-5 hub). */
+export const LEGACY_WHOLE_VENUE_PACKAGE_IDS = ['pkg-004', 'pkg-005', 'pkg-006'] as const
 
 const WHOLE_VENUE_PACKAGE_ID_SET = new Set<string>(WHOLE_VENUE_PACKAGE_IDS)
 
@@ -42,14 +71,16 @@ export const MEETING_ROOM_PACKAGE_IDS = [
 
 export const EVENT_CATALOG_PACKAGE_IDS = [
   ...PARTY_ROOM_PACKAGE_IDS,
+  ...LEGACY_PARTY_ROOM_PACKAGE_IDS,
   ...WHOLE_VENUE_PACKAGE_IDS,
+  ...LEGACY_WHOLE_VENUE_PACKAGE_IDS,
   ...MEETING_ROOM_PACKAGE_IDS,
 ] as const
 
 const EVENT_CATALOG_PACKAGE_ID_SET = new Set<string>(EVENT_CATALOG_PACKAGE_IDS)
 const MEETING_ROOM_PACKAGE_ID_SET = new Set<string>(MEETING_ROOM_PACKAGE_IDS)
 
-const PARTY_FALLBACK_SERVICE_IDS = new Set([
+const PARTY_FALLBACK_SERVICE_IDS = new Set<string>([
   EVENT_PARTY_BOOKING_SERVICE_ID,
   LEGACY_PARTY_SERVICE_ID,
 ])
@@ -139,7 +170,7 @@ export function resolvePrivateEventBookingServiceId(
   services: readonly Pick<SchedulingService, 'id' | 'serviceType' | 'isActive'>[],
 ): string | null {
   const room = services.find(
-    (entry) => entry.isActive && entry.id === PRIVATE_PLAY_ROOM_SERVICE_ID,
+    (entry) => entry.isActive && entry.id === EVENT_PARTY_ROOM_PACKAGES_SERVICE_ID,
   )
   if (room) {
     return room.id
@@ -155,7 +186,7 @@ export function resolveWholeVenuePrivateEventBookingServiceId(
   services: readonly Pick<SchedulingService, 'id' | 'isActive'>[],
 ): string | null {
   const venue = services.find(
-    (entry) => entry.isActive && entry.id === PRIVATE_PLAY_FULL_VENUE_SERVICE_ID,
+    (entry) => entry.isActive && entry.id === EVENT_WHOLE_VENUE_PACKAGES_SERVICE_ID,
   )
   return venue?.id ?? null
 }
@@ -166,8 +197,20 @@ export function resolvePackagesForSchedulingService(
 ): EventPackage[] {
   const active = packages.filter((pkg) => pkg.isActive)
 
+  if (isPackageServiceOffering(service)) {
+    return sortByTier(active.filter((pkg) => pkg.serviceId === service.id))
+  }
+
   if (service.id === PRIVATE_PLAY_MEETING_ROOMS_SERVICE_ID) {
     return meetingRoomPackagesFromCatalog(active)
+  }
+
+  if (service.id === EVENT_WHOLE_VENUE_PACKAGES_SERVICE_ID) {
+    return wholeVenuePackagesFromCatalog(active)
+  }
+
+  if (service.id === EVENT_PARTY_ROOM_PACKAGES_SERVICE_ID) {
+    return partyRoomPackagesFromCatalog(active)
   }
 
   if (service.id === PRIVATE_PLAY_FULL_VENUE_SERVICE_ID) {

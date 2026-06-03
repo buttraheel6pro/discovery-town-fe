@@ -19,6 +19,14 @@ import {
   mergedCafeProductsForCustomer,
 } from '@/lib/cafe-utils'
 import { useInventory } from '@/lib/inventory-store'
+import {
+  buildProductCategoryById,
+  hasConsumerVisibleProductType,
+  isConsumerVisibleProduct,
+  isConsumerVisibleProductCategory,
+  isShopCatalogVisibleProduct,
+  isShopCatalogVisibleProductCategory,
+} from '@/lib/product-visibility'
 import type { ProductCategory } from '@/lib/types'
 
 interface StoreTypePageProps {
@@ -69,15 +77,30 @@ export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) 
   if (productType === 'rentals') {
     redirect('/rentals')
   }
-  const validProductTypes = new Set(productCategories.map((category) => category.productType ?? 'shop'))
+  const categoryById = useMemo(
+    () => buildProductCategoryById(productCategories),
+    [productCategories],
+  )
 
-  if (!validProductTypes.has(productType)) {
+  if (!hasConsumerVisibleProductType(productType, productCategories)) {
     notFound()
   }
 
+  const isShopStore = productType === 'shop'
+  const isCategoryVisible = isShopStore
+    ? isShopCatalogVisibleProductCategory
+    : isConsumerVisibleProductCategory
+  const isProductVisible = isShopStore
+    ? isShopCatalogVisibleProduct
+    : isConsumerVisibleProduct
+
   const sections = useMemo<CategorySection[]>(() => {
     const categoriesForType = productCategories
-      .filter((category) => (category.productType ?? 'shop') === productType)
+      .filter(
+        (category) =>
+          (category.productType ?? 'shop') === productType &&
+          isCategoryVisible(category, categoryById),
+      )
       .sort((left, right) => left.displayOrder - right.displayOrder)
     const categoriesById = new Map(categoriesForType.map((category) => [category.id, category]))
     const rootCategoryIds = new Set(
@@ -92,12 +115,13 @@ export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) 
         const directProducts = products
           .filter(
             (product) =>
-              product.isActive && product.availableOnline !== false && product.categoryId === category.id,
+              isProductVisible(product, categoryById) &&
+              product.categoryId === category.id,
           )
           .map((product) => product.id)
         const childProducts = products
           .filter((product) => {
-            if (!product.isActive || product.availableOnline === false) {
+            if (!isProductVisible(product, categoryById)) {
               return false
             }
             const childCategory = categoriesById.get(product.categoryId)
@@ -108,7 +132,7 @@ export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) 
         return { category, productIds }
       })
       .filter((section) => section.productIds.length > 0)
-  }, [productCategories, productType, products])
+  }, [categoryById, isShopStore, productCategories, productType, products])
 
   const title = PRODUCT_TYPE_LABELS[productType] ?? productType
   const isCafeAndFood = productType === 'cafe&food'
@@ -126,7 +150,11 @@ export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) 
       return [] as ProductCategory[]
     }
     const categoriesForType = productCategories
-      .filter((category) => (category.productType ?? 'shop') === productType)
+      .filter(
+        (category) =>
+          (category.productType ?? 'shop') === productType &&
+          isConsumerVisibleProductCategory(category, categoryById),
+      )
       .sort((left, right) => left.displayOrder - right.displayOrder)
     const rootCategoryIds = new Set(
       categoriesForType
@@ -136,7 +164,7 @@ export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) 
     return categoriesForType.filter(
       (category) => category.parentId !== null || rootCategoryIds.size === 0,
     )
-  }, [isCafeAndFood, productCategories, productType])
+  }, [categoryById, isCafeAndFood, productCategories, productType])
 
   const cafeSections = useMemo(() => {
     if (!isCafeAndFood) return []
@@ -152,15 +180,14 @@ export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) 
         const directProducts = products
           .filter(
             (product) =>
-              product.isActive &&
-              product.availableOnline !== false &&
+              isConsumerVisibleProduct(product, categoryById) &&
               product.categoryId === category.id &&
               isCafeCatalogProductId(product.id),
           )
           .map((product) => product.id)
         const childProducts = products
           .filter((product) => {
-            if (!product.isActive || product.availableOnline === false) {
+            if (!isConsumerVisibleProduct(product, categoryById)) {
               return false
             }
             if (!isCafeCatalogProductId(product.id)) {
@@ -195,6 +222,7 @@ export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) 
       .filter((section) => section.productIds.length > 0)
   }, [
     cafeDisplayCategories,
+    categoryById,
     customerCafeProducts,
     isCafeAndFood,
     productCategories,

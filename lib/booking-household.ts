@@ -5,7 +5,9 @@ import type { CmContact, CmContactRelationship } from '@/lib/types'
 export const BYPASS_PRIMARY_GUARDIAN_CONTACT_ID = 'cm-bypass-primary' as const
 export const SECONDARY_GUARDIAN_CONTACT_ID = 'cm-secondary-guardian' as const
 
-export const PARENTS_NIGHT_OUT_SERVICE_ID = 'svc-parents-night-out' as const
+import { PARENTS_NIGHT_OUT_SERVICE_ID } from '@/lib/mock-data'
+
+export { PARENTS_NIGHT_OUT_SERVICE_ID }
 
 export const OPEN_PLAY_SESSION_SERVICE_IDS = new Set<string>([
   'svc-open-play-2-hour-pass',

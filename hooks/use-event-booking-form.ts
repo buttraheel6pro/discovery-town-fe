@@ -4,12 +4,17 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import { eventPackageOptionalAddOnsMock } from '@/lib/mock-data'
+import { useInventory } from '@/lib/inventory-store'
 import { useScheduling } from '@/lib/scheduling-store'
 import {
   buildEventBookingAddOnLines,
+  clampEventAddOnQuantity,
   getPackageIncludedAddOnIds,
   type EventAddOnConfigurationResult,
 } from '@/lib/event-booking-add-ons'
+import {
+  resolveEventBookingScheduleMode,
+} from '@/lib/event-booking-schedule'
 import type {
   AvailableWindow,
   CartModifierSelection,
@@ -18,6 +23,7 @@ import type {
   EventPackage,
   SchedulingBooking,
 } from '@/lib/types'
+import { EventBookingScheduleModeEnum } from '@/lib/types'
 
 interface BirthdayDetails {
   celebrantName: string
@@ -68,6 +74,7 @@ export function useEventBookingForm({
   defaultAdults = 1,
 }: UseEventBookingFormParams) {
   const { services, addBooking } = useScheduling()
+  const { bookingAddOns } = useInventory()
   const service = useMemo(
     () => services.find((entry) => entry.id === serviceId) ?? null,
     [serviceId, services],
@@ -82,6 +89,7 @@ export function useEventBookingForm({
     defaultPackageId ?? null,
   )
   const [selectedDate, setSelectedDate] = useState<string | null>(todayIsoDate())
+  const [selectedToDate, setSelectedToDate] = useState<string | null>(todayIsoDate())
   const [selectedWindow, setSelectedWindow] = useState<AvailableWindow | null>(null)
   const [childrenCount, setChildrenCount] = useState<number>(Math.max(1, defaultChildren))
   const [adultsCount, setAdultsCount] = useState<number>(Math.max(1, defaultAdults))
@@ -147,7 +155,17 @@ export function useEventBookingForm({
     (birthdayDetails.celebrantName.trim().length > 0 &&
       (birthdayDetails.celebrantAge ?? 0) >= 1 &&
       (birthdayDetails.celebrantAge ?? 0) <= 18)
-  const canContinueFromTiming = Boolean(selectedDate && selectedWindow)
+  const scheduleMode = service ? resolveEventBookingScheduleMode(service) : EventBookingScheduleModeEnum.PER_EVENT
+
+  const canContinueFromTiming = (() => {
+    if (scheduleMode === EventBookingScheduleModeEnum.PER_EVENT) {
+      return Boolean(selectedDate && selectedWindow)
+    }
+    if (scheduleMode === EventBookingScheduleModeEnum.PER_DAY) {
+      return Boolean(selectedDate && selectedToDate && selectedWindow)
+    }
+    return Boolean(selectedDate && selectedWindow)
+  })()
   const canSubmit = Boolean(selectedPackage && selectedDate && selectedWindow && service)
 
   function updateBirthdayDetails(patch: Partial<BirthdayDetails>): void {
@@ -203,7 +221,7 @@ export function useEventBookingForm({
       ...prev,
       [addOnId]: {
         unitPrice: Math.max(0, configuration.unitPrice),
-        quantity: 1,
+        quantity: clampEventAddOnQuantity(configuration.quantity),
         summary: configuration.summary,
         selectedModifiers: [...configuration.selectedModifiers],
         selectedByGroup: { ...configuration.selectedByGroup },
@@ -264,8 +282,9 @@ export function useEventBookingForm({
       specialInstructions: null,
       source: 'ONLINE',
       addOns: buildEventBookingAddOnLines(selectedPackage, optionalAddOns, (addOnId) => {
+        const fromInventory = bookingAddOns.find((entry) => entry.id === addOnId)
         const fromCatalog = eventPackageOptionalAddOnsMock.find((entry) => entry.id === addOnId)
-        return fromCatalog?.name ?? addOnId
+        return fromInventory?.name ?? fromCatalog?.name ?? addOnId
       }),
       createdAt: nowIso,
       couponCode: couponCode ?? null,
@@ -288,6 +307,8 @@ export function useEventBookingForm({
     setSelectedPackageId,
     selectedDate,
     setSelectedDate,
+    selectedToDate,
+    setSelectedToDate,
     selectedWindow,
     setSelectedWindow,
     childrenCount,

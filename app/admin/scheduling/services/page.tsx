@@ -33,7 +33,12 @@ import { BookingModeBadge } from "@/components/admin/booking-mode-badge";
 import { CategoryPlacedPackagesSection } from "@/components/admin/category-placed-packages-section";
 import { OpenPlayMembershipAdminSection } from "@/components/admin/open-play-membership-admin-section";
 import { CrudModal } from "@/components/admin/crud-modal";
+import { CustomerNavSettingsModal } from "@/components/admin/customer-nav-settings-modal";
 import { EventTypeBadge } from "@/components/admin/event-type-badge";
+import {
+  EventBookingScheduleFields,
+  type EventBookingScheduleDraft,
+} from '@/components/admin/event-booking-schedule-fields'
 import { EventTypeSelector } from "@/components/admin/event-type-selector";
 import { ServicePackageLinker } from "@/components/admin/service-package-linker";
 import { ServiceTypeBadge } from "@/components/customer/service-type-badge";
@@ -90,9 +95,19 @@ import {
 import { useClients } from "@/lib/client-store";
 import { newAdminEntityId } from "@/lib/scheduling-admin-builders";
 import {
+  OPEN_BOOKING_SLOT_INCREMENT_OPTIONS,
+  adminValueFromSlotIncrementMinutes,
+  slotIncrementMinutesFromAdminValue,
+} from "@/lib/open-booking-slot-windows";
+import {
   createServiceCategory,
   listServiceCategories,
 } from "@/lib/services/service-categories";
+import {
+  productTypeToCustomerNavKey,
+  schedulingTopLevelToNavKey,
+} from "@/lib/customer-nav-admin-map";
+import type { CustomerNavLabelKey } from "@/lib/customer-nav-labels";
 import { LABELS } from "@/lib/constants/ui-labels";
 import { locations, samplePreschoolAddOns } from "@/lib/mock-data";
 import {
@@ -109,8 +124,16 @@ import {
 } from "@/lib/scheduling-consumer-categories";
 import { showMaxPassCountAdminField } from "@/lib/booking-pass-count";
 import { withoutOpenPlayPassCatalogServices } from "@/lib/open-play-pass-catalog";
-import { buildPackageEditHref } from "@/lib/package-placement";
+import {
+  buildPackageEditHref,
+  resolveAdminCategoryPlacedPackages,
+} from "@/lib/package-placement";
+import { serviceSupportsAdminSlotCreation } from "@/lib/admin-scheduling-slot-actions";
 import { isCurrentCatalogService } from "@/lib/scheduling-visibility";
+import {
+  eventBookingScheduleDraftFromService,
+  eventBookingSchedulePatchFromDraft,
+} from "@/lib/event-booking-schedule";
 import { useScheduling } from "@/lib/scheduling-store";
 import {
   bookingAddOnToSchedulingAddOn,
@@ -137,11 +160,13 @@ import type {
 } from "@/lib/types";
 import {
   CATEGORY_ADD_ON_CHARGE_FREQUENCIES,
+  EventBookingScheduleModeEnum,
   SchedulingServiceTypeEnum,
   type CategoryAddOnChargeFrequency,
 } from "@/lib/types";
 
-type EditDraft = {
+type EditDraft = EventBookingScheduleDraft & {
+  categoryId: string;
   locationId: string;
   name: string;
   description: string;
@@ -283,7 +308,6 @@ function AdminSchedulingServicesPageContent() {
     addService,
     updateService,
     packages,
-    duplicatePackage,
     linkSchedulingAddOn,
     unlinkSchedulingAddOn,
     setSchedulingAddOnFree,
@@ -312,6 +336,10 @@ function AdminSchedulingServicesPageContent() {
   >(sortedCategories[0]?.id ?? "ALL");
 
   const [catalogView, setCatalogView] = useState<CatalogView>("services");
+  const [customerNavModal, setCustomerNavModal] = useState<{
+    navKey: CustomerNavLabelKey;
+    sectionLabel: string;
+  } | null>(null);
   const [selectedProductMenuCategoryId, setSelectedProductMenuCategoryId] =
     useState<string | null>(null);
   const [draggingProductMenuCategoryId, setDraggingProductMenuCategoryId] =
@@ -322,6 +350,8 @@ function AdminSchedulingServicesPageContent() {
   const [productSubCategoryFormOpen, setProductSubCategoryFormOpen] =
     useState(false);
   const [productSubCategoryName, setProductSubCategoryName] = useState("");
+  const [productSubCategoryIsActive, setProductSubCategoryIsActive] =
+    useState(true);
   const [productSubCategoryParentId, setProductSubCategoryParentId] = useState<
     string | null
   >(null);
@@ -368,6 +398,7 @@ function AdminSchedulingServicesPageContent() {
   const [linkAddOnChargeFrequency, setLinkAddOnChargeFrequency] =
     useState<CategoryAddOnChargeFrequency>("ONE_TIME");
   const [editDraft, setEditDraft] = useState<EditDraft>({
+    categoryId: sortedCategories[0]?.id ?? "",
     locationId: locations[0]?.id ?? "loc-1",
     name: "",
     description: "",
@@ -383,7 +414,7 @@ function AdminSchedulingServicesPageContent() {
     eventType: "PUBLIC",
     minDurationMinutes: "",
     maxDurationMinutes: "",
-    slotIncrementMinutes: "",
+    slotIncrementMinutes: "none",
     maxConcurrent: "",
     minAdvanceHours: "",
     maxAdvanceHours: "",
@@ -399,7 +430,12 @@ function AdminSchedulingServicesPageContent() {
     maxAdultSeats: "",
     additionalChildPrice: "",
     isPackageService: false,
+    eventBookingScheduleMode: EventBookingScheduleModeEnum.PER_EVENT,
   });
+  const [createProgramArea, setCreateProgramArea] = useState<SchedulingTopLevelId>(
+    () => getSchedulingTopLevelId(sortedCategories[0]?.id ?? "cat-gym-babies"),
+  );
+  const [editProgramArea, setEditProgramArea] = useState<SchedulingTopLevelId>("GYM");
   const [createDraft, setCreateDraft] = useState<CreateDraft>({
     categoryId: sortedCategories[0]?.id ?? "",
     serviceType: "GYM_CLASS",
@@ -419,7 +455,7 @@ function AdminSchedulingServicesPageContent() {
     isActive: true,
     minDurationMinutes: "",
     maxDurationMinutes: "",
-    slotIncrementMinutes: "",
+    slotIncrementMinutes: "none",
     maxConcurrent: "",
     minAdvanceHours: "",
     maxAdvanceHours: "",
@@ -435,6 +471,7 @@ function AdminSchedulingServicesPageContent() {
     maxAdultSeats: "",
     additionalChildPrice: "",
     isPackageService: false,
+    eventBookingScheduleMode: EventBookingScheduleModeEnum.PER_EVENT,
     pendingServiceAddOnLinks: [],
   });
 
@@ -554,6 +591,11 @@ function AdminSchedulingServicesPageContent() {
     });
   }, [alignedServices, serviceCategoryFilterId]);
 
+  const catalogSupportsSlotCreation = useMemo(
+    () => filtered.some(serviceSupportsAdminSlotCreation),
+    [filtered],
+  );
+
   const categoriesByTopLevel = useMemo<
     Record<SchedulingTopLevelId, SchedulingCategory[]>
   >(() => {
@@ -584,7 +626,9 @@ function AdminSchedulingServicesPageContent() {
 
   useEffect(() => {
     if (!selected) return;
+    setEditProgramArea(getSchedulingTopLevelId(selected.categoryId));
     setEditDraft({
+      categoryId: selected.categoryId,
       locationId: selected.locationId ?? locations[0]?.id ?? "loc-1",
       name: selected.name,
       description: selected.description ?? "",
@@ -609,10 +653,9 @@ function AdminSchedulingServicesPageContent() {
         selected.maxDurationMinutes != null
           ? String(selected.maxDurationMinutes)
           : "",
-      slotIncrementMinutes:
-        selected.slotIncrementMinutes != null
-          ? String(selected.slotIncrementMinutes)
-          : "",
+      slotIncrementMinutes: adminValueFromSlotIncrementMinutes(
+        selected.slotIncrementMinutes,
+      ),
       maxConcurrent:
         selected.maxConcurrent != null ? String(selected.maxConcurrent) : "",
       minAdvanceHours:
@@ -641,8 +684,75 @@ function AdminSchedulingServicesPageContent() {
         selected.maxAdultSeats != null ? String(selected.maxAdultSeats) : "",
       additionalChildPrice: selected.additionalChildPrice ?? "",
       isPackageService: selected.isPackageService ?? false,
+      ...eventBookingScheduleDraftFromService(selected),
     });
   }, [selected]);
+
+  const createSubCategories = useMemo(
+    () =>
+      sortedCategories.filter(
+        (category) => getSchedulingTopLevelId(category.id) === createProgramArea,
+      ),
+    [createProgramArea, sortedCategories],
+  );
+
+  const editSubCategories = useMemo(
+    () =>
+      sortedCategories.filter(
+        (category) => getSchedulingTopLevelId(category.id) === editProgramArea,
+      ),
+    [editProgramArea, sortedCategories],
+  );
+
+  useEffect(() => {
+    if (createSubCategories.some((category) => category.id === createDraft.categoryId)) {
+      return;
+    }
+    const fallback = createSubCategories[0]?.id ?? "";
+    if (!fallback) {
+      return;
+    }
+    setCreateDraft((draft) => ({ ...draft, categoryId: fallback }));
+  }, [createDraft.categoryId, createSubCategories]);
+
+  useEffect(() => {
+    if (editSubCategories.some((category) => category.id === editDraft.categoryId)) {
+      return;
+    }
+    const fallback = editSubCategories[0]?.id ?? "";
+    if (!fallback) {
+      return;
+    }
+    setEditDraft((draft) => ({ ...draft, categoryId: fallback }));
+  }, [editDraft.categoryId, editSubCategories]);
+
+  function handleCreateProgramAreaChange(next: SchedulingTopLevelId): void {
+    setCreateProgramArea(next);
+    setCreateDraft((draft) => {
+      const subs = sortedCategories.filter(
+        (category) => getSchedulingTopLevelId(category.id) === next,
+      );
+      const keep = subs.some((category) => category.id === draft.categoryId);
+      return {
+        ...draft,
+        categoryId: keep ? draft.categoryId : (subs[0]?.id ?? draft.categoryId),
+      };
+    });
+  }
+
+  function handleEditProgramAreaChange(next: SchedulingTopLevelId): void {
+    setEditProgramArea(next);
+    setEditDraft((draft) => {
+      const subs = sortedCategories.filter(
+        (category) => getSchedulingTopLevelId(category.id) === next,
+      );
+      const keep = subs.some((category) => category.id === draft.categoryId);
+      return {
+        ...draft,
+        categoryId: keep ? draft.categoryId : (subs[0]?.id ?? draft.categoryId),
+      };
+    });
+  }
 
   const addOnCatalog = useMemo(() => {
     const map = new Map<string, SchedulingServiceAddOn>();
@@ -920,6 +1030,11 @@ function AdminSchedulingServicesPageContent() {
     );
   }, [serviceCategoryFilterId, sortedCategories]);
 
+  const categoryPlacedPackages = useMemo(
+    () => resolveAdminCategoryPlacedPackages(serviceCategoryFilterId),
+    [serviceCategoryFilterId],
+  );
+
   const topLevelCount = useMemo(() => {
     return SCHEDULING_TOP_LEVEL_ORDER.filter(
       (topLevelId) => categoriesByTopLevel[topLevelId].length > 0,
@@ -953,7 +1068,7 @@ function AdminSchedulingServicesPageContent() {
     const ageMax = parseOptionalInt(editDraft.ageMax);
     const minDurationMinutes = parseOptionalInt(editDraft.minDurationMinutes);
     const maxDurationMinutes = parseOptionalInt(editDraft.maxDurationMinutes);
-    const slotIncrementMinutes = parseOptionalInt(
+    const slotIncrementMinutes = slotIncrementMinutesFromAdminValue(
       editDraft.slotIncrementMinutes,
     );
     const maxConcurrent = parseOptionalInt(editDraft.maxConcurrent);
@@ -979,7 +1094,15 @@ function AdminSchedulingServicesPageContent() {
     ) {
       return;
     }
+    const selectedCategory =
+      sortedCategories.find((category) => category.id === editDraft.categoryId) ??
+      null;
+    if (!selectedCategory) {
+      return;
+    }
     const servicePatch: Partial<SchedulingService> = {
+      categoryId: selectedCategory.id,
+      category: { ...selectedCategory },
       locationId: editDraft.locationId.trim() || null,
       name: editDraft.name.trim(),
       description: editDraft.description.trim() || null,
@@ -1016,6 +1139,7 @@ function AdminSchedulingServicesPageContent() {
       maxAdultSeats: maxAdultSeats ?? undefined,
       additionalChildPrice: editDraft.additionalChildPrice.trim() || undefined,
       isPackageService: editDraft.isPackageService,
+      ...eventBookingSchedulePatchFromDraft(editDraft),
     };
     updateService(selected.id, servicePatch);
     setSelected(null);
@@ -1077,6 +1201,7 @@ function AdminSchedulingServicesPageContent() {
     maxAdultSeats?: number;
     additionalChildPrice?: string;
     isPackageService: boolean;
+    maxPassCount?: number | null;
     pendingServiceAddOnLinks: {
       addOnId: string;
       addOnName?: string;
@@ -1085,7 +1210,7 @@ function AdminSchedulingServicesPageContent() {
       unitPrice: string;
       chargeFrequency: CategoryAddOnChargeFrequency;
     }[];
-  }): SchedulingService {
+  } & EventBookingScheduleDraft): SchedulingService {
     const pricingModel = input.bookingMode === "OPEN" ? "per_hour" : "flat";
     const linkedAddOns = input.pendingServiceAddOnLinks.map((l) => ({
       id: newAdminEntityId("cao"),
@@ -1138,6 +1263,8 @@ function AdminSchedulingServicesPageContent() {
       maxAdultSeats: input.maxAdultSeats,
       additionalChildPrice: input.additionalChildPrice,
       isPackageService: input.isPackageService,
+      maxPassCount: input.maxPassCount,
+      ...eventBookingSchedulePatchFromDraft(input),
       linkedAddOns,
     };
   }
@@ -1151,7 +1278,7 @@ function AdminSchedulingServicesPageContent() {
     const ageMax = parseOptionalInt(createDraft.ageMax);
     const minDurationMinutes = parseOptionalInt(createDraft.minDurationMinutes);
     const maxDurationMinutes = parseOptionalInt(createDraft.maxDurationMinutes);
-    const slotIncrementMinutes = parseOptionalInt(
+    const slotIncrementMinutes = slotIncrementMinutesFromAdminValue(
       createDraft.slotIncrementMinutes,
     );
     const maxConcurrent = parseOptionalInt(createDraft.maxConcurrent);
@@ -1216,10 +1343,7 @@ function AdminSchedulingServicesPageContent() {
         createDraft.bookingMode === "OPEN"
           ? (maxDurationMinutes ?? 240)
           : maxDurationMinutes,
-      slotIncrementMinutes:
-        createDraft.bookingMode === "OPEN"
-          ? (slotIncrementMinutes ?? 60)
-          : slotIncrementMinutes,
+      slotIncrementMinutes,
       maxConcurrent:
         createDraft.bookingMode === "OPEN"
           ? (maxConcurrent ?? 3)
@@ -1244,6 +1368,7 @@ function AdminSchedulingServicesPageContent() {
         createDraft.additionalChildPrice.trim() || undefined,
       isPackageService: createDraft.isPackageService,
       pendingServiceAddOnLinks: createDraft.pendingServiceAddOnLinks.slice(),
+      eventBookingScheduleMode: createDraft.eventBookingScheduleMode,
     });
     addService(created);
     setCreateOpen(false);
@@ -1267,12 +1392,13 @@ function AdminSchedulingServicesPageContent() {
       isActive: true,
       minDurationMinutes: "",
       maxDurationMinutes: "",
-      slotIncrementMinutes: "",
+      slotIncrementMinutes: "none",
       maxConcurrent: "",
       minAdvanceHours: "",
       maxAdvanceHours: "",
       siblingPrice: "",
       freeAdultCount: "2",
+      maxPassCount: "",
       additionalAdultPrice: "",
       minSeats: "1",
       pricePerHour: "",
@@ -1282,6 +1408,7 @@ function AdminSchedulingServicesPageContent() {
       maxAdultSeats: "",
       additionalChildPrice: "",
       isPackageService: false,
+      eventBookingScheduleMode: EventBookingScheduleModeEnum.PER_EVENT,
       pendingServiceAddOnLinks: [],
     });
     const redirectParams = new URLSearchParams({
@@ -1289,6 +1416,13 @@ function AdminSchedulingServicesPageContent() {
       returnTo: contextualReturnTo,
     });
     router.push(`/admin/scheduling/new/recurring?${redirectParams.toString()}`);
+  }
+
+  function openCustomerNavSettings(
+    navKey: CustomerNavLabelKey,
+    sectionLabel: string,
+  ): void {
+    setCustomerNavModal({ navKey, sectionLabel });
   }
 
   function openNewCategory(topLevelId: SchedulingTopLevelId) {
@@ -1434,6 +1568,7 @@ function AdminSchedulingServicesPageContent() {
       (parentRow?.productType ?? "").toLowerCase() === "rentals";
     setProductSubCategoryParentId(parentId);
     setProductSubCategoryName("");
+    setProductSubCategoryIsActive(true);
     setEditingProductSubCategoryId(null);
     setProductSubCategoryAcknowledgmentRows(
       isRentals ? [{ text: "", detailUrl: "" }] : [],
@@ -1448,6 +1583,7 @@ function AdminSchedulingServicesPageContent() {
       (category.productType ?? "").toLowerCase() === "rentals";
     setProductSubCategoryParentId(category.parentId ?? null);
     setProductSubCategoryName(category.name);
+    setProductSubCategoryIsActive(category.isActive);
     setEditingProductSubCategoryId(category.id);
     setProductSubCategoryAcknowledgmentRows(
       isRentals ? rentalAcknowledgmentsToFormRows(category.rentalAcknowledgments) : [],
@@ -1472,10 +1608,12 @@ function AdminSchedulingServicesPageContent() {
     if (editingProductSubCategoryId) {
       updateProductCategory(editingProductSubCategoryId, {
         name: trimmedName,
+        isActive: productSubCategoryIsActive,
         ...(isRentalSubCategory ? { rentalAcknowledgments: normalizedAcks } : {}),
       });
       setProductSubCategoryFormOpen(false);
       setProductSubCategoryName("");
+      setProductSubCategoryIsActive(true);
       setProductSubCategoryParentId(null);
       setEditingProductSubCategoryId(null);
       setProductSubCategoryAcknowledgmentRows([]);
@@ -1486,11 +1624,13 @@ function AdminSchedulingServicesPageContent() {
       name: trimmedName,
       productType: parent.productType ?? "shop",
       parentId: productSubCategoryParentId,
+      isActive: productSubCategoryIsActive,
       ...(isRentalSubCategory ? { rentalAcknowledgments: normalizedAcks } : {}),
     });
 
     setProductSubCategoryFormOpen(false);
     setProductSubCategoryName("");
+    setProductSubCategoryIsActive(true);
     setProductSubCategoryParentId(null);
     setEditingProductSubCategoryId(null);
     setProductSubCategoryAcknowledgmentRows([]);
@@ -1746,20 +1886,47 @@ function AdminSchedulingServicesPageContent() {
                     value={topLevelId}
                     className="overflow-hidden rounded-lg border border-border bg-muted/20 px-3 last:border-b"
                   >
-                    <AccordionTrigger className="py-3 text-sm font-semibold text-foreground hover:no-underline">
-                      <span className="flex items-center gap-2">
-                        <Badge
-                          variant="secondary"
-                          className="text-[10px] uppercase tracking-wide"
-                        >
-                          Type
-                        </Badge>
-                        <span>{getSchedulingTopLevelLabel(topLevelId)}</span>
-                        <Badge variant="outline" className="text-[10px]">
-                          {totalServicesByTopLevel[topLevelId]}
-                        </Badge>
-                      </span>
-                    </AccordionTrigger>
+                    <div className="flex min-w-0 items-center gap-0 [&>h3]:flex [&>h3]:min-w-0 [&>h3]:flex-1">
+                      <AccordionTrigger className="w-full min-w-0 flex-1 items-center py-2 text-sm font-semibold text-foreground hover:no-underline">
+                        <span className="flex min-w-0 flex-1 items-center gap-2">
+                          <Badge
+                            variant="secondary"
+                            className="text-[10px] uppercase tracking-wide"
+                          >
+                            Type
+                          </Badge>
+                          <span>{getSchedulingTopLevelLabel(topLevelId)}</span>
+                          <Badge variant="outline" className="text-[10px]">
+                            {totalServicesByTopLevel[topLevelId]}
+                          </Badge>
+                        </span>
+                      </AccordionTrigger>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 shrink-0"
+                            aria-label={`Edit ${getSchedulingTopLevelLabel(topLevelId)} customer navbar`}
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onSelect={() =>
+                              openCustomerNavSettings(
+                                schedulingTopLevelToNavKey(topLevelId),
+                                getSchedulingTopLevelLabel(topLevelId),
+                              )
+                            }
+                          >
+                            Edit
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                     <AccordionContent className="space-y-2 pb-3">
                       <div className="flex justify-end">
                         <Button
@@ -1925,20 +2092,48 @@ function AdminSchedulingServicesPageContent() {
                     value={root.id}
                     className="overflow-hidden rounded-lg border border-border bg-muted/20 px-3 last:border-b"
                   >
-                    <AccordionTrigger className="py-3 text-sm font-semibold text-foreground hover:no-underline">
-                      <span className="flex items-center gap-2">
-                        <Badge
-                          variant="secondary"
-                          className="text-[10px] uppercase tracking-wide"
-                        >
-                          TYPE
-                        </Badge>
-                        <span>{rootTypeLabel}</span>
-                        <Badge variant="outline" className="text-[10px]">
-                          {rootCount}
-                        </Badge>
-                      </span>
-                    </AccordionTrigger>
+                    <div className="flex min-w-0 items-center gap-0 [&>h3]:flex [&>h3]:min-w-0 [&>h3]:flex-1">
+                      <AccordionTrigger className="w-full min-w-0 flex-1 items-center py-2 text-sm font-semibold text-foreground hover:no-underline">
+                        <span className="flex min-w-0 flex-1 items-center gap-2">
+                          <Badge
+                            variant="secondary"
+                            className="text-[10px] uppercase tracking-wide"
+                          >
+                            TYPE
+                          </Badge>
+                          <span>{rootTypeLabel}</span>
+                          <Badge variant="outline" className="text-[10px]">
+                            {rootCount}
+                          </Badge>
+                        </span>
+                      </AccordionTrigger>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 shrink-0"
+                            aria-label={`Edit ${rootTypeLabel} customer navbar`}
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onSelect={() => {
+                              const navKey =
+                                productTypeToCustomerNavKey(
+                                  root.productType ?? "shop",
+                                ) ?? "shop";
+                              openCustomerNavSettings(navKey, rootTypeLabel);
+                            }}
+                          >
+                            Edit
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                     <AccordionContent className="space-y-2 pb-3">
                       <div className="rounded-md border border-border bg-card p-2 shadow-sm">
                         <div className="flex justify-end px-2">
@@ -2124,13 +2319,15 @@ function AdminSchedulingServicesPageContent() {
               <div className="flex items-center gap-2">
                 {catalogView === "services" ? (
                   <>
-                    <Button asChild variant="secondary">
-                      <Link
-                        href={`/admin/scheduling/new/recurring?returnTo=${encodeURIComponent(contextualReturnTo)}`}
-                      >
-                        Create slot
-                      </Link>
-                    </Button>
+                    {catalogSupportsSlotCreation ? (
+                      <Button asChild variant="secondary">
+                        <Link
+                          href={`/admin/scheduling/new/recurring?returnTo=${encodeURIComponent(contextualReturnTo)}`}
+                        >
+                          Create slot
+                        </Link>
+                      </Button>
+                    ) : null}
                     <Button
                       asChild
                       className="bg-accent text-accent-foreground hover:bg-accent/90"
@@ -2186,31 +2383,13 @@ function AdminSchedulingServicesPageContent() {
                           ) : null}
                         </div>
                         <div className="space-y-2 p-4">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-bold text-foreground">
-                                {service.name}
-                              </p>
-                              <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
-                                {service.description ?? "—"}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Button asChild variant="secondary" size="sm">
-                                <Link
-                                  href={`/admin/scheduling/new/recurring?serviceId=${encodeURIComponent(service.id)}&returnTo=${encodeURIComponent(contextualReturnTo)}`}
-                                >
-                                  Create slot
-                                </Link>
-                              </Button>
-                              <Button asChild variant="outline" size="sm">
-                                <Link
-                                  href={`/admin/scheduling/services/new?serviceId=${encodeURIComponent(service.id)}&returnTo=${encodeURIComponent(contextualReturnTo)}`}
-                                >
-                                  Edit
-                                </Link>
-                              </Button>
-                            </div>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-bold text-foreground">
+                              {service.name}
+                            </p>
+                            <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                              {service.description ?? "—"}
+                            </p>
                           </div>
                           <div className="flex flex-wrap items-center gap-2">
                             <ServiceTypeBadge
@@ -2224,6 +2403,24 @@ function AdminSchedulingServicesPageContent() {
                             <span className="text-xs text-muted-foreground">
                               {getAgeRangeLabel(service.ageMin, service.ageMax)}
                             </span>
+                          </div>
+                          <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border pt-3">
+                            {serviceSupportsAdminSlotCreation(service) ? (
+                              <Button asChild variant="secondary" size="sm">
+                                <Link
+                                  href={`/admin/scheduling/new/recurring?serviceId=${encodeURIComponent(service.id)}&returnTo=${encodeURIComponent(contextualReturnTo)}`}
+                                >
+                                  Create slot
+                                </Link>
+                              </Button>
+                            ) : null}
+                            <Button asChild variant="outline" size="sm">
+                              <Link
+                                href={`/admin/scheduling/services/new?serviceId=${encodeURIComponent(service.id)}&returnTo=${encodeURIComponent(contextualReturnTo)}`}
+                              >
+                                Edit
+                              </Link>
+                            </Button>
                           </div>
                         </div>
                       </CardContent>
@@ -2245,11 +2442,11 @@ function AdminSchedulingServicesPageContent() {
                   <OpenPlayMembershipAdminSection className="pt-2" />
                 ) : null}
 
-                {serviceCategoryFilterId === "cat-private-play" ? (
+                {categoryPlacedPackages ? (
                   <CategoryPlacedPackagesSection
-                    page="play"
-                    categoryId="cat-private-play"
-                    categoryName="Private Play"
+                    page={categoryPlacedPackages.page}
+                    categoryId={categoryPlacedPackages.categoryId}
+                    categoryName={catalogTitle}
                     className="pt-2"
                   />
                 ) : null}
@@ -2403,12 +2600,24 @@ function AdminSchedulingServicesPageContent() {
         />
       ) : null}
 
+      <CustomerNavSettingsModal
+        open={customerNavModal != null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setCustomerNavModal(null);
+          }
+        }}
+        navKey={customerNavModal?.navKey ?? null}
+        sectionLabel={customerNavModal?.sectionLabel ?? ""}
+      />
+
       <CrudModal
         open={productSubCategoryFormOpen}
         onOpenChange={(open) => {
           setProductSubCategoryFormOpen(open);
           if (!open) {
             setProductSubCategoryName("");
+            setProductSubCategoryIsActive(true);
             setProductSubCategoryParentId(null);
             setEditingProductSubCategoryId(null);
             setProductSubCategoryAcknowledgmentRows([]);
@@ -2421,7 +2630,7 @@ function AdminSchedulingServicesPageContent() {
           editingProductSubCategoryId
             ? isRentalProductSubCategoryModal
               ? "Update name and rental checkout acknowledgments."
-              : "Update sub-category name."
+              : "Update sub-category name and customer visibility."
             : isRentalProductSubCategoryModal
               ? "Create a sub-category and optional checkout acknowledgments for rentals."
               : "Create a sub-category under the selected category."
@@ -2467,6 +2676,16 @@ function AdminSchedulingServicesPageContent() {
               value={productSubCategoryName}
               onChange={(event) => setProductSubCategoryName(event.target.value)}
               placeholder="Sub-category name"
+            />
+          </div>
+          <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
+            <span className="text-sm font-medium text-foreground">
+              Active
+            </span>
+            <Switch
+              checked={productSubCategoryIsActive}
+              onCheckedChange={setProductSubCategoryIsActive}
+              aria-label="Sub-category active"
             />
           </div>
           {isRentalProductSubCategoryModal ? (
@@ -3150,6 +3369,48 @@ function AdminSchedulingServicesPageContent() {
       >
         {selected ? (
           <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Category</Label>
+                <Select
+                  value={editProgramArea}
+                  onValueChange={(value) =>
+                    handleEditProgramAreaChange(value as SchedulingTopLevelId)
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SCHEDULING_TOP_LEVEL_ORDER.map((topLevelId) => (
+                      <SelectItem key={topLevelId} value={topLevelId}>
+                        {getSchedulingTopLevelLabel(topLevelId)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Sub-category</Label>
+                <Select
+                  value={editDraft.categoryId}
+                  onValueChange={(value) =>
+                    setEditDraft((draft) => ({ ...draft, categoryId: value }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select sub-category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {editSubCategories.map((category) => (
+                      <SelectItem key={category.id} value={category.id}>
+                        {category.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
             <div className="space-y-2">
               <Label>Location</Label>
               <Select
@@ -3472,8 +3733,8 @@ function AdminSchedulingServicesPageContent() {
               <ServicePackageLinker
                 serviceId={selected.id}
                 serviceName={selected.name}
+                serviceCategoryId={selected.categoryId}
                 onRequestEditPackage={openEditPackage}
-                onRequestDuplicatePackage={(id) => duplicatePackage(id)}
               />
             ) : null}
 
@@ -3610,12 +3871,21 @@ function AdminSchedulingServicesPageContent() {
                 }
               />
             </div>
-            <div className="space-y-2">
-              <Label>Event visibility</Label>
-              <EventTypeSelector
-                value={editDraft.eventType}
-                onChange={(v) => setEditDraft((d) => ({ ...d, eventType: v }))}
-              />
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Event visibility</Label>
+                <EventTypeSelector
+                  value={editDraft.eventType}
+                  onChange={(v) => setEditDraft((d) => ({ ...d, eventType: v }))}
+                />
+              </div>
+
+            <EventBookingScheduleFields
+              draft={{
+                eventBookingScheduleMode: editDraft.eventBookingScheduleMode,
+              }}
+              onChange={(patch) => setEditDraft((d) => ({ ...d, ...patch }))}
+            />
             </div>
 
             <Accordion type="single" collapsible>
@@ -3652,23 +3922,33 @@ function AdminSchedulingServicesPageContent() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="edit-inc">Slot increment (mins)</Label>
-                      <Input
-                        id="edit-inc"
-                        type="number"
+                      <Label htmlFor="edit-inc">Slot increment</Label>
+                      <Select
                         value={editDraft.slotIncrementMinutes}
-                        onChange={(e) =>
+                        onValueChange={(value) =>
                           setEditDraft((d) => ({
                             ...d,
-                            slotIncrementMinutes: e.target.value,
+                            slotIncrementMinutes: value,
                           }))
                         }
-                      />
+                      >
+                        <SelectTrigger id="edit-inc" className="w-full">
+                          <SelectValue placeholder="Select increment" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {OPEN_BOOKING_SLOT_INCREMENT_OPTIONS.map((option) => (
+                            <SelectItem key={option.label} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="edit-max-conc">Max concurrent</Label>
                       <Input
                         id="edit-max-conc"
+                        className="w-full"
                         type="number"
                         value={editDraft.maxConcurrent}
                         onChange={(e) =>
@@ -3899,25 +4179,47 @@ function AdminSchedulingServicesPageContent() {
         }
       >
         <div className="space-y-4">
-          <div className="space-y-2">
-            <Label>{LABELS.serviceCategory}</Label>
-            <Select
-              value={createDraft.categoryId}
-              onValueChange={(v) =>
-                setCreateDraft((d) => ({ ...d, categoryId: v }))
-              }
-            >
-              <SelectTrigger>
-                <SelectValue placeholder={LABELS.serviceCategory} />
-              </SelectTrigger>
-              <SelectContent>
-                {categories.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Category</Label>
+              <Select
+                value={createProgramArea}
+                onValueChange={(value) =>
+                  handleCreateProgramAreaChange(value as SchedulingTopLevelId)
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {SCHEDULING_TOP_LEVEL_ORDER.map((topLevelId) => (
+                    <SelectItem key={topLevelId} value={topLevelId}>
+                      {getSchedulingTopLevelLabel(topLevelId)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Sub-category</Label>
+              <Select
+                value={createDraft.categoryId}
+                onValueChange={(value) =>
+                  setCreateDraft((draft) => ({ ...draft, categoryId: value }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select sub-category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {createSubCategories.map((category) => (
+                    <SelectItem key={category.id} value={category.id}>
+                      {category.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <div className="space-y-2">
             <Label>Location</Label>
@@ -3959,15 +4261,24 @@ function AdminSchedulingServicesPageContent() {
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-2">
-            <Label>Event visibility</Label>
-            <EventTypeSelector
-              value={createDraft.eventType}
-              onChange={(v) => setCreateDraft((d) => ({ ...d, eventType: v }))}
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Event visibility</Label>
+              <EventTypeSelector
+                value={createDraft.eventType}
+                onChange={(v) => setCreateDraft((d) => ({ ...d, eventType: v }))}
+              />
+              <p className="text-xs text-muted-foreground">
+                Private and host-only events are not shown here.
+              </p>
+            </div>
+
+            <EventBookingScheduleFields
+              draft={{
+                eventBookingScheduleMode: createDraft.eventBookingScheduleMode,
+              }}
+              onChange={(patch) => setCreateDraft((d) => ({ ...d, ...patch }))}
             />
-            <p className="text-xs text-muted-foreground">
-              Private and host-only events are not shown here.
-            </p>
           </div>
           <div className="space-y-2">
             <Label>{LABELS.serviceType}</Label>
@@ -4594,23 +4905,33 @@ function AdminSchedulingServicesPageContent() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="new-inc">Slot increment (mins)</Label>
-                    <Input
-                      id="new-inc"
-                      type="number"
+                    <Label htmlFor="new-inc">Slot increment</Label>
+                    <Select
                       value={createDraft.slotIncrementMinutes}
-                      onChange={(e) =>
+                      onValueChange={(value) =>
                         setCreateDraft((d) => ({
                           ...d,
-                          slotIncrementMinutes: e.target.value,
+                          slotIncrementMinutes: value,
                         }))
                       }
-                    />
+                    >
+                      <SelectTrigger id="new-inc" className="w-full">
+                        <SelectValue placeholder="Select increment" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {OPEN_BOOKING_SLOT_INCREMENT_OPTIONS.map((option) => (
+                          <SelectItem key={option.label} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="new-max-conc">Max concurrent</Label>
                     <Input
                       id="new-max-conc"
+                      className="w-full"
                       type="number"
                       value={createDraft.maxConcurrent}
                       onChange={(e) =>

@@ -13,6 +13,11 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { useInventory } from '@/lib/inventory-store'
+import {
+  buildProductCategoryById,
+  isConsumerVisibleProduct,
+  isConsumerVisibleProductCategory,
+} from '@/lib/product-visibility'
 import { formatPrice } from '@/lib/utils'
 
 export default function TakeOutPartyPage() {
@@ -22,9 +27,14 @@ export default function TakeOutPartyPage() {
   const [zipCode, setZipCode] = useState('')
   const [address, setAddress] = useState('')
 
+  const categoryById = useMemo(
+    () => buildProductCategoryById(productCategories),
+    [productCategories],
+  )
+
   const takeOutCategoryIds = useMemo(() => {
     const root = productCategories.find((category) => category.id === 'pcat-takeout-party')
-    if (!root) {
+    if (!root || !isConsumerVisibleProductCategory(root, categoryById)) {
       return new Set<string>()
     }
     const ids = new Set<string>([root.id])
@@ -33,21 +43,33 @@ export default function TakeOutPartyPage() {
       const currentId = queue.shift()
       const children = productCategories.filter((category) => category.parentId === currentId)
       for (const child of children) {
+        if (!isConsumerVisibleProductCategory(child, categoryById)) {
+          continue
+        }
         ids.add(child.id)
         queue.push(child.id)
       }
     }
     return ids
-  }, [productCategories])
+  }, [categoryById, productCategories])
 
   const takeOutProducts = useMemo(
-    () => products.filter((product) => product.isActive && takeOutCategoryIds.has(product.categoryId)),
-    [products, takeOutCategoryIds],
+    () =>
+      products.filter(
+        (product) =>
+          takeOutCategoryIds.has(product.categoryId) &&
+          isConsumerVisibleProduct(product, categoryById),
+      ),
+    [categoryById, products, takeOutCategoryIds],
   )
 
   const sections = useMemo(() => {
     const categories = productCategories
-      .filter((category) => category.parentId === 'pcat-takeout-party')
+      .filter(
+        (category) =>
+          category.parentId === 'pcat-takeout-party' &&
+          isConsumerVisibleProductCategory(category, categoryById),
+      )
       .sort((left, right) => left.displayOrder - right.displayOrder)
     return categories.map((category) => ({
       id: category.id,
@@ -55,7 +77,7 @@ export default function TakeOutPartyPage() {
       description: category.description ?? 'Party-ready picks for this category.',
       products: takeOutProducts.filter((product) => product.categoryId === category.id),
     }))
-  }, [productCategories, takeOutProducts])
+  }, [categoryById, productCategories, takeOutProducts])
 
   const selectedProducts = useMemo(
     () =>

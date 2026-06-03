@@ -279,12 +279,16 @@ export function BookingWidget({
               {guestSection()}
 
               {bookingForm.showAdditionalSiblingPicker &&
-              bookingForm.additionalSiblingUnitPrice != null ? (
+              (bookingForm.additionalSiblingUnitPrice != null ||
+                bookingForm.additionalSiblingPassOptions.length > 0) ? (
                 <BookingAdditionalSiblingField
                   count={bookingForm.additionalSiblingCount}
-                  unitPrice={bookingForm.additionalSiblingUnitPrice}
+                  unitPrice={bookingForm.additionalSiblingUnitPrice ?? 0}
                   passCount={bookingForm.guestCount}
                   onChange={bookingForm.setAdditionalSiblingCount}
+                  siblingPassOptions={bookingForm.additionalSiblingPassOptions}
+                  siblingPassQuantities={bookingForm.additionalSiblingPassQuantities}
+                  onSiblingPassQuantityChange={bookingForm.setAdditionalSiblingPassQuantity}
                 />
               ) : null}
 
@@ -298,7 +302,7 @@ export function BookingWidget({
                 />
               ) : null}
 
-              {bookingForm.usesOpenPlayHouseholdBooking ? (
+              {bookingForm.needsHouseholdChildren ? (
                 <BookingHouseholdFields
                   contacts={contacts}
                   primaryGuardianId={bookingForm.primaryGuardianContactId}
@@ -322,7 +326,7 @@ export function BookingWidget({
                 onOptionalToggle={bookingForm.setCategoryAddOnSelected}
               />
 
-              {!bookingForm.usesOpenPlayHouseholdBooking ? (
+              {!bookingForm.needsHouseholdChildren ? (
                 <BookingFamilyMemberFields
                   service={service}
                   contacts={contacts}
@@ -392,17 +396,20 @@ export function BookingWidget({
                 )
               ) : null}
 
-              <div className="space-y-2">
-                <Label htmlFor="notes">Notes (optional)</Label>
-                <Textarea
-                  id="notes"
-                  value={bookingForm.notes}
-                  onChange={(e) => bookingForm.setNotes(e.target.value)}
-                  placeholder="Anything we should know?"
-                />
-              </div>
+              {service.bookingOfferingKind !== 'PASS' ? (
+                <div className="space-y-2">
+                  <Label htmlFor="notes">Notes (optional)</Label>
+                  <Textarea
+                    id="notes"
+                    value={bookingForm.notes}
+                    onChange={(e) => bookingForm.setNotes(e.target.value)}
+                    placeholder="Anything we should know?"
+                  />
+                </div>
+              ) : null}
 
-              {service.category.specialInstructionsEnabled ? (
+              {service.bookingOfferingKind !== 'PASS' &&
+              service.category.specialInstructionsEnabled ? (
                 <div className="space-y-2">
                   <Label htmlFor="special">Special instructions (optional)</Label>
                   <Textarea
@@ -567,12 +574,16 @@ export function BookingWidget({
               {guestSection()}
 
               {bookingForm.showAdditionalSiblingPicker &&
-              bookingForm.additionalSiblingUnitPrice != null ? (
+              (bookingForm.additionalSiblingUnitPrice != null ||
+                bookingForm.additionalSiblingPassOptions.length > 0) ? (
                 <BookingAdditionalSiblingField
                   count={bookingForm.additionalSiblingCount}
-                  unitPrice={bookingForm.additionalSiblingUnitPrice}
+                  unitPrice={bookingForm.additionalSiblingUnitPrice ?? 0}
                   passCount={bookingForm.guestCount}
                   onChange={bookingForm.setAdditionalSiblingCount}
+                  siblingPassOptions={bookingForm.additionalSiblingPassOptions}
+                  siblingPassQuantities={bookingForm.additionalSiblingPassQuantities}
+                  onSiblingPassQuantityChange={bookingForm.setAdditionalSiblingPassQuantity}
                 />
               ) : null}
 
@@ -586,7 +597,7 @@ export function BookingWidget({
                 />
               ) : null}
 
-              {bookingForm.usesOpenPlayHouseholdBooking ? (
+              {bookingForm.needsHouseholdChildren ? (
                 <BookingHouseholdFields
                   contacts={contacts}
                   primaryGuardianId={bookingForm.primaryGuardianContactId}
@@ -610,7 +621,7 @@ export function BookingWidget({
                 onOptionalToggle={bookingForm.setCategoryAddOnSelected}
               />
 
-              {!bookingForm.usesOpenPlayHouseholdBooking ? (
+              {!bookingForm.needsHouseholdChildren ? (
                 <BookingFamilyMemberFields
                   service={service}
                   contacts={contacts}
@@ -626,17 +637,20 @@ export function BookingWidget({
                 />
               ) : null}
 
-              <div className="space-y-2">
-                <Label htmlFor="notes-open">Notes (optional)</Label>
-                <Textarea
-                  id="notes-open"
-                  value={bookingForm.notes}
-                  onChange={(e) => bookingForm.setNotes(e.target.value)}
-                  placeholder="Anything we should know?"
-                />
-              </div>
+              {service.bookingOfferingKind !== 'PASS' ? (
+                <div className="space-y-2">
+                  <Label htmlFor="notes-open">Notes (optional)</Label>
+                  <Textarea
+                    id="notes-open"
+                    value={bookingForm.notes}
+                    onChange={(e) => bookingForm.setNotes(e.target.value)}
+                    placeholder="Anything we should know?"
+                  />
+                </div>
+              ) : null}
 
-              {service.category.specialInstructionsEnabled ? (
+              {service.bookingOfferingKind !== 'PASS' &&
+              service.category.specialInstructionsEnabled ? (
                 <div className="space-y-2">
                   <Label htmlFor="special-open">Special instructions (optional)</Label>
                   <Textarea

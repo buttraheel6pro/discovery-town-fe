@@ -1,18 +1,11 @@
 /** Additional adult pricing on open-play / facility bookings (not a catalog add-on). */
-import {
-  isOpenPlaySessionBookingService,
-  isSiblingPassBookingService,
-  PARENTS_NIGHT_OUT_SERVICE_ID,
-} from '@/lib/booking-household'
+import { isOpenPlaySessionBookingService, PARENTS_NIGHT_OUT_SERVICE_ID } from '@/lib/booking-household'
 import type { SchedulingService } from '@/lib/types'
 
 /** Legacy catalog id — must not appear in the add-ons picker. */
 export const LEGACY_ADDITIONAL_ADULT_ADD_ON_ID = 'ao-f-3' as const
 
 export function parseAdditionalAdultUnitPrice(service: SchedulingService): number | null {
-  if (isSiblingPassBookingService(service.id)) {
-    return null
-  }
   if (service.id === PARENTS_NIGHT_OUT_SERVICE_ID) {
     return null
   }
@@ -23,16 +16,10 @@ export function parseAdditionalAdultUnitPrice(service: SchedulingService): numbe
       return parsed
     }
   }
-  if (isOpenPlaySessionBookingService(service.id)) {
-    return 10
-  }
   return null
 }
 
 export function showsAdditionalAdultPicker(service: SchedulingService): boolean {
-  if (isSiblingPassBookingService(service.id)) {
-    return false
-  }
   return parseAdditionalAdultUnitPrice(service) != null
 }
 

@@ -1,5 +1,7 @@
-/** Open booking, private hire, and rental availability — shared entry; rental variants delegate. */
+/** Open booking, private hire, rental, and event-schedule availability — shared entry. */
 'use client'
+
+import { useEffect, useMemo, useRef } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -9,6 +11,7 @@ import {
 } from '@/components/customer/rental-per-day-calendar-section'
 import { RentalWeekSlotPicker } from '@/components/customer/rental-week-slot-picker'
 import {
+  OpenBookingAvailabilitySlotLegend,
   OpenBookingTimeWindowGrid,
 } from '@/components/customer/open-booking-time-window-grid'
 import {
@@ -17,14 +20,40 @@ import {
   getOpenBookingWeekDatesFromOffset,
   OpenBookingWeekDayButtonGrid,
   OpenBookingWeekToolbar,
+  type OpenBookingWeekDayVisual,
 } from '@/components/customer/open-booking-week-ui'
+import {
+  buildDayRangeBookingWindow,
+  buildEventDayAvailabilityMap,
+  countEventPerDaySessionDaysInRange,
+  getDistinctSessionDatesForService,
+  getFirstUpcomingSessionYmdForService,
+  getEventBookingScheduleAvailabilitySubtitle,
+  isEventPerDayDateSelectable,
+  resolveDistinctEventPerEventSessionTimes,
+  shouldShowEventDayRangePicker,
+  type FixedEventScheduleDisplay,
+} from '@/lib/event-booking-schedule'
 import {
   generateMockRentalHalfDayWindows,
   generateMockRentalHourlyWindows,
 } from '@/lib/rental-calendar-helpers'
-import { generateOpenAvailability, generateOpenAvailabilityForDuration } from '@/lib/mock-data'
-import { cn, formatDurationLabel } from '@/lib/utils'
-import type { AvailableWindow, SchedulingService } from '@/lib/types'
+import { generateOpenAvailabilityForDuration } from '@/lib/mock-data'
+import {
+  resolveSlotIncrementMinutes,
+} from '@/lib/open-booking-slot-windows'
+import { formatRentalLongDate } from '@/lib/rental-calendar-helpers'
+import { getWeekOffsetForYmd } from '@/lib/ymd-date'
+import { cn, formatAvailabilityWindowLabel, formatDurationLabel } from '@/lib/utils'
+import {
+  EventBookingScheduleModeEnum,
+  type AvailableWindow,
+  type EventBookingScheduleMode,
+  type SchedulingService,
+  type SchedulingSlot,
+} from '@/lib/types'
+
+const AVAILABILITY_TITLE = 'Availability'
 
 export type OpenBookingAvailabilityMode = 'facility' | 'private_hire'
 
@@ -65,13 +94,362 @@ export type OpenBookingRentalSlotsVariantProps = Readonly<{
   readonly onRentalSlotChange: (startIso: string, endIso: string) => void
 }>
 
+export type OpenBookingEventScheduleVariantProps = Readonly<{
+  readonly variant: 'event_schedule'
+  readonly scheduleMode: EventBookingScheduleMode
+  readonly service: SchedulingService
+  readonly slots: readonly SchedulingSlot[]
+  readonly weekOffset: number
+  readonly onWeekOffsetChange: (offset: number) => void
+  readonly selectedDate: string
+  readonly onSelectedDateChange: (dateStr: string) => void
+  readonly selectedToDate: string
+  readonly onSelectedToDateChange: (dateStr: string) => void
+  readonly selectedWindow: AvailableWindow | null
+  readonly onSelectedWindowChange: (window: AvailableWindow | null) => void
+  readonly durationMinutes: number
+  readonly fixedSchedule: FixedEventScheduleDisplay | null
+  readonly hourlyWindows: readonly AvailableWindow[] | null
+}>
+
 export type OpenBookingAvailabilitySectionProps =
   | OpenBookingServiceAvailabilitySectionProps
   | OpenBookingRentalPerDayVariantProps
   | OpenBookingRentalSlotsVariantProps
+  | OpenBookingEventScheduleVariantProps
+
+function OpenBookingEventScheduleAvailabilitySection({
+  scheduleMode,
+  service,
+  slots,
+  weekOffset,
+  onWeekOffsetChange,
+  selectedDate,
+  onSelectedDateChange,
+  selectedToDate,
+  onSelectedToDateChange,
+  selectedWindow,
+  onSelectedWindowChange,
+  fixedSchedule,
+  hourlyWindows,
+}: Readonly<OpenBookingEventScheduleVariantProps>) {
+  const todayStr = getOpenBookingTodayIsoDate()
+  const weekDates = useMemo(
+    () => getOpenBookingWeekDatesFromOffset(weekOffset),
+    [weekOffset],
+  )
+  const slotIncrementMinutes = resolveSlotIncrementMinutes(service)
+  const isPerEvent = scheduleMode === EventBookingScheduleModeEnum.PER_EVENT
+  const isPerDay = scheduleMode === EventBookingScheduleModeEnum.PER_DAY
+  const isPerHour = scheduleMode === EventBookingScheduleModeEnum.PER_HOUR
+
+  const sessionDates = useMemo(
+    () => new Set(getDistinctSessionDatesForService(slots, service)),
+    [service, slots],
+  )
+  const perEventWeekInitRef = useRef<string | null>(null)
+  const firstUpcomingSessionDate = useMemo(
+    () => getFirstUpcomingSessionYmdForService(slots, service, todayStr),
+    [service, slots, todayStr],
+  )
+
+  useEffect(() => {
+    perEventWeekInitRef.current = null
+  }, [service.id])
+
+  useEffect(() => {
+    if (!isPerEvent || !firstUpcomingSessionDate) {
+      return
+    }
+    if (perEventWeekInitRef.current === service.id) {
+      return
+    }
+    onWeekOffsetChange(getWeekOffsetForYmd(firstUpcomingSessionDate))
+    perEventWeekInitRef.current = service.id
+  }, [firstUpcomingSessionDate, isPerEvent, onWeekOffsetChange, service.id])
+  const availabilityMap = useMemo(
+    () => buildEventDayAvailabilityMap(slots, service.id, service.capacity),
+    [service.capacity, service.id, slots],
+  )
+  const showDayRangePicker = shouldShowEventDayRangePicker(
+    EventBookingScheduleModeEnum.PER_DAY,
+    slots,
+    service,
+  )
+  const weekSessionDates = useMemo(
+    () => weekDates.filter((dateStr) => sessionDates.has(dateStr)),
+    [sessionDates, weekDates],
+  )
+  const sessionTimeBlocks = useMemo(() => {
+    if (!isPerEvent) {
+      return []
+    }
+    const fromSlots = resolveDistinctEventPerEventSessionTimes(service, slots)
+    if (fromSlots.length > 0) {
+      return fromSlots
+    }
+    if (fixedSchedule != null) {
+      return [
+        {
+          timeLabel: fixedSchedule.timeLabel,
+          window: fixedSchedule.window,
+        },
+      ]
+    }
+    return []
+  }, [fixedSchedule, isPerEvent, service, slots])
+
+  const from = selectedDate.trim()
+  const to = selectedToDate.trim()
+  const rangeComplete = from.length > 0 && to.length > 0 && from <= to
+  const sessionDayCount =
+    isPerDay && rangeComplete && showDayRangePicker
+      ? countEventPerDaySessionDaysInRange(availabilityMap, todayStr, from, to)
+      : 0
+
+  const subtitle = getEventBookingScheduleAvailabilitySubtitle(
+    scheduleMode,
+    showDayRangePicker,
+  )
+
+  function isPerDayDateDisabled(dateStr: string): boolean {
+    return !isEventPerDayDateSelectable(availabilityMap, dateStr, todayStr)
+  }
+
+  function isPerEventDateWithoutSession(dateStr: string): boolean {
+    return dateStr < todayStr || !sessionDates.has(dateStr)
+  }
+
+  function isPerHourDateDisabled(dateStr: string): boolean {
+    return dateStr < todayStr
+  }
+
+  function applyPerDaySelection(fromDate: string, toDate: string): void {
+    onSelectedDateChange(fromDate)
+    onSelectedToDateChange(toDate)
+    onSelectedWindowChange(buildDayRangeBookingWindow(fromDate, toDate, service.capacity))
+  }
+
+  function onPerDayPickSingle(day: string): void {
+    if (isPerDayDateDisabled(day)) {
+      return
+    }
+    applyPerDaySelection(day, day)
+  }
+
+  function onPerDayPickRange(day: string): void {
+    if (isPerDayDateDisabled(day)) {
+      return
+    }
+
+    const rangeDone = from.length > 0 && to.length > 0 && from !== to
+
+    if (!from || rangeDone) {
+      applyPerDaySelection(day, day)
+      return
+    }
+
+    if (day === from) {
+      applyPerDaySelection(day, day)
+      return
+    }
+
+    const nextFrom = day < from ? day : from
+    const nextTo = day < from ? from : day
+    applyPerDaySelection(nextFrom, nextTo)
+  }
+
+  const dayGridIsDateDisabled = (dateStr: string): boolean => {
+    if (isPerEvent) {
+      return isPerEventDateWithoutSession(dateStr)
+    }
+    if (isPerDay) {
+      return isPerDayDateDisabled(dateStr)
+    }
+    return isPerHourDateDisabled(dateStr)
+  }
+
+  function handleDayClick(date: string): void {
+    if (isPerEvent) {
+      return
+    }
+    if (isPerDay) {
+      if (showDayRangePicker) {
+        onPerDayPickRange(date)
+      } else {
+        onPerDayPickSingle(date)
+      }
+      return
+    }
+    onSelectedDateChange(date)
+    onSelectedWindowChange(null)
+  }
+
+  const hourAvailability =
+    isPerHour && hourlyWindows != null
+      ? {
+          date: selectedDate,
+          serviceId: service.id,
+          windows: [...hourlyWindows],
+          operatingHours: { open: '08:00', close: '21:00' },
+        }
+      : null
+
+  function getEventScheduleDayVisual(dateStr: string): OpenBookingWeekDayVisual | undefined {
+    if (isPerEvent) {
+      const withoutSession = isPerEventDateWithoutSession(dateStr)
+      const hasSession = sessionDates.has(dateStr) && !withoutSession
+      return {
+        className: cn(
+          'flex flex-col items-center rounded-lg border px-1 py-3 text-xs font-semibold transition-colors',
+          withoutSession &&
+            'cursor-not-allowed border-border bg-muted text-muted-foreground opacity-40',
+          hasSession &&
+            'cursor-default border-accent bg-accent/15 text-accent-foreground opacity-100',
+        ),
+        'aria-pressed': hasSession,
+      }
+    }
+    if (isPerDay && showDayRangePicker) {
+      const disabled = isPerDayDateDisabled(dateStr)
+      const hasFrom = from.length > 0
+      const hasTo = to.length > 0
+      const isEndpoint =
+        !disabled &&
+        hasFrom &&
+        ((!hasTo && dateStr === from) ||
+          (hasTo && from === to && dateStr === from) ||
+          (hasTo && from !== to && (dateStr === from || dateStr === to)))
+      const isMiddle =
+        !disabled && hasFrom && hasTo && from !== to && dateStr > from && dateStr < to
+      return {
+        className: cn(
+          'flex flex-col items-center rounded-lg border px-1 py-3 text-xs font-semibold transition-colors',
+          disabled && 'cursor-not-allowed border-border bg-muted opacity-40',
+          isEndpoint && 'border-accent bg-accent text-accent-foreground',
+          isMiddle && 'border-accent/40 bg-accent/15 text-foreground',
+          !disabled &&
+            !isEndpoint &&
+            !isMiddle &&
+            'border-border bg-card text-muted-foreground hover:bg-secondary hover:text-foreground',
+        ),
+        'aria-pressed': isEndpoint || isMiddle,
+      }
+    }
+    return undefined
+  }
+
+  const eventScheduleSelectedDate = ((): string | null => {
+    if (isPerEvent) {
+      return null
+    }
+    if (isPerDay && showDayRangePicker) {
+      return null
+    }
+    return selectedDate
+  })()
+
+  const usesCustomDayVisual = isPerEvent || (isPerDay && showDayRangePicker)
+
+  return (
+    <section>
+      <h2 className="mb-4 text-xl font-bold">{AVAILABILITY_TITLE}</h2>
+      <p className="mb-4 text-sm text-muted-foreground">{subtitle}</p>
+
+      <OpenBookingWeekToolbar
+        weekOffset={weekOffset}
+        onWeekOffsetChange={onWeekOffsetChange}
+        weekDates={weekDates}
+        disablePrevPastCurrentWeek={isPerEvent ? false : undefined}
+      />
+
+      <OpenBookingWeekDayButtonGrid
+        weekDates={weekDates}
+        isDateDisabled={dayGridIsDateDisabled}
+        onDayClick={handleDayClick}
+        interactionDisabled={isPerEvent}
+        selectedDate={eventScheduleSelectedDate}
+        getDayVisual={usesCustomDayVisual ? getEventScheduleDayVisual : undefined}
+      />
+
+      {isPerDay && showDayRangePicker && rangeComplete ? (
+        <p className="mb-4 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm text-foreground">
+          {formatRentalLongDate(from)} – {formatRentalLongDate(to)}
+          {' · '}
+          {sessionDayCount} session day
+          {sessionDayCount !== 1 ? 's' : ''}
+        </p>
+      ) : null}
+
+      {isPerDay && !showDayRangePicker && selectedDate ? (
+        <p className="mb-4 text-sm text-muted-foreground">
+          Selected: {formatOpenBookingDateDisplay(selectedDate)}
+        </p>
+      ) : null}
+
+      {isPerHour && hourAvailability ? (
+        hourAvailability.windows.length > 0 ? (
+          <OpenBookingTimeWindowGrid
+            headline={`Available times for ${formatOpenBookingDateDisplay(selectedDate)}`}
+            windows={hourAvailability.windows}
+            selectedWindow={selectedWindow}
+            onSelectedWindowChange={onSelectedWindowChange}
+            formatWindowLabel={(window) =>
+              formatAvailabilityWindowLabel(window, slotIncrementMinutes)
+            }
+            slotGridClassName={
+              slotIncrementMinutes == null
+                ? 'grid grid-cols-1 gap-2 sm:grid-cols-2'
+                : undefined
+            }
+          />
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            No times available on this day. Choose another date in the week above.
+          </p>
+        )
+      ) : null}
+
+      {isPerEvent && sessionTimeBlocks.length > 0 ? (
+        <div>
+          <p className="mb-3 text-sm font-semibold text-muted-foreground">Session time</p>
+          <div
+            className={cn(
+              'grid gap-2',
+              sessionTimeBlocks.length === 1
+                ? 'max-w-xs grid-cols-1'
+                : 'grid-cols-1 sm:grid-cols-2',
+            )}
+          >
+            {sessionTimeBlocks.map((block) => (
+              <button
+                key={block.timeLabel}
+                type="button"
+                disabled
+                className="cursor-not-allowed rounded-lg border border-accent/40 bg-accent/10 py-2.5 text-sm font-semibold text-foreground opacity-100"
+                aria-label={`Session time: ${block.timeLabel}`}
+              >
+                {block.timeLabel}
+              </button>
+            ))}
+          </div>
+          <OpenBookingAvailabilitySlotLegend interactionDisabled />
+        </div>
+      ) : null}
+
+      {isPerEvent && weekSessionDates.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          {sessionDates.size > 0
+            ? 'No camp days in this week. Use the arrows to browse other weeks.'
+            : 'No scheduled sessions this week. Use the arrows to view other weeks.'}
+        </p>
+      ) : null}
+    </section>
+  )
+}
 
 function OpenBookingServiceAvailabilitySection({
-  title = 'Availability',
+  title = AVAILABILITY_TITLE,
   service,
   weekOffset,
   onWeekOffsetChange,
@@ -91,6 +469,7 @@ function OpenBookingServiceAvailabilitySection({
 }: Readonly<OpenBookingServiceAvailabilitySectionProps>) {
   const todayStr = getOpenBookingTodayIsoDate()
   const weekDates = getOpenBookingWeekDatesFromOffset(weekOffset)
+  const slotIncrementMinutes = resolveSlotIncrementMinutes(service)
 
   const availability = (() => {
     if (mode === 'private_hire' && !availabilityChecked) return null
@@ -105,7 +484,7 @@ function OpenBookingServiceAvailabilitySection({
     if (mode === 'private_hire') {
       return generateOpenAvailabilityForDuration(service, selectedDate, durationMinutes)
     }
-    return generateOpenAvailability(service, selectedDate)
+    return generateOpenAvailabilityForDuration(service, selectedDate, durationMinutes)
   })()
 
   const showTimeRange = mode === 'private_hire' && availabilityChecked
@@ -191,6 +570,14 @@ function OpenBookingServiceAvailabilitySection({
             selectedWindow={selectedWindow}
             onSelectedWindowChange={onSelectedWindowChange}
             showTimeRange={showTimeRange}
+            formatWindowLabel={(window) =>
+              formatAvailabilityWindowLabel(window, slotIncrementMinutes)
+            }
+            slotGridClassName={
+              slotIncrementMinutes == null
+                ? 'grid grid-cols-1 gap-2 sm:grid-cols-2'
+                : undefined
+            }
             resetSlot={
               mode === 'private_hire' && availabilityChecked && onResetAvailabilityCheck ? (
                 <Button
@@ -240,6 +627,9 @@ function OpenBookingServiceAvailabilitySection({
 export function OpenBookingAvailabilitySection(
   props: Readonly<OpenBookingAvailabilitySectionProps>,
 ) {
+  if ('variant' in props && props.variant === 'event_schedule') {
+    return <OpenBookingEventScheduleAvailabilitySection {...props} />
+  }
   if ('variant' in props && props.variant === 'rental_per_day') {
     return (
       <RentalPerDayCalendarSection

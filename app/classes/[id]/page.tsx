@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, use } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowLeft,
   Clock,
@@ -16,7 +17,9 @@ import { BookingAdditionalAdultField } from '@/components/customer/booking-addit
 import { BookingAmenitiesSection } from '@/components/customer/booking-amenities-section'
 import { BookingCategoryAddons } from '@/components/customer/booking-category-addons'
 import { BookingFamilyMemberFields } from '@/components/customer/booking-family-member-fields'
+import { BookingHouseholdFields } from '@/components/customer/booking-household-fields'
 import { BookingFlowCouponSection } from '@/components/customer/booking-flow-coupon-section'
+import { EventBookingScheduleSection } from '@/components/customer/event-booking-schedule-section'
 import { CustomerNavbar } from '@/components/customer/navbar'
 import { CustomerFooter } from '@/components/customer/footer'
 import { PackageSelector } from '@/components/customer/package-selector'
@@ -55,12 +58,32 @@ import {
 } from '@/lib/play-cart'
 import { useScheduling } from '@/lib/scheduling-store'
 import {
+  buildSchedulingCategoryById,
+  isConsumerVisibleSchedulingService,
+} from '@/lib/scheduling-visibility'
+import {
+  getSchedulingConsumerBackLink,
+  getSchedulingTopLevelId,
+} from '@/lib/scheduling-consumer-categories'
+import { getPlayBookingConfirmCartLabel } from '@/lib/play-cart'
+import {
+  shouldShowCustomerEventBookingSchedule,
+} from '@/lib/event-booking-schedule'
+import {
+  findSchedulingSlotContainingWindow,
+} from '@/lib/open-booking-slot-windows'
+import {
   formatPrice,
   formatSlotDate,
   formatSlotTimeRange,
   isDocumentSignedAndValid,
 } from '@/lib/utils'
-import type { Instructors, SchedulingService, SchedulingSlot } from '@/lib/types'
+import type {
+  AvailableWindow,
+  Instructors,
+  SchedulingService,
+  SchedulingSlot,
+} from '@/lib/types'
 
 const levelColors: Record<string, string> = {
   Beginner: 'bg-green-100 text-green-700',
@@ -74,22 +97,58 @@ function getClassEnrolButtonLabel(
   gymClassCartCheckout: boolean,
   eventClassCartCheckout: boolean,
   playClassCartCheckout: boolean,
+  hasSelectedPlayWindow: boolean,
+  showEventBookingSchedule: boolean,
 ): string {
-  if (!selectedSlot) {
+  if (showEventBookingSchedule && !hasSelectedPlayWindow) {
+    return 'Select date and time'
+  }
+  if (!selectedSlot && !showEventBookingSchedule) {
     return 'Select a session'
   }
-  if (selectedSlot.status === 'FULL') {
+  if (playClassCartCheckout && !hasSelectedPlayWindow) {
+    return 'Select a time slot'
+  }
+  if (selectedSlot?.status === 'FULL') {
     return 'Class full'
   }
-  if (gymClassCartCheckout || eventClassCartCheckout || playClassCartCheckout) {
+  if (playClassCartCheckout) {
+    return getPlayBookingConfirmCartLabel()
+  }
+  if (gymClassCartCheckout || eventClassCartCheckout) {
     return 'Add to cart'
   }
   return 'Enrol now'
 }
 
+function toIsoDate(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function formatBookingDateDisplay(dateStr: string): string {
+  return new Date(`${dateStr}T00:00:00`).toLocaleDateString('en-GB', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  })
+}
+
+function formatStartTimeDisplay(startAt: string | null): string {
+  if (!startAt) {
+    return '—'
+  }
+  return new Date(startAt).toLocaleTimeString('en-GB', {
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
 function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }>) {
   const { slots, packages } = useScheduling()
-  const { contacts, subscriptions, documents } = useClients()
+  const { contacts, subscriptions, documents, addContact, addRelationship } = useClients()
   const { addCustomCartItem } = useInventory()
 
   const primaryContact =
@@ -113,6 +172,10 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
       ),
   )
   const membersOnlyBlocked = service.category.membersOnly === true && !hasActiveMembership
+  const consumerBackLink = useMemo(
+    () => getSchedulingConsumerBackLink(service.categoryId),
+    [service.categoryId],
+  )
   const gymClassCartCheckout = isGymClassCartCheckoutService(service)
   const eventClassCartCheckout =
     isEventSlotCartCheckoutService(service) && !gymClassCartCheckout
@@ -135,16 +198,56 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
   }, [slots, service.id])
 
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null)
+  const [selectedPlayWindow, setSelectedPlayWindow] = useState<AvailableWindow | null>(null)
+  const [selectedToDate, setSelectedToDate] = useState<string>(toIsoDate(new Date()))
+  const [selectedAvailabilityDate, setSelectedAvailabilityDate] = useState<string>(
+    toIsoDate(new Date()),
+  )
   const selectedSlot: SchedulingSlot | undefined = useMemo(
     () => upcomingSlots.find((s) => s.id === selectedSlotId),
     [upcomingSlots, selectedSlotId],
   )
+  const isPlayServiceOffering =
+    getSchedulingTopLevelId(service.categoryId) === 'PLAY' &&
+    service.bookingOfferingKind !== 'PASS'
+  const showEventBookingSchedule = shouldShowCustomerEventBookingSchedule(service)
+  const selectedAvailabilityWindow = useMemo<AvailableWindow | null>(() => {
+    if (isPlayServiceOffering) {
+      return selectedPlayWindow
+    }
+    if (!selectedSlot) {
+      return null
+    }
+    const slotDate = selectedSlot.startAt.split('T')[0]
+    if (slotDate !== selectedAvailabilityDate) {
+      return null
+    }
+    return {
+      startAt: selectedSlot.startAt,
+      endAt: selectedSlot.endAt,
+      spotsRemaining: Math.max(0, selectedSlot.effectiveCapacity - selectedSlot.bookedCount),
+    }
+  }, [isPlayServiceOffering, selectedAvailabilityDate, selectedPlayWindow, selectedSlot])
 
   useEffect(() => {
+    if (isPlayServiceOffering) {
+      return
+    }
     if (selectedSlotId === null && upcomingSlots[0]) {
       setSelectedSlotId(upcomingSlots[0].id)
     }
-  }, [upcomingSlots, selectedSlotId])
+  }, [isPlayServiceOffering, upcomingSlots, selectedSlotId])
+
+  useEffect(() => {
+    if (isPlayServiceOffering) {
+      return
+    }
+    if (!selectedSlot) {
+      return
+    }
+    const slotDate = selectedSlot.startAt.split('T')[0]
+    setSelectedAvailabilityDate(slotDate)
+  }, [isPlayServiceOffering, selectedSlot])
 
   const activePackages = useMemo(
     () => packages.filter((p) => p.serviceId === service.id && p.isActive),
@@ -170,6 +273,7 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
   const bookingForm = useBookingForm({
     service: serviceForBooking,
     slot: selectedSlotForBooking,
+    selectedWindow: showEventBookingSchedule ? selectedPlayWindow : undefined,
     contacts,
     contactId: primaryContact?.id,
     contactName: primaryContact
@@ -228,8 +332,13 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
   const levelClass = levelColors[level] ?? levelColors['All Levels']
 
   function handleEnrol() {
-    if (!selectedSlot) return
-    if (selectedSlot.status === 'FULL') return
+    if (showEventBookingSchedule) {
+      if (!selectedPlayWindow) return
+    } else {
+      if (!selectedSlot) return
+      if (isPlayServiceOffering && !selectedPlayWindow) return
+      if (selectedSlot.status === 'FULL') return
+    }
     if (!bookingForm.canSubmitDetails) return
     if (gymClassCartCheckout) {
       const booking = bookingForm.submitBooking({ persist: false })
@@ -296,7 +405,7 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
 
   return (
     <>
-      <div className="relative h-72 sm:h-80">
+      <div className="relative h-36 sm:h-48">
         {service.imageUrl ? (
           <Image
             src={service.imageUrl}
@@ -311,10 +420,10 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
         <div className="absolute inset-0 bg-primary/65" />
         <div className="absolute inset-0 flex flex-col justify-end p-6 sm:p-10">
           <Link
-            href="/classes"
+            href={consumerBackLink.href}
             className="flex items-center gap-1 text-white/80 hover:text-white text-sm mb-4 w-fit"
           >
-            <ArrowLeft className="w-4 h-4" /> Back to Classes
+            <ArrowLeft className="w-4 h-4" /> {consumerBackLink.label}
           </Link>
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div className="space-y-2">
@@ -393,14 +502,48 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
             </div>
           </section>
 
-          {upcomingSlots.length > 0 ? (
+          {showEventBookingSchedule ? (
+            <>
+              <Separator />
+              <EventBookingScheduleSection
+                service={service}
+                slots={slots}
+                durationMinutes={service.durationMinutes}
+                selectedDate={selectedAvailabilityDate}
+                onSelectedDateChange={(date) => {
+                  setSelectedAvailabilityDate(date)
+                  setSelectedSlotId(null)
+                  setSelectedPlayWindow(null)
+                }}
+                selectedToDate={selectedToDate}
+                onSelectedToDateChange={setSelectedToDate}
+                selectedWindow={selectedAvailabilityWindow}
+                onSelectedWindowChange={(window) => {
+                  if (!window) {
+                    setSelectedSlotId(null)
+                    setSelectedPlayWindow(null)
+                    return
+                  }
+                  const matchedSlot = findSchedulingSlotContainingWindow(
+                    slots,
+                    service.id,
+                    window,
+                  )
+                  setSelectedPlayWindow(window)
+                  setSelectedSlotId(matchedSlot?.id ?? null)
+                }}
+              />
+            </>
+          ) : upcomingSlots.length > 0 ? (
             <>
               <Separator />
               <section>
                 <h2 className="text-xl font-bold mb-3">Book a session</h2>
                 <ul className="space-y-2">
                   {upcomingSlots.slice(0, 8).map((slot) => {
-                    const full = slot.status === 'FULL' || slot.bookedCount >= slot.effectiveCapacity
+                    const full =
+                      slot.status === 'FULL' ||
+                      slot.bookedCount >= slot.effectiveCapacity
                     const active = slot.id === selectedSlotId
                     return (
                       <li key={slot.id}>
@@ -533,6 +676,25 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
                 </div>
               ) : (
                 <>
+                  {showEventBookingSchedule ? (
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Date</span>
+                        <span className="font-semibold">
+                          {formatBookingDateDisplay(selectedAvailabilityDate)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Start time</span>
+                        <span className="font-semibold">
+                          {formatStartTimeDisplay(
+                            selectedPlayWindow?.startAt ?? selectedSlot?.startAt ?? null,
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  ) : null}
+
                   {selectedSlot ? (
                     <div className="space-y-2">
                       <div className="flex justify-between text-xs text-muted-foreground">
@@ -552,7 +714,9 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
                   <Separator />
 
                   <div>
-                    <Label className="text-sm font-semibold">Guests</Label>
+                    <Label className="text-sm font-semibold">
+                      {bookingForm.guestCountLabel}
+                    </Label>
                     <div className="flex items-center gap-3 mt-2">
                       <Button
                         type="button"
@@ -563,7 +727,7 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
                           bookingForm.setGuestCount(Math.max(1, bookingForm.guestCount - 1))
                         }
                         disabled={bookingForm.guestCount <= 1}
-                        aria-label="Decrease guests"
+                        aria-label={`Decrease ${bookingForm.guestCountLabel.toLowerCase()}`}
                       >
                         –
                       </Button>
@@ -584,7 +748,7 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
                               selectedSlot.effectiveCapacity - selectedSlot.bookedCount,
                             )
                         }
-                        aria-label="Increase guests"
+                        aria-label={`Increase ${bookingForm.guestCountLabel.toLowerCase()}`}
                       >
                         +
                       </Button>
@@ -623,19 +787,37 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
                     onOptionalToggle={bookingForm.setCategoryAddOnSelected}
                   />
 
-                  <BookingFamilyMemberFields
-                    service={service}
-                    contacts={contacts}
-                    selectedChildIds={bookingForm.selectedChildIds}
-                    onToggleChild={bookingForm.toggleSelectedChild}
-                    accompanyingAdultId={bookingForm.accompanyingAdultContactId}
-                    onAccompanyingAdultChange={bookingForm.setAccompanyingAdultContactId}
-                    participantContactId={bookingForm.participantContactId}
-                    onParticipantContactChange={bookingForm.applyParticipantContact}
-                    participantName={bookingForm.participantName}
-                    onParticipantNameChange={bookingForm.setParticipantName}
-                    idPrefix="class"
-                  />
+                  {bookingForm.needsHouseholdChildren ? (
+                    <BookingHouseholdFields
+                      contacts={contacts}
+                      primaryGuardianId={bookingForm.primaryGuardianContactId}
+                      onPrimaryGuardianChange={bookingForm.setPrimaryGuardianContactId}
+                      secondaryGuardianId={bookingForm.secondaryGuardianContactId}
+                      onSecondaryGuardianChange={bookingForm.setSecondaryGuardianContactId}
+                      selectedChildIds={bookingForm.selectedChildIds}
+                      onToggleChild={bookingForm.toggleSelectedChild}
+                      onAddContact={addContact}
+                      onAddRelationship={addRelationship}
+                      idPrefix="class-household"
+                      maxChildSelections={bookingForm.maxChildSelections}
+                      passCount={bookingForm.guestCount}
+                      additionalSiblingCount={bookingForm.additionalSiblingCount}
+                    />
+                  ) : (
+                    <BookingFamilyMemberFields
+                      service={service}
+                      contacts={contacts}
+                      selectedChildIds={bookingForm.selectedChildIds}
+                      onToggleChild={bookingForm.toggleSelectedChild}
+                      accompanyingAdultId={bookingForm.accompanyingAdultContactId}
+                      onAccompanyingAdultChange={bookingForm.setAccompanyingAdultContactId}
+                      participantContactId={bookingForm.participantContactId}
+                      onParticipantContactChange={bookingForm.applyParticipantContact}
+                      participantName={bookingForm.participantName}
+                      onParticipantNameChange={bookingForm.setParticipantName}
+                      idPrefix="class"
+                    />
+                  )}
 
                   {service.requiresWaiver ? (
                     requiredWaiverDocs.length === 0 ? (
@@ -754,10 +936,15 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
                     <Button
                       className="w-full bg-accent text-accent-foreground hover:bg-accent/90 font-bold h-11"
                       disabled={
-                        !selectedSlot ||
-                        selectedSlot.status === 'FULL' ||
-                        !bookingForm.canSubmitDetails ||
-                        !waiversOk
+                        showEventBookingSchedule
+                          ? !selectedPlayWindow ||
+                            !bookingForm.canSubmitDetails ||
+                            !waiversOk
+                          : !selectedSlot ||
+                            (isPlayServiceOffering && !selectedPlayWindow) ||
+                            selectedSlot.status === 'FULL' ||
+                            !bookingForm.canSubmitDetails ||
+                            !waiversOk
                       }
                       onClick={handleEnrol}
                     >
@@ -766,6 +953,8 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
                         gymClassCartCheckout,
                         eventClassCartCheckout,
                         playClassCartCheckout,
+                        selectedPlayWindow != null,
+                        showEventBookingSchedule,
                       )}
                     </Button>
                   )}
@@ -819,9 +1008,29 @@ export default function ClassDetailPage({
   params,
 }: Readonly<{ params: Promise<{ id: string }> }>) {
   const { id } = use(params)
-  const { services } = useScheduling()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const { services, categories } = useScheduling()
 
-  const service = useMemo(() => services.find((s) => s.id === id), [services, id])
+  const categoryById = useMemo(() => buildSchedulingCategoryById(categories), [categories])
+
+  const service = useMemo(() => {
+    const found = services.find((s) => s.id === id)
+    if (!found) {
+      return undefined
+    }
+    return isConsumerVisibleSchedulingService(found, categoryById) ? found : undefined
+  }, [categoryById, id, services])
+  const redirectsToPassDetail = service?.bookingOfferingKind === 'PASS'
+
+  useEffect(() => {
+    if (!redirectsToPassDetail || !service) {
+      return
+    }
+    const query = searchParams.toString()
+    const suffix = query.length > 0 ? `?${query}` : ''
+    router.replace(`/facilities/${service.id}${suffix}`)
+  }, [redirectsToPassDetail, router, searchParams, service])
 
   if (!service) {
     return (
@@ -830,9 +1039,23 @@ export default function ClassDetailPage({
         <main className="py-16">
           <div className="max-w-3xl mx-auto px-4 text-center">
             <p className="text-2xl font-bold text-muted-foreground">Class not found</p>
-            <Link href="/classes" className="text-accent font-semibold">
-              Back to Classes
+            <Link href="/gym" className="text-accent font-semibold">
+              Back to Gym
             </Link>
+          </div>
+        </main>
+        <CustomerFooter />
+      </>
+    )
+  }
+
+  if (redirectsToPassDetail) {
+    return (
+      <>
+        <CustomerNavbar />
+        <main className="py-16">
+          <div className="max-w-3xl mx-auto px-4 text-center text-muted-foreground">
+            Redirecting…
           </div>
         </main>
         <CustomerFooter />

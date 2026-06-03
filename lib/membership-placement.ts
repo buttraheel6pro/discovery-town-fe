@@ -22,6 +22,7 @@ const PLAY_SCHEDULING_CATEGORY_IDS = new Set<string>([
   'cat-open-play',
   'cat-private-play',
   'cat-special-play-events',
+  'cat-summer-camp-play',
   'cat-camps-play',
   'cat-parents-night',
   'cat-field-trips',

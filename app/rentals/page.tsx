@@ -9,6 +9,11 @@ import { CustomerFooter } from '@/components/customer/footer'
 import { CustomerNavbar } from '@/components/customer/navbar'
 import { RentalLandingHero } from '@/components/customer/rental-landing-hero'
 import { useInventory } from '@/lib/inventory-store'
+import {
+  buildProductCategoryById,
+  isConsumerVisibleProduct,
+  isConsumerVisibleProductCategory,
+} from '@/lib/product-visibility'
 
 export default function RentalsLandingPage() {
   return (
@@ -31,19 +36,33 @@ function RentalsLandingPageContent() {
     setDeliveryFee,
   } = useInventory()
 
+  const categoryById = useMemo(
+    () => buildProductCategoryById(productCategories),
+    [productCategories],
+  )
+
   const categories = useMemo(
     () =>
       productCategories
-        .filter((category) => category.productType === 'rentals' && category.parentId === 'pcat-rentals')
+        .filter(
+          (category) =>
+            category.productType === 'rentals' &&
+            category.parentId === 'pcat-rentals' &&
+            isConsumerVisibleProductCategory(category, categoryById),
+        )
         .sort((a, b) => a.displayOrder - b.displayOrder),
-    [productCategories],
+    [categoryById, productCategories],
   )
   const rentalProducts = useMemo(
     () =>
       products
-        .filter((product) => product.isActive && product.categoryId.startsWith('pcat-rentals-'))
+        .filter(
+          (product) =>
+            isConsumerVisibleProduct(product, categoryById) &&
+            product.categoryId.startsWith('pcat-rentals-'),
+        )
         .sort((a, b) => Number(b.isFeatured) - Number(a.isFeatured)),
-    [products],
+    [categoryById, products],
   )
 
   useEffect(() => {

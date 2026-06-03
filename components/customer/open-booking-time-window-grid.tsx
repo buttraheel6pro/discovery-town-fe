@@ -22,6 +22,8 @@ export interface OpenBookingTimeWindowGridProps {
   readonly slotButtonClassName?: string
   /** Optional custom selected-state resolver (e.g. highlight a contiguous range). */
   readonly isWindowSelected?: (window: AvailableWindow) => boolean
+  /** When true, all slots are shown disabled and cannot be selected. */
+  readonly interactionDisabled?: boolean
 }
 
 export function OpenBookingTimeWindowGrid({
@@ -35,6 +37,7 @@ export function OpenBookingTimeWindowGrid({
   slotGridClassName = 'grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-8',
   slotButtonClassName,
   isWindowSelected,
+  interactionDisabled = false,
 }: Readonly<OpenBookingTimeWindowGridProps>) {
   return (
     <>
@@ -44,10 +47,13 @@ export function OpenBookingTimeWindowGrid({
       </div>
       <div className={slotGridClassName}>
         {windows.map((w) => {
-          const disabled = w.spotsRemaining <= 0
-          const isSelected = isWindowSelected
-            ? isWindowSelected(w)
-            : selectedWindow?.startAt === w.startAt && selectedWindow?.endAt === w.endAt
+          const soldOut = w.spotsRemaining <= 0
+          const disabled = interactionDisabled || soldOut
+          const isSelected =
+            !interactionDisabled &&
+            (isWindowSelected
+              ? isWindowSelected(w)
+              : selectedWindow?.startAt === w.startAt && selectedWindow?.endAt === w.endAt)
           const label =
             formatWindowLabel?.(w) ??
             (showTimeRange ? formatSlotTimeRange(w.startAt, w.endAt) : formatSlotTime(w.startAt))
@@ -56,7 +62,7 @@ export function OpenBookingTimeWindowGrid({
               key={`${w.startAt}-${w.endAt}`}
               type="button"
               onClick={() => {
-                if (disabled) return
+                if (interactionDisabled || disabled) return
                 onSelectedWindowChange(isSelected ? null : w)
               }}
               disabled={disabled}
@@ -78,21 +84,30 @@ export function OpenBookingTimeWindowGrid({
           )
         })}
       </div>
-      <OpenBookingAvailabilitySlotLegend />
+      <OpenBookingAvailabilitySlotLegend interactionDisabled={interactionDisabled} />
     </>
   )
 }
 
-export function OpenBookingAvailabilitySlotLegend() {
+export function OpenBookingAvailabilitySlotLegend({
+  interactionDisabled = false,
+}: Readonly<{ readonly interactionDisabled?: boolean }>) {
   return (
     <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground">
-      <span className="flex items-center gap-1.5">
-        <span className="inline-block h-3 w-3 rounded bg-accent" aria-hidden />
-        Selected
-      </span>
+      {interactionDisabled ? (
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block h-3 w-3 rounded border border-accent/50 bg-accent/10" aria-hidden />
+          Scheduled session
+        </span>
+      ) : (
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block h-3 w-3 rounded bg-accent" aria-hidden />
+          Selected
+        </span>
+      )}
       <span className="flex items-center gap-1.5">
         <span className="inline-block h-3 w-3 rounded bg-muted opacity-50" aria-hidden />
-        Unavailable
+        {interactionDisabled ? 'Sold out' : 'Unavailable'}
       </span>
     </div>
   )

@@ -1,4 +1,4 @@
-/** Full detail panel for a selected Private Play event package (below radio list). */
+/** Full detail panel for the selected Private Play event package (below tier tabs). */
 'use client'
 
 import { useState } from 'react'
@@ -6,7 +6,7 @@ import { CheckCircle2 } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { formatPrice } from '@/lib/utils'
+import { cn, formatPrice } from '@/lib/utils'
 import type { EventPackage } from '@/lib/types'
 
 function tierBadgeClass(tier: EventPackage['tier']): string {
@@ -25,11 +25,14 @@ function tierBadgeClass(tier: EventPackage['tier']): string {
 export interface PrivatePlayPackageDetailProps {
   readonly package: EventPackage
   readonly defaultDurationMinutes: number
+  /** When true, renders inside a tab panel (no outer card chrome). */
+  readonly embedded?: boolean
 }
 
 export function PrivatePlayPackageDetail({
   package: pkg,
   defaultDurationMinutes,
+  embedded = false,
 }: Readonly<PrivatePlayPackageDetailProps>) {
   const [showAllFeatures, setShowAllFeatures] = useState(false)
   const features = pkg.features.filter(Boolean)
@@ -42,7 +45,11 @@ export function PrivatePlayPackageDetail({
       : null
 
   return (
-    <div className="rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8">
+    <div
+      className={cn(
+        embedded ? undefined : 'rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8',
+      )}
+    >
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border pb-6">
         <div className="min-w-0 flex-1 space-y-3">
           <h3

@@ -221,52 +221,56 @@ function AdminSchedulingPackagesEditPageInner() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5 px-4 pb-8 pt-3 sm:px-6">
-          <SchedulingPackageFields
-            assignableServices={assignableServices}
-            placementDraft={placementDraft}
-            setPlacementDraft={setPlacementDraft}
-            lockedSubCategoryId={lockedSubCategoryId}
-            draftServiceId={draftServiceId}
-            setDraftServiceId={setDraftServiceId}
-            draftTier={draftTier}
-            setDraftTier={setDraftTier}
-            draftBasePrice={draftBasePrice}
-            setDraftBasePrice={setDraftBasePrice}
-            draftName={draftName}
-            setDraftName={setDraftName}
-            draftFeatures={draftFeatures}
-            setDraftFeatures={setDraftFeatures}
-            draftDuration={draftDuration}
-            setDraftDuration={setDraftDuration}
-            draftSetupTime={draftSetupTime}
-            setDraftSetupTime={setDraftSetupTime}
-            draftStaffCount={draftStaffCount}
-            setDraftStaffCount={setDraftStaffCount}
-            draftPartyRooms={draftPartyRooms}
-            setDraftPartyRooms={setDraftPartyRooms}
-            draftMinChildSeats={draftMinChildSeats}
-            setDraftMinChildSeats={setDraftMinChildSeats}
-            draftMaxChildSeats={draftMaxChildSeats}
-            setDraftMaxChildSeats={setDraftMaxChildSeats}
-            draftMinAdultSeats={draftMinAdultSeats}
-            setDraftMinAdultSeats={setDraftMinAdultSeats}
-            draftMaxAdultSeats={draftMaxAdultSeats}
-            setDraftMaxAdultSeats={setDraftMaxAdultSeats}
-            draftAdditionalChildPrice={draftAdditionalChildPrice}
-            setDraftAdditionalChildPrice={setDraftAdditionalChildPrice}
-            draftAdditionalAdultPrice={draftAdditionalAdultPrice}
-            setDraftAdditionalAdultPrice={setDraftAdditionalAdultPrice}
-            draftIsWholeVenue={draftIsWholeVenue}
-            setDraftIsWholeVenue={setDraftIsWholeVenue}
-            draftDepositAmount={draftDepositAmount}
-            setDraftDepositAmount={setDraftDepositAmount}
-            draftDepositNonRefundable={draftDepositNonRefundable}
-            setDraftDepositNonRefundable={setDraftDepositNonRefundable}
-            draftRequiresApproval={draftRequiresApproval}
-            setDraftRequiresApproval={setDraftRequiresApproval}
-            draftIsActive={draftIsActive}
-            setDraftIsActive={setDraftIsActive}
-          />
+          {hydratedFrom === pkg.id ? (
+            <SchedulingPackageFields
+              assignableServices={assignableServices}
+              placementDraft={placementDraft}
+              setPlacementDraft={setPlacementDraft}
+              lockedSubCategoryId={lockedSubCategoryId}
+              draftServiceId={draftServiceId}
+              setDraftServiceId={setDraftServiceId}
+              draftTier={draftTier}
+              setDraftTier={setDraftTier}
+              draftBasePrice={draftBasePrice}
+              setDraftBasePrice={setDraftBasePrice}
+              draftName={draftName}
+              setDraftName={setDraftName}
+              draftFeatures={draftFeatures}
+              setDraftFeatures={setDraftFeatures}
+              draftDuration={draftDuration}
+              setDraftDuration={setDraftDuration}
+              draftSetupTime={draftSetupTime}
+              setDraftSetupTime={setDraftSetupTime}
+              draftStaffCount={draftStaffCount}
+              setDraftStaffCount={setDraftStaffCount}
+              draftPartyRooms={draftPartyRooms}
+              setDraftPartyRooms={setDraftPartyRooms}
+              draftMinChildSeats={draftMinChildSeats}
+              setDraftMinChildSeats={setDraftMinChildSeats}
+              draftMaxChildSeats={draftMaxChildSeats}
+              setDraftMaxChildSeats={setDraftMaxChildSeats}
+              draftMinAdultSeats={draftMinAdultSeats}
+              setDraftMinAdultSeats={setDraftMinAdultSeats}
+              draftMaxAdultSeats={draftMaxAdultSeats}
+              setDraftMaxAdultSeats={setDraftMaxAdultSeats}
+              draftAdditionalChildPrice={draftAdditionalChildPrice}
+              setDraftAdditionalChildPrice={setDraftAdditionalChildPrice}
+              draftAdditionalAdultPrice={draftAdditionalAdultPrice}
+              setDraftAdditionalAdultPrice={setDraftAdditionalAdultPrice}
+              draftIsWholeVenue={draftIsWholeVenue}
+              setDraftIsWholeVenue={setDraftIsWholeVenue}
+              draftDepositAmount={draftDepositAmount}
+              setDraftDepositAmount={setDraftDepositAmount}
+              draftDepositNonRefundable={draftDepositNonRefundable}
+              setDraftDepositNonRefundable={setDraftDepositNonRefundable}
+              draftRequiresApproval={draftRequiresApproval}
+              setDraftRequiresApproval={setDraftRequiresApproval}
+              draftIsActive={draftIsActive}
+              setDraftIsActive={setDraftIsActive}
+            />
+          ) : (
+            <p className="text-sm text-muted-foreground">Loading package fields…</p>
+          )}
 
           <div className="flex items-center justify-end gap-2 pt-2">
             <Button type="button" variant="outline" asChild>

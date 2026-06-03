@@ -973,6 +973,8 @@ export interface ProductCategory {
   description?: string;
   imageUrl?: string;
   displayOrder: number;
+  /** When false, category and its products are hidden from customer catalog pages. */
+  isActive?: boolean;
   /** Business grouping key (e.g. shop, cafe&food, gifts, rentals). */
   productType?: string;
   /** When set, this category is nested under a top-level category. */
@@ -2463,10 +2465,33 @@ export interface SchedulingSlot {
 }
 
 export type EventVisibility = "PUBLIC" | "PRIVATE" | "SINGLE_HOST";
+export type SchedulingOfferingKind = "SERVICE" | "PASS";
+
+export const EventBookingScheduleModeEnum = {
+  PER_DAY: "PER_DAY",
+  PER_EVENT: "PER_EVENT",
+  PER_HOUR: "PER_HOUR",
+} as const;
+
+export type EventBookingScheduleMode =
+  (typeof EventBookingScheduleModeEnum)[keyof typeof EventBookingScheduleModeEnum];
+
+export const EVENT_BOOKING_SCHEDULE_MODE_OPTIONS = [
+  { value: EventBookingScheduleModeEnum.PER_DAY, label: "Per day" },
+  { value: EventBookingScheduleModeEnum.PER_EVENT, label: "Per event" },
+  { value: EventBookingScheduleModeEnum.PER_HOUR, label: "Per hour" },
+] as const satisfies ReadonlyArray<{
+  value: EventBookingScheduleMode;
+  label: string;
+}>;
 
 export interface SchedulingService {
+  /** How customers choose date/time when booking this event. */
+  eventBookingScheduleMode?: EventBookingScheduleMode;
   /** Public listing visibility for event-style services. */
   eventType?: EventVisibility;
+  /** Admin toggle for whether this listing behaves as a service or pass. */
+  bookingOfferingKind?: SchedulingOfferingKind;
   siblingPrice?: string;
   freeAdultCount?: number;
   additionalAdultPrice?: string;
@@ -2480,6 +2505,8 @@ export interface SchedulingService {
   maxAdultSeats?: number;
   additionalChildPrice?: string;
   isPackageService?: boolean;
+  /** When true, service appears only on the events consumer catalog (/events). */
+  eventsOnly?: boolean;
   linkedAddOns?: CategoryAddOn[];
 }
 

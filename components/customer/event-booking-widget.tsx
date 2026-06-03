@@ -10,7 +10,7 @@ import { Building2, Cake, CalendarDays, Church, PartyPopper, School, Ticket, Use
 
 import { BookingFlowCouponSection } from '@/components/customer/booking-flow-coupon-section'
 import { EventAddOnConfiguratorModal } from '@/components/customer/event-add-on-configurator-modal'
-import { OpenBookingAvailabilitySection } from '@/components/customer/open-booking-availability-section'
+import { EventBookingScheduleSection } from '@/components/customer/event-booking-schedule-section'
 import { PackageSelector } from '@/components/customer/package-selector'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -31,26 +31,35 @@ import { useInventory } from '@/lib/inventory-store'
 import {
   buildEventOptionalAddOnList,
   getPackageIncludedAddOnIds,
+  isEventSchedulingSubCategoryId,
   resolveEventAddOnCafeProduct,
   resolveEventAddOnImageUrl,
   type EventOptionalAddOnListItem,
 } from '@/lib/event-booking-add-ons'
+import {
+  resolveEventBookingScheduleMode,
+} from '@/lib/event-booking-schedule'
+import {
+  buildSchedulingAddOnCatalog,
+  resolveCategoryOptionalAddOns,
+  resolveSchedulingCategoryForService,
+} from '@/lib/scheduling-category-addons'
 import { resolvePackagesForSchedulingService } from '@/lib/event-package-catalog'
 import {
   eventPackageOptionalAddOnsMock,
-  generateOpenAvailabilityForDuration,
   MOCK_ATTRIBUTE_GROUPS,
   MOCK_CAFE_PRODUCTS,
   MOCK_MODIFIER_GROUPS,
+  type EventPackageOptionalAddOn,
 } from '@/lib/mock-data'
-import { windowsFromSchedulingSlots } from '@/lib/scheduling-slot-availability'
 import { useScheduling } from '@/lib/scheduling-store'
 import {
   buildEventCartBookingDescription,
   EVENT_CART_BOOKING_META_KEY,
+  getPlayBookingConfirmCartLabel,
 } from '@/lib/play-cart'
 import { formatPrice } from '@/lib/utils'
-import type { EventOccasion, EventPackage } from '@/lib/types'
+import { EventBookingScheduleModeEnum, type EventOccasion, type EventPackage } from '@/lib/types'
 
 type Step = 1 | 2 | 3 | 4 | 5 | 6
 
@@ -61,7 +70,7 @@ interface OccasionOption {
 }
 
 const OPTIONAL_ADD_ON_SECTIONS: ReadonlyArray<{
-  id: 'FOOD_BEVERAGE' | 'DESSERT' | 'DECOR' | 'ENTERTAINMENT' | 'LOGISTICS'
+  id: EventPackageOptionalAddOn['category']
   title: string
   description: string
 }> = [
@@ -89,6 +98,11 @@ const OPTIONAL_ADD_ON_SECTIONS: ReadonlyArray<{
     id: 'LOGISTICS',
     title: 'Time & Logistics',
     description: 'Extra time, staffing, and guest logistics to support larger parties.',
+  },
+  {
+    id: 'OTHER',
+    title: 'Additional options',
+    description: 'Add-ons linked to this event category from admin.',
   },
 ]
 
@@ -150,10 +164,9 @@ export function EventBookingWidget({
   const { toast } = useToast()
   const { addCustomCartItem, bookingAddOns, products: inventoryProducts } = useInventory()
   const { contacts, subscriptions } = useClients()
-  const { slots, services, packages: storePackages } = useScheduling()
+  const { slots, services, packages: storePackages, categories } = useScheduling()
   const [step, setStep] = useState<Step>(showOccasionStep ? 1 : showPackageStep ? 2 : 3)
   const [bookingComplete, setBookingComplete] = useState(false)
-  const [weekOffset, setWeekOffset] = useState(0)
   const [customizeModalOpen, setCustomizeModalOpen] = useState(false)
   const [configuratorAddOnId, setConfiguratorAddOnId] = useState<string | null>(null)
 
@@ -210,25 +223,6 @@ export function EventBookingWidget({
   const partyDurationMinutes =
     form.selectedPackage?.duration ?? form.service?.durationMinutes ?? 120
 
-  const timingAvailabilityWindows = useMemo(() => {
-    if (!form.service) {
-      return null
-    }
-    const dateStr = form.selectedDate ?? toIsoDate(new Date())
-    if (form.service.bookingMode === 'SCHEDULED') {
-      const fromSlots = windowsFromSchedulingSlots(slots, form.service.id, dateStr)
-      if (fromSlots.length > 0) {
-        return fromSlots
-      }
-      return generateOpenAvailabilityForDuration(
-        form.service,
-        dateStr,
-        partyDurationMinutes,
-      ).windows
-    }
-    return null
-  }, [form.selectedDate, form.service, partyDurationMinutes, slots])
-
   useEffect(() => {
     if (!externalSelectedPackageId) return
     form.setSelectedPackageId(externalSelectedPackageId)
@@ -263,14 +257,30 @@ export function EventBookingWidget({
       })
   }, [bookingAddOns, form.selectedPackage])
 
+  const bookingCategory = useMemo(() => {
+    if (!bookingService) {
+      return null
+    }
+    return resolveSchedulingCategoryForService(bookingService, categories)
+  }, [bookingService, categories])
+
+  const categoryOptionalAddOns = useMemo(() => {
+    if (!bookingCategory || !isEventSchedulingSubCategoryId(bookingCategory.id)) {
+      return []
+    }
+    const catalog = buildSchedulingAddOnCatalog(services, bookingAddOns)
+    return resolveCategoryOptionalAddOns(bookingCategory, catalog)
+  }, [bookingAddOns, bookingCategory, services])
+
   const optionalAddOns = useMemo(
     () =>
       buildEventOptionalAddOnList(
         bookingAddOns,
         eventPackageOptionalAddOnsMock,
         includedAddOnIds,
+        categoryOptionalAddOns,
       ),
-    [bookingAddOns, includedAddOnIds],
+    [bookingAddOns, categoryOptionalAddOns, includedAddOnIds],
   )
 
   const configuratorItem = useMemo((): EventOptionalAddOnListItem | null => {
@@ -348,7 +358,22 @@ export function EventBookingWidget({
   }
 
   const progressTimeRange = useMemo(() => {
-    if (!form.selectedWindow) return null
+    if (!form.service) {
+      return null
+    }
+    const mode = resolveEventBookingScheduleMode(form.service)
+    if (mode === EventBookingScheduleModeEnum.PER_DAY) {
+      if (!form.selectedDate) {
+        return null
+      }
+      if (form.selectedToDate && form.selectedToDate !== form.selectedDate) {
+        return `${form.selectedDate} – ${form.selectedToDate}`
+      }
+      return form.selectedDate
+    }
+    if (!form.selectedWindow) {
+      return null
+    }
     return `${new Date(form.selectedWindow.startAt).toLocaleTimeString([], {
       hour: '2-digit',
       minute: '2-digit',
@@ -356,7 +381,7 @@ export function EventBookingWidget({
       hour: '2-digit',
       minute: '2-digit',
     })}`
-  }, [form.selectedWindow])
+  }, [form.selectedDate, form.selectedToDate, form.selectedWindow, form.service])
 
   const selectedOptionalCount = useMemo(
     () =>
@@ -400,6 +425,7 @@ export function EventBookingWidget({
     }
     return {
       unitPrice: selection.unitPrice,
+      quantity: selection.quantity,
       summary: selection.summary,
       selectedByGroup: selection.selectedByGroup,
       selectedAttributesByGroup: selection.selectedAttributesByGroup,
@@ -545,23 +571,19 @@ export function EventBookingWidget({
 
       {!bookingComplete && step === 3 ? (
         form.service ? (
-          <OpenBookingAvailabilitySection
-            title="Pick date and time"
+          <EventBookingScheduleSection
             service={form.service}
-            weekOffset={weekOffset}
-            onWeekOffsetChange={setWeekOffset}
+            slots={slots}
+            durationMinutes={partyDurationMinutes}
             selectedDate={form.selectedDate ?? toIsoDate(new Date())}
             onSelectedDateChange={(date) => {
               form.setSelectedDate(date)
               form.setSelectedWindow(null)
             }}
+            selectedToDate={form.selectedToDate ?? form.selectedDate ?? toIsoDate(new Date())}
+            onSelectedToDateChange={form.setSelectedToDate}
             selectedWindow={form.selectedWindow}
             onSelectedWindowChange={form.setSelectedWindow}
-            durationMinutes={partyDurationMinutes}
-            onDurationMinutesChange={() => {}}
-            durationOptions={[]}
-            mode="facility"
-            availabilityWindows={timingAvailabilityWindows}
           />
         ) : (
           <p className="text-sm text-muted-foreground">Select a package to load availability.</p>
@@ -777,7 +799,14 @@ export function EventBookingWidget({
                                 </Button>
                                 {isSelected ? (
                                   <p className="text-xs text-muted-foreground">
-                                    {formatPrice(selection?.unitPrice ?? addOn.price)}
+                                    {(() => {
+                                      const qty = selection?.quantity ?? 0
+                                      const unit = selection?.unitPrice ?? addOn.price
+                                      if (qty > 1) {
+                                        return `${qty} × ${formatPrice(unit)} · ${formatPrice(unit * qty)}`
+                                      }
+                                      return formatPrice(unit)
+                                    })()}
                                   </p>
                                 ) : (
                                   <p className="text-xs text-muted-foreground">
@@ -895,7 +924,7 @@ export function EventBookingWidget({
           <Button type="button" className="w-full" onClick={submit} disabled={!form.canSubmit}>
             {form.selectedPackage?.isWholeVenue
               ? 'Submit inquiry and add to cart'
-              : 'Confirm and add to cart'}
+              : getPlayBookingConfirmCartLabel()}
           </Button>
         </div>
       ) : null}

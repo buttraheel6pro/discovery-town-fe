@@ -239,6 +239,7 @@ interface InventoryStore {
     productType?: string
     parentId?: string | null
     description?: string
+    isActive?: boolean
     rentalAcknowledgments?: RentalCategoryAcknowledgment[]
   }) => ProductCategory
   updateProductCategory: (id: string, patch: Partial<ProductCategory>) => void
@@ -475,6 +476,7 @@ export function InventoryProvider({
       productType?: string
       parentId?: string | null
       description?: string
+      isActive?: boolean
       rentalAcknowledgments?: RentalCategoryAcknowledgment[]
     }): ProductCategory {
       const id = `pcat-${Date.now()}`
@@ -495,6 +497,7 @@ export function InventoryProvider({
         slug,
         description: input.description?.trim() || undefined,
         displayOrder: maxOrder + 1,
+        isActive: input.isActive ?? true,
         productType: nextProductType,
         parentId: parentKey,
         ...(Array.isArray(input.rentalAcknowledgments)

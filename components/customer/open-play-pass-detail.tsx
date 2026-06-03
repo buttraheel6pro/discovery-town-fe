@@ -24,6 +24,7 @@ import {
 import { Label } from '@/components/ui/label'
 import { useClients } from '@/lib/client-store'
 import { buildMembershipCatalog, resolveCheckoutPlanForBilling } from '@/lib/membership-helpers'
+import { getSchedulingConsumerBackLink } from '@/lib/scheduling-consumer-categories'
 import {
   filterMembershipPlansForPassKind,
   getOpenPlayPassCatalogKind,
@@ -130,9 +131,11 @@ export function OpenPlayPassDetail({ service }: Readonly<OpenPlayPassDetailProps
     return null
   }
 
+  const consumerBackLink = getSchedulingConsumerBackLink(service.categoryId)
+
   return (
     <>
-      <div className="relative h-72 sm:h-96">
+      <div className="relative h-36 sm:h-48">
         {service.imageUrl ? (
           <Image
             src={service.imageUrl}
@@ -147,10 +150,10 @@ export function OpenPlayPassDetail({ service }: Readonly<OpenPlayPassDetailProps
         <div className="absolute inset-0 bg-primary/60" />
         <div className="absolute inset-0 flex flex-col justify-end p-6 sm:p-10">
           <Link
-            href="/play#cat-open-play"
+            href={consumerBackLink.href}
             className="mb-4 flex w-fit items-center gap-1 text-sm text-white/80 hover:text-white"
           >
-            <ArrowLeft className="h-4 w-4" /> Back to Play
+            <ArrowLeft className="h-4 w-4" /> {consumerBackLink.label}
           </Link>
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>

@@ -6,6 +6,10 @@ import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 
+import {
+  buildDuplicatePackagePatch,
+  DuplicatePackageDialog,
+} from '@/components/admin/duplicate-package-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -21,9 +25,11 @@ import {
   filterPackagesForPlacement,
   formatPackagePlacementSummary,
 } from '@/lib/package-placement'
+import { getSchedulingTopLevelId } from '@/lib/scheduling-consumer-categories'
 import { isCurrentCatalogService } from '@/lib/scheduling-visibility'
 import { useScheduling } from '@/lib/scheduling-store'
 import { formatPrice } from '@/lib/utils'
+import type { EventPackage } from '@/lib/types'
 
 function AdminSchedulingPackagesPageInner() {
   const pathname = usePathname()
@@ -33,6 +39,7 @@ function AdminSchedulingPackagesPageInner() {
 
   const [q, setQ] = useState('')
   const [serviceId, setServiceId] = useState<string>('ALL')
+  const [duplicateSource, setDuplicateSource] = useState<EventPackage | null>(null)
 
   useEffect(() => {
     if (categoryFilterId === 'cat-private-play') {
@@ -56,7 +63,9 @@ function AdminSchedulingPackagesPageInner() {
     let rows = packages
 
     if (categoryFilterId) {
-      rows = filterPackagesForPlacement(rows, 'play', categoryFilterId)
+      const page =
+        getSchedulingTopLevelId(categoryFilterId) === 'EVENT' ? 'events' : 'play'
+      rows = filterPackagesForPlacement(rows, page, categoryFilterId)
     }
 
     return rows.filter((p) => {
@@ -203,7 +212,7 @@ function AdminSchedulingPackagesPageInner() {
                       <Link
                         href={buildPackageEditHref(p.id, {
                           returnTo: editReturnTo,
-                          category: categoryFilterId,
+                          category: categoryFilterId ?? undefined,
                         })}
                       >
                         Edit
@@ -213,7 +222,7 @@ function AdminSchedulingPackagesPageInner() {
                       type="button"
                       size="sm"
                       variant="outline"
-                      onClick={() => duplicatePackage(p.id)}
+                      onClick={() => setDuplicateSource(p)}
                     >
                       Duplicate
                     </Button>
@@ -233,6 +242,21 @@ function AdminSchedulingPackagesPageInner() {
           )}
         </CardContent>
       </Card>
+
+      <DuplicatePackageDialog
+        open={duplicateSource != null}
+        onOpenChange={(next) => {
+          if (!next) {
+            setDuplicateSource(null)
+          }
+        }}
+        sourcePackage={duplicateSource}
+        defaultSubCategoryId={categoryFilterId ?? undefined}
+        onConfirm={({ packageId, serviceId, placement }) => {
+          duplicatePackage(packageId, buildDuplicatePackagePatch(serviceId, placement))
+          setDuplicateSource(null)
+        }}
+      />
     </div>
   )
 }

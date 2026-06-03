@@ -14,6 +14,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { useInventory } from '@/lib/inventory-store'
+import {
+  buildProductCategoryById,
+  isShopCatalogVisibleProduct,
+  isShopCatalogVisibleProductCategory,
+} from '@/lib/product-visibility'
 import type { ProductCategory } from '@/lib/types'
 
 const PAGE_SIZE = 12
@@ -43,14 +48,30 @@ export function ShopPageClient() {
   const activeCategoryId = searchParams.get('category')
   const page = Math.max(1, Number.parseInt(searchParams.get('page') ?? '1', 10) || 1)
 
+  const categoryById = useMemo(
+    () => buildProductCategoryById(productCategories),
+    [productCategories],
+  )
+
   const topCategories = useMemo<ProductCategory[]>(() => {
-    return productCategories.slice().sort((a, b) => a.displayOrder - b.displayOrder)
-  }, [productCategories])
+    return productCategories
+      .filter(
+        (category) =>
+          (category.productType ?? 'shop') === 'shop' &&
+          isShopCatalogVisibleProductCategory(category, categoryById),
+      )
+      .slice()
+      .sort((a, b) => a.displayOrder - b.displayOrder)
+  }, [categoryById, productCategories])
 
   const activeCategory = useMemo(() => {
     if (!activeCategoryId) return null
-    return productCategories.find((c) => c.id === activeCategoryId) ?? null
-  }, [activeCategoryId, productCategories])
+    const match = productCategories.find((c) => c.id === activeCategoryId) ?? null
+    if (!match || !isShopCatalogVisibleProductCategory(match, categoryById)) {
+      return null
+    }
+    return match
+  }, [activeCategoryId, categoryById, productCategories])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -58,8 +79,7 @@ export function ShopPageClient() {
     const max = Number.parseFloat(maxPrice)
 
     return products.filter((p) => {
-      if (!p.isActive) return false
-      if (p.availableOnline === false) return false
+      if (!isShopCatalogVisibleProduct(p, categoryById)) return false
       if (activeCategoryId && p.categoryId !== activeCategoryId) return false
 
       if (q) {
@@ -72,7 +92,7 @@ export function ShopPageClient() {
 
       return true
     })
-  }, [activeCategoryId, maxPrice, minPrice, products, search])
+  }, [activeCategoryId, categoryById, maxPrice, minPrice, products, search])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const pageSafe = Math.min(page, totalPages)

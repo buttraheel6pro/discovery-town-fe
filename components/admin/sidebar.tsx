@@ -1,11 +1,11 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useMemo } from "react";
 import {
   Activity,
-  BarChart3,
   BarChart2,
   Building2,
   Calendar,
@@ -29,6 +29,11 @@ import {
 } from "lucide-react";
 import { SidebarGroup, SidebarItem } from "./sidebar-group";
 import { useEventInquiriesCount } from "@/hooks/use-event-inquiries-count";
+
+/** Admin sidebar uses a transparent variant so the mark sits cleanly on bg-sidebar. */
+const ADMIN_LOGO_SRC = "/Discovery-logo-transparent.svg";
+const ADMIN_LOGO_WIDTH = 1101;
+const ADMIN_LOGO_HEIGHT = 643;
 
 const topLevelItems = [
   // {
@@ -272,13 +277,14 @@ export function AdminSidebar() {
   return (
     <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r border-sidebar-border bg-sidebar pt-6 flex flex-col">
       <div className="px-6 mb-8 flex-shrink-0">
-        <Link href="/admin" className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-sidebar-primary flex items-center justify-center">
-            <BarChart3 className="w-5 h-5 text-sidebar-primary-foreground" />
-          </div>
-          <span className="font-bold text-lg text-sidebar-foreground">
-            Discovery Town
-          </span>
+        <Link href="/admin" className="block w-full">
+          <Image
+            src={ADMIN_LOGO_SRC}
+            alt="Discovery Town"
+            width={ADMIN_LOGO_WIDTH}
+            height={ADMIN_LOGO_HEIGHT}
+            className="h-16 w-full object-contain object-left"
+          />
         </Link>
       </div>
 

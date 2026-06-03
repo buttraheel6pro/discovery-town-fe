@@ -106,6 +106,35 @@ export function formatSlotTime(isoString: string): string {
   return format(parseISO(isoString), 'h:mm a')
 }
 
+/** Compact start label for availability grids (9 AM, 9:30 AM, 10 AM, …). */
+export function formatAvailabilitySlotStartLabel(
+  isoString: string,
+  incrementMinutes: number | null,
+): string {
+  const date = parseISO(isoString)
+  const minutes = date.getMinutes()
+
+  if (incrementMinutes === 30 || minutes === 30) {
+    if (minutes === 0) {
+      return format(date, 'h a')
+    }
+    return format(date, 'h:mm a')
+  }
+
+  return format(date, 'h a')
+}
+
+/** Customer availability slot label — full session range when increment is none. */
+export function formatAvailabilityWindowLabel(
+  window: Pick<AvailableWindow, 'startAt' | 'endAt'>,
+  incrementMinutes: number | null,
+): string {
+  if (incrementMinutes == null) {
+    return formatSlotTimeRange(window.startAt, window.endAt)
+  }
+  return formatAvailabilitySlotStartLabel(window.startAt, incrementMinutes)
+}
+
 export function formatSlotTimeRange(startAt: string, endAt: string): string {
   return `${formatSlotTime(startAt)} – ${formatSlotTime(endAt)}`
 }

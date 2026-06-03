@@ -15,7 +15,12 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useInventory } from '@/lib/inventory-store'
+import {
+  buildProductCategoryById,
+  isConsumerVisibleProduct,
+} from '@/lib/product-visibility'
 import { findWeBringPlayOfferingByServiceId } from '@/lib/we-bring-play-offerings'
+import { getPlayBookingConfirmCartLabel } from '@/lib/play-cart'
 import { formatPrice } from '@/lib/utils'
 
 interface WeBringOffsitePageProps {
@@ -42,7 +47,7 @@ export function WeBringOffsitePage({
   eventTypeOptions,
 }: Readonly<WeBringOffsitePageProps>) {
   const searchParams = useSearchParams()
-  const { addCustomCartItem, products } = useInventory()
+  const { addCustomCartItem, products, productCategories } = useInventory()
   const [selectedQuantities, setSelectedQuantities] = useState<Record<string, number>>({})
   const [date, setDate] = useState('')
   const [address, setAddress] = useState('')
@@ -50,15 +55,24 @@ export function WeBringOffsitePage({
   const [eventType, setEventType] = useState(eventTypeOptions[0] ?? 'Birthday')
   const [notes, setNotes] = useState('')
 
+  const categoryById = useMemo(
+    () => buildProductCategoryById(productCategories),
+    [productCategories],
+  )
+
   const equipment = useMemo(() => {
     const productOrder = new Map(productIds.map((id, index) => [id, index]))
     return products
-      .filter((product) => product.isActive && productIds.includes(product.id))
+      .filter(
+        (product) =>
+          productIds.includes(product.id) &&
+          isConsumerVisibleProduct(product, categoryById),
+      )
       .sort(
         (a, b) =>
           (productOrder.get(a.id) ?? 0) - (productOrder.get(b.id) ?? 0),
       )
-  }, [products, productIds])
+  }, [categoryById, productIds, products])
 
   const preselectedServiceId = searchParams.get('service')
 
@@ -329,7 +343,9 @@ export function WeBringOffsitePage({
                   disabled={selectedProducts.length === 0}
                   onClick={addInquiryBundleToCart}
                 >
-                  Add to cart
+                  {requestType === 'WE_BRING_PLAY'
+                    ? getPlayBookingConfirmCartLabel()
+                    : 'Add to cart'}
                 </Button>
               </ProminentSectionContainer>
             </aside>

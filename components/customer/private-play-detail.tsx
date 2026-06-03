@@ -11,10 +11,10 @@ import { PrivatePlayPackageSelector } from '@/components/customer/private-play-p
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
+import { getSchedulingConsumerBackLink } from '@/lib/scheduling-consumer-categories'
 import {
   privatePlayListingFromPrice,
   privatePlayPackageSectionTitle,
-  PRIVATE_PLAY_CATEGORY_ID,
   resolvePrivatePlayListingPackages,
 } from '@/lib/private-play-packages'
 import { useScheduling } from '@/lib/scheduling-store'
@@ -53,9 +53,11 @@ export function PrivatePlayDetail({ service }: Readonly<PrivatePlayDetailProps>)
     [listingPackages, selectedPackageId],
   )
 
+  const consumerBackLink = getSchedulingConsumerBackLink(service.categoryId)
+
   return (
     <>
-      <div className="relative h-72 sm:h-96">
+      <div className="relative h-36 sm:h-48">
         {service.imageUrl ? (
           <Image
             src={service.imageUrl}
@@ -70,10 +72,10 @@ export function PrivatePlayDetail({ service }: Readonly<PrivatePlayDetailProps>)
         <div className="absolute inset-0 bg-primary/60" />
         <div className="absolute inset-0 flex flex-col justify-end p-6 sm:p-10">
           <Link
-            href={`/play#${PRIVATE_PLAY_CATEGORY_ID}`}
+            href={consumerBackLink.href}
             className="mb-4 flex w-fit items-center gap-1 text-sm text-white/80 hover:text-white"
           >
-            <ArrowLeft className="h-4 w-4" /> Back to Play
+            <ArrowLeft className="h-4 w-4" /> {consumerBackLink.label}
           </Link>
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>

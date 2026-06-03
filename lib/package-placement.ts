@@ -1,10 +1,14 @@
 /** Where event packages appear — gym / play / events pages and scheduling sub-categories. */
 import {
   EVENT_PARTY_BOOKING_SERVICE_ID,
+  EVENT_PRIVATE_PARTY_ROOM_SUBCATEGORY_ID,
+  EVENT_WHOLE_PLACE_SUBCATEGORY_ID,
   isEventCatalogPackage,
-  PRIVATE_PLAY_FULL_VENUE_SERVICE_ID,
-  PRIVATE_PLAY_MEETING_ROOMS_SERVICE_ID,
-  PRIVATE_PLAY_ROOM_SERVICE_ID,
+} from '@/lib/event-package-catalog'
+
+export {
+  EVENT_PRIVATE_PARTY_ROOM_SUBCATEGORY_ID,
+  EVENT_WHOLE_PLACE_SUBCATEGORY_ID,
 } from '@/lib/event-package-catalog'
 import {
   getSchedulingTopLevelId,
@@ -47,12 +51,34 @@ export const DEFAULT_PRIVATE_PLAY_PACKAGE_PLACEMENT: PackagePlacementDraft = {
   schedulingCategoryIds: ['cat-private-play'],
 }
 
+export const DEFAULT_EVENT_PRIVATE_PARTY_PACKAGE_PLACEMENT: PackagePlacementDraft = {
+  displayPages: ['events'],
+  schedulingCategoryIds: [EVENT_PRIVATE_PARTY_ROOM_SUBCATEGORY_ID],
+}
+
+export const DEFAULT_EVENT_WHOLE_PLACE_PACKAGE_PLACEMENT: PackagePlacementDraft = {
+  displayPages: ['events'],
+  schedulingCategoryIds: [EVENT_WHOLE_PLACE_SUBCATEGORY_ID],
+}
+
 export const PACKAGE_PLACEMENT_ALL_SUBCATEGORIES = '__all__' as const
 
+/** Admin services catalog — sub-categories that show the placed-packages panel. */
+export function resolveAdminCategoryPlacedPackages(
+  categoryId: string,
+): { page: PackageDisplayPage; categoryId: string } | null {
+  if (categoryId.startsWith('cat-event-')) {
+    return { page: 'events', categoryId }
+  }
+  return null
+}
+
 const PRIVATE_PLAY_SERVICE_IDS = new Set<string>([
-  PRIVATE_PLAY_ROOM_SERVICE_ID,
-  PRIVATE_PLAY_FULL_VENUE_SERVICE_ID,
-  PRIVATE_PLAY_MEETING_ROOMS_SERVICE_ID,
+  'svc-private-play-room-open-play',
+  'svc-private-play-full-venue',
+  'svc-private-play-meeting-rooms',
+  'svc-event-party-room-packages',
+  'svc-event-whole-venue-packages',
 ])
 
 export function displayPageFromTopLevel(topLevel: SchedulingTopLevelId): PackageDisplayPage {
@@ -187,6 +213,13 @@ export function packageMatchesPlacement(
   if (!pages?.length) {
     if (page === 'play' && categoryId === 'cat-private-play') {
       return isLegacyPrivatePlayCatalogPackage(pkg)
+    }
+    if (
+      page === 'events' &&
+      (categoryId === EVENT_PRIVATE_PARTY_ROOM_SUBCATEGORY_ID ||
+        categoryId === EVENT_WHOLE_PLACE_SUBCATEGORY_ID)
+    ) {
+      return isEventCatalogPackage(pkg)
     }
     return false
   }

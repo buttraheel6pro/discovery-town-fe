@@ -1,6 +1,6 @@
+import Image from "next/image";
 import Link from "next/link";
 import {
-  Zap,
   MapPin,
   Phone,
   Mail,
@@ -9,6 +9,11 @@ import {
   Instagram,
 } from "lucide-react";
 import { locations } from "@/lib/mock-data";
+
+/** Footer uses a transparent variant so the mark sits cleanly on bg-primary. */
+const FOOTER_LOGO_SRC = "/Discovery-logo-transparent.svg";
+const FOOTER_LOGO_WIDTH = 1101;
+const FOOTER_LOGO_HEIGHT = 643;
 
 const mainLocation = locations[0];
 const mainAddressLine = mainLocation
@@ -50,20 +55,13 @@ export function CustomerFooter() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-10">
           {/* Brand column */}
           <div className="lg:col-span-2 space-y-5">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-accent rounded-sm flex items-center justify-center">
-                <Zap
-                  className="w-5 h-5 text-accent-foreground"
-                  fill="currentColor"
-                />
-              </div>
-              <span
-                className="text-lg font-black tracking-tight"
-                style={{ fontFamily: "var(--font-barlow)" }}
-              >
-                Discovery Town
-              </span>
-            </div>
+            <Image
+              src={FOOTER_LOGO_SRC}
+              alt="Discovery Town"
+              width={FOOTER_LOGO_WIDTH}
+              height={FOOTER_LOGO_HEIGHT}
+              className="h-16 w-auto object-contain object-left sm:h-[4.5rem] sm:min-w-[14rem]"
+            />
             <p className="text-sm leading-relaxed text-primary-foreground/70">
               Your premier sports complex for facilities, classes, and events.
               We exist to help you move more, compete harder, and live better.

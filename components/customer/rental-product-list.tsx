@@ -7,6 +7,11 @@ import { CustomerFooter } from '@/components/customer/footer'
 import { CustomerNavbar } from '@/components/customer/navbar'
 import { ShopProductCard } from '@/components/customer/shop-product-card'
 import { useInventory } from '@/lib/inventory-store'
+import {
+  buildProductCategoryById,
+  isConsumerVisibleProduct,
+  isProductCategoryActiveForConsumer,
+} from '@/lib/product-visibility'
 
 interface RentalProductListProps {
   readonly categorySlug: string
@@ -21,20 +26,29 @@ export function RentalProductList({
 }: Readonly<RentalProductListProps>) {
   const { products, productCategories } = useInventory()
 
+  const categoryById = useMemo(
+    () => buildProductCategoryById(productCategories),
+    [productCategories],
+  )
+
   const categoryIds = useMemo(() => {
     const target = productCategories.find((category) => category.slug === categorySlug)
-    if (!target) {
+    if (!target || !isProductCategoryActiveForConsumer(target.id, categoryById)) {
       return []
     }
     return [target.id]
-  }, [categorySlug, productCategories])
+  }, [categoryById, categorySlug, productCategories])
 
   const items = useMemo(
     () =>
       products
-        .filter((product) => product.isActive && categoryIds.includes(product.categoryId))
+        .filter(
+          (product) =>
+            categoryIds.includes(product.categoryId) &&
+            isConsumerVisibleProduct(product, categoryById),
+        )
         .sort((a, b) => Number(b.isFeatured) - Number(a.isFeatured)),
-    [categoryIds, products],
+    [categoryById, categoryIds, products],
   )
 
   return (

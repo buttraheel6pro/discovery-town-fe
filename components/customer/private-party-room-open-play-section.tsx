@@ -11,18 +11,18 @@ import {
 import { useScheduling } from '@/lib/scheduling-store'
 
 const PACKAGE_CARD_IMAGES: Record<string, string> = {
-  'pkg-001':
+  'pkg-evt-room-001':
     'https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=1200&q=80',
-  'pkg-002':
+  'pkg-evt-room-002':
     'https://images.unsplash.com/photo-1527529482837-4698179dc6ce?w=1200&q=80',
-  'pkg-003':
+  'pkg-evt-room-003':
     'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=1200&q=80',
 }
 
 const PACKAGE_PRICE_LABELS: Record<string, string> = {
-  'pkg-001': '$300',
-  'pkg-002': '$425 – $495',
-  'pkg-003': '$675 – $795',
+  'pkg-evt-room-001': '$300',
+  'pkg-evt-room-002': '$425 – $495',
+  'pkg-evt-room-003': '$675 – $795',
 }
 
 const DEFAULT_IMAGE =

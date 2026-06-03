@@ -10,6 +10,7 @@ import type { EventPackageOptionalAddOn } from '@/lib/mock-data'
 import {
   EVT_ADDON_IMAGE_BY_PRODUCT_ID,
 } from '@/lib/mock-event-booking-add-ons'
+import { formatPrice } from '@/lib/utils'
 import type {
   AddOn,
   AttributeGroup,
@@ -19,11 +20,18 @@ import type {
   EventPackage,
   ModifierGroup,
   Product,
+  SchedulingServiceAddOn,
 } from '@/lib/types'
 
 export const EVENT_ADDON_PLACEHOLDER_IMAGE = '/placeholder.svg'
 
 export const EVENT_MODULE_ADDON_ID_PREFIX = 'evt-addon-' as const
+
+export const EVENT_SCHEDULING_CATEGORY_PREFIX = 'cat-event-' as const
+
+export function isEventSchedulingSubCategoryId(categoryId: string): boolean {
+  return categoryId.startsWith(EVENT_SCHEDULING_CATEGORY_PREFIX)
+}
 
 export function isEventModuleBookingAddOnId(addOnId: string): boolean {
   return addOnId.startsWith(EVENT_MODULE_ADDON_ID_PREFIX)
@@ -96,30 +104,105 @@ export interface EventOptionalAddOnListItem extends EventPackageOptionalAddOn {
   readonly bookingAddOn: AddOn
 }
 
+/** Display row for an add-on linked on an events sub-category (admin). */
+export function eventOptionalAddOnFromBookingAddOn(
+  bookingAddOn: AddOn,
+  category: EventPackageOptionalAddOn['category'] = 'OTHER',
+): EventPackageOptionalAddOn {
+  const description = bookingAddOn.description?.trim() ?? ''
+  return {
+    id: bookingAddOn.id,
+    name: bookingAddOn.name,
+    description: description.length > 0 ? description : bookingAddOn.name,
+    price: bookingAddOn.price,
+    pricingLabel: formatPrice(bookingAddOn.price),
+    category,
+  }
+}
+
+function schedulingAddOnToBookingAddOn(
+  schedulingAddOn: SchedulingServiceAddOn,
+  tenantId: string,
+): AddOn {
+  return {
+    id: schedulingAddOn.id,
+    tenantId,
+    name: schedulingAddOn.name,
+    description: schedulingAddOn.description ?? '',
+    pricingType: schedulingAddOn.pricingType === 'PER_PERSON' ? 'PER_PERSON' : 'FLAT',
+    price: schedulingAddOn.price,
+    applicableServiceTypes: [],
+    isActive: schedulingAddOn.isActive,
+  }
+}
+
+function resolveBookingAddOnForList(
+  addOnId: string,
+  bookingAddOnById: ReadonlyMap<string, AddOn>,
+  categoryOptionalById: ReadonlyMap<string, SchedulingServiceAddOn>,
+  tenantId: string,
+): AddOn | null {
+  const fromInventory = bookingAddOnById.get(addOnId)
+  if (fromInventory) {
+    return fromInventory
+  }
+  const fromCategory = categoryOptionalById.get(addOnId)
+  if (!fromCategory) {
+    return null
+  }
+  return schedulingAddOnToBookingAddOn(fromCategory, tenantId)
+}
+
 export function buildEventOptionalAddOnList(
   bookingAddOns: readonly AddOn[],
   catalog: readonly EventPackageOptionalAddOn[],
   excludedAddOnIds: ReadonlySet<string>,
+  categoryOptionalAddOns: readonly SchedulingServiceAddOn[] = [],
 ): EventOptionalAddOnListItem[] {
   const catalogById = new Map(catalog.map((entry) => [entry.id, entry]))
-  const items: EventOptionalAddOnListItem[] = []
+  const bookingAddOnById = new Map(bookingAddOns.map((entry) => [entry.id, entry]))
+  const categoryOptionalById = new Map(
+    categoryOptionalAddOns.map((entry) => [entry.id, entry]),
+  )
+  const tenantId = bookingAddOns[0]?.tenantId ?? 'tenant-1'
 
+  const eligibleIds = new Set<string>()
   for (const bookingAddOn of bookingAddOns) {
-    if (!isEventModuleBookingAddOnId(bookingAddOn.id)) {
+    if (
+      isEventModuleBookingAddOnId(bookingAddOn.id) &&
+      catalogById.has(bookingAddOn.id) &&
+      bookingAddOn.isActive &&
+      !excludedAddOnIds.has(bookingAddOn.id)
+    ) {
+      eligibleIds.add(bookingAddOn.id)
+    }
+  }
+  for (const linked of categoryOptionalAddOns) {
+    if (!linked.isActive || excludedAddOnIds.has(linked.id)) {
       continue
     }
-    if (!bookingAddOn.isActive || excludedAddOnIds.has(bookingAddOn.id)) {
+    eligibleIds.add(linked.id)
+  }
+
+  const items: EventOptionalAddOnListItem[] = []
+  for (const addOnId of eligibleIds) {
+    const bookingAddOn = resolveBookingAddOnForList(
+      addOnId,
+      bookingAddOnById,
+      categoryOptionalById,
+      tenantId,
+    )
+    if (!bookingAddOn || !bookingAddOn.isActive) {
       continue
     }
-    const display = catalogById.get(bookingAddOn.id)
-    if (!display) {
-      continue
-    }
+    const display =
+      catalogById.get(addOnId) ?? eventOptionalAddOnFromBookingAddOn(bookingAddOn, 'OTHER')
     items.push({
       ...display,
       name: bookingAddOn.name,
-      description: bookingAddOn.description.trim() || display.description,
+      description: bookingAddOn.description?.trim() || display.description,
       price: bookingAddOn.price,
+      pricingLabel: formatPrice(bookingAddOn.price),
       bookingAddOn,
     })
   }
@@ -170,6 +253,7 @@ export interface EventAddOnAttributeSelection {
 }
 
 export interface EventAddOnConfigurationInput {
+  readonly quantity: number
   readonly selectedByGroup: Record<string, string[]>
   readonly selectedAttributesByGroup: Record<string, string[]>
   readonly customerNote: string
@@ -177,12 +261,22 @@ export interface EventAddOnConfigurationInput {
 
 export interface EventAddOnConfigurationResult {
   readonly unitPrice: number
+  readonly quantity: number
   readonly summary: string
   readonly selectedModifiers: CartModifierSelection[]
   readonly selectedAttributes: EventAddOnAttributeSelection[]
   readonly selectedByGroup: Record<string, string[]>
   readonly selectedAttributesByGroup: Record<string, string[]>
   readonly customerNote: string | null
+}
+
+/** Ensures add-on quantity is a positive integer (minimum 1). */
+export function clampEventAddOnQuantity(quantity: number): number {
+  const parsed = Number.parseInt(String(quantity), 10)
+  if (!Number.isFinite(parsed)) {
+    return 1
+  }
+  return Math.max(1, parsed)
 }
 
 export function buildEventAddOnConfiguration(
@@ -209,6 +303,7 @@ export function buildEventAddOnConfiguration(
   )
 
   const unitPrice = Math.round((basePrice + modifierDelta) * 100) / 100
+  const quantity = clampEventAddOnQuantity(input.quantity)
   const summary = formatEventAddOnConfigurationSummary(
     addOn.name,
     selectedModifiers,
@@ -218,6 +313,7 @@ export function buildEventAddOnConfiguration(
 
   return {
     unitPrice,
+    quantity,
     summary,
     selectedModifiers,
     selectedAttributes,

@@ -1,15 +1,21 @@
 "use client";
 
-import { use, useCallback, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useMemo, useState } from "react";
 
 import { CafeProductDetailClient } from "@/components/customer/cafe-product-detail-client";
 import { CustomerFooter } from "@/components/customer/footer";
 import { CustomerNavbar } from "@/components/customer/navbar";
+import { CustomerNavProductRouteGuard } from "@/components/customer/customer-nav-route-guard";
 import { RentalAvailabilityCalendar } from "@/components/customer/rental-availability-calendar";
 import { ShopProductDetailClient } from "@/components/customer/shop-product-detail-client";
 import { useCafe } from "@/lib/cafe-store";
 import { mergedCafeProductsForCustomer } from "@/lib/cafe-utils";
 import { useInventory } from "@/lib/inventory-store";
+import {
+  buildProductCategoryById,
+  isConsumerVisibleProduct,
+  isGiftAddOnVisibleProduct,
+} from "@/lib/product-visibility";
 import { isRentalProduct } from "@/lib/rental-product";
 import { cn } from "@/lib/utils";
 
@@ -49,7 +55,13 @@ export default function ShopProductPage({
     setRentalSlotStartAt(startIso);
     setRentalSlotEndAt(endIso);
   }, []);
+  const categoryById = useMemo(
+    () => buildProductCategoryById(productCategories),
+    [productCategories],
+  );
   const product = products.find((row) => row.id === productId) ?? null;
+  const isProductVisible =
+    product != null && isConsumerVisibleProduct(product, categoryById);
   const cafeProduct =
     customerCafeProducts.find((row) => row.id === productId) ?? null;
   const category = product
@@ -72,14 +84,16 @@ export default function ShopProductPage({
   const isCafeInventoryProduct =
     (category?.productType ?? "").toLowerCase() === "cafe&food";
   const related = isGiftProduct
-    ? linkedAddOnProducts.filter((row) => row.id !== product?.id).slice(0, 6)
+    ? linkedAddOnProducts
+        .filter((row) => row.id !== product?.id && isGiftAddOnVisibleProduct(row))
+        .slice(0, 6)
     : product
       ? products
           .filter(
             (p) =>
               p.categoryId === product.categoryId &&
               p.id !== product.id &&
-              p.isActive,
+              isConsumerVisibleProduct(p, categoryById),
           )
           .slice(0, 3)
       : [];
@@ -95,8 +109,18 @@ export default function ShopProductPage({
       rentalSlotStartAt.trim().length > 0 &&
       rentalSlotEndAt.trim().length > 0);
 
+  const guardProductType = useMemo(() => {
+    if (product != null && isRentalProduct(product)) {
+      return "rentals";
+    }
+    if (isCafeInventoryProduct || cafeProduct != null) {
+      return "cafe&food";
+    }
+    return category?.productType ?? null;
+  }, [cafeProduct, category?.productType, isCafeInventoryProduct, product]);
+
   return (
-    <>
+    <CustomerNavProductRouteGuard productType={guardProductType}>
       <CustomerNavbar />
       <main className="bg-background">
         <div className="mx-auto max-w-[88rem] space-y-8 px-4 py-10 sm:px-6 lg:px-8">
@@ -113,6 +137,10 @@ export default function ShopProductPage({
           ) : isGiftProduct && product?.availableOnline === false ? (
             <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
               This gift item is not currently active for customers.
+            </div>
+          ) : product && !isProductVisible ? (
+            <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
+              This product is not currently available.
             </div>
           ) : (
             <ShopProductDetailClient
@@ -160,6 +188,6 @@ export default function ShopProductPage({
         </div>
       </main>
       <CustomerFooter />
-    </>
+    </CustomerNavProductRouteGuard>
   );
 }

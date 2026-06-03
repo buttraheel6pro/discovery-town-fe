@@ -61,9 +61,29 @@ function withFallbackImageUrl(product: Product): Product {
   }
 }
 
+function withDefaultCategoryActive(category: ProductCategory): ProductCategory {
+  return {
+    ...category,
+    isActive: category.isActive ?? true,
+  }
+}
+
+function dedupeProductsById(products: readonly Product[]): Product[] {
+  const seen = new Set<string>()
+  const unique: Product[] = []
+  for (const product of products) {
+    if (seen.has(product.id)) {
+      continue
+    }
+    seen.add(product.id)
+    unique.push(product)
+  }
+  return unique
+}
+
 function cloneInitialState(): InventoryState {
   const productCategories = [...baseProductCategories, ...shopProductCategories].map(
-    (category) => ({ ...category }),
+    (category) => withDefaultCategoryActive({ ...category }),
   )
   const tenantId = 'tenant-1'
   const cafeCatalogProducts = buildCafeCatalogInventoryProducts(
@@ -74,9 +94,10 @@ function cloneInitialState(): InventoryState {
   const nonCafeProducts = [...baseProducts, ...shopProducts, ...EVENT_MODULE_ADDON_PRODUCTS].filter(
     (product) => !isCafeCatalogProductId(product.id),
   )
+  const seededProducts = dedupeProductsById([...nonCafeProducts, ...cafeCatalogProducts])
 
   return {
-    products: [...nonCafeProducts, ...cafeCatalogProducts].map((product) =>
+    products: seededProducts.map((product) =>
       withFallbackImageUrl({ ...product }),
     ),
     productCategories,
@@ -92,13 +113,14 @@ const inventorySlice = createSlice({
   initialState: cloneInitialState(),
   reducers: {
     hydrateInventoryState(_state, action: PayloadAction<InventoryState>) {
+      const dedupedProducts = dedupeProductsById(action.payload.products ?? [])
       return {
-        products: (action.payload.products ?? []).map((product) =>
+        products: dedupedProducts.map((product) =>
           withFallbackImageUrl({ ...product }),
         ),
-        productCategories: (action.payload.productCategories ?? []).map((category) => ({
-          ...category,
-        })),
+        productCategories: (action.payload.productCategories ?? []).map((category) =>
+          withDefaultCategoryActive({ ...category }),
+        ),
         bookingAddOns: (
           action.payload.bookingAddOns ?? [...legacySeedAddOns, ...eventModuleBookingAddOns]
         ).map((addOn) => ({
@@ -108,7 +130,11 @@ const inventorySlice = createSlice({
       }
     },
     addProduct(state, action: PayloadAction<Product>) {
-      state.products.unshift(withFallbackImageUrl(action.payload))
+      const nextProduct = withFallbackImageUrl(action.payload)
+      state.products = [
+        nextProduct,
+        ...state.products.filter((product) => product.id !== nextProduct.id),
+      ]
     },
     updateProduct(state, action: PayloadAction<UpdateProductPayload>) {
       const { id, updates } = action.payload
@@ -124,7 +150,7 @@ const inventorySlice = createSlice({
       state.products = state.products.filter((product) => product.id !== id)
     },
     addProductCategory(state, action: PayloadAction<ProductCategory>) {
-      state.productCategories.push(action.payload)
+      state.productCategories.push(withDefaultCategoryActive(action.payload))
     },
     updateProductCategory(state, action: PayloadAction<UpdateCategoryPayload>) {
       const { id, patch } = action.payload

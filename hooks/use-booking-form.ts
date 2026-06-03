@@ -30,6 +30,7 @@ import {
 } from '@/lib/booking-pass-count'
 import { resolveServiceChildAgeRules } from '@/lib/booking-child-age'
 import { PARENTS_NIGHT_OUT_SERVICE_ID } from '@/lib/booking-household'
+import { getSchedulingTopLevelId } from '@/lib/scheduling-consumer-categories'
 import { usesEventTicketBookingSidebar } from '@/lib/scheduling-slot-availability'
 import {
   buildSchedulingAddOnCatalog,
@@ -51,6 +52,12 @@ import type {
   SchedulingServiceAddOn,
   SchedulingSlot,
 } from '@/lib/types'
+
+export interface AdditionalSiblingPassOption {
+  readonly serviceId: string
+  readonly name: string
+  readonly unitPrice: number
+}
 
 function contactDisplayName(contact: Pick<CmContact, 'firstName' | 'lastName'>): string {
   return `${contact.firstName} ${contact.lastName}`.trim()
@@ -74,6 +81,43 @@ function createBookingId(): string {
 
 function createWaitlistId(): string {
   return `wl-${Math.random().toString(16).slice(2, 10)}`
+}
+
+function resolvedLegacySiblingPart(input: {
+  additionalSiblingCount: number
+  additionalSiblingUnitPrice: number | null
+}): number {
+  const { additionalSiblingCount, additionalSiblingUnitPrice } = input
+  if (additionalSiblingUnitPrice == null || additionalSiblingCount <= 0) {
+    return 0
+  }
+  return Math.round(additionalSiblingUnitPrice * additionalSiblingCount * 100) / 100
+}
+
+function resolvedLegacySiblingLines(input: {
+  additionalSiblingCount: number
+  additionalSiblingUnitPrice: number | null
+}): Array<{
+  id: string
+  name: string
+  quantity: number
+  unitPrice: number
+  totalPrice: number
+}> {
+  const { additionalSiblingCount, additionalSiblingUnitPrice } = input
+  if (additionalSiblingUnitPrice == null || additionalSiblingCount <= 0) {
+    return []
+  }
+  return [
+    {
+      id: 'bkao-additional-sibling',
+      name: 'Additional sibling',
+      quantity: additionalSiblingCount,
+      unitPrice: additionalSiblingUnitPrice,
+      totalPrice:
+        Math.round(additionalSiblingUnitPrice * additionalSiblingCount * 100) / 100,
+    },
+  ]
 }
 
 export function useBookingForm({
@@ -137,6 +181,9 @@ export function useBookingForm({
   const [specialInstructions, setSpecialInstructions] = useState('')
   const [additionalAdultCount, setAdditionalAdultCount] = useState(0)
   const [additionalSiblingCount, setAdditionalSiblingCount] = useState(0)
+  const [additionalSiblingPassQuantities, setAdditionalSiblingPassQuantities] = useState<
+    Record<string, number>
+  >({})
   const [selectedCategoryAddOnIds, setSelectedCategoryAddOnIds] = useState<string[]>([])
   const [checkoutCouponCode, setCheckoutCouponCode] = useState<string | null>(null)
   const [checkoutCouponDiscount, setCheckoutCouponDiscount] = useState(0)
@@ -270,12 +317,32 @@ export function useBookingForm({
     () => parseAdditionalSiblingUnitPrice(service),
     [service],
   )
+  const additionalSiblingPassOptions = useMemo<AdditionalSiblingPassOption[]>(() => {
+    return services
+      .filter((entry) => entry.id !== service.id)
+      .filter((entry) => entry.isActive)
+      .filter((entry) => entry.bookingOfferingKind === 'PASS')
+      .map((entry) => ({
+        serviceId: entry.id,
+        name: entry.name,
+        unitPrice: entry.basePrice,
+      }))
+  }, [service.id, services])
+  const siblingPassOptionById = useMemo(() => {
+    const map = new Map<string, AdditionalSiblingPassOption>()
+    for (const option of additionalSiblingPassOptions) {
+      map.set(option.serviceId, option)
+    }
+    return map
+  }, [additionalSiblingPassOptions])
   const showAdditionalSiblingPicker = useMemo(
     () => showsAdditionalSiblingPicker(service),
     [service],
   )
   const freeAdultCount = useMemo(() => resolveFreeAdultCount(service), [service])
-  const guestCountLabel = usesOpenPlayHouseholdBooking ? 'No of passes' : 'Guests'
+  const isPlayCategory = getSchedulingTopLevelId(service.categoryId) === 'PLAY'
+  const guestCountLabel =
+    usesOpenPlayHouseholdBooking || isPlayCategory ? 'No of passes' : 'Guests'
   const passCountHelperText = useMemo(
     () => buildPassCountHelperText(service, maxPassCount),
     [maxPassCount, service],
@@ -292,38 +359,47 @@ export function useBookingForm({
   )
 
   const baseTotal = useMemo(() => {
+    const quantityDrivenBaseTotal =
+      service.bookingOfferingKind === 'PASS' || isPlayCategory
+        ? Math.round(service.basePrice * guestCount * 100) / 100
+        : computeSchedulingBaseTotal(
+            service,
+            slot,
+            guestCount,
+            selectedWindow ?? null,
+            selectedDurationMinutes,
+          )
     if (usesOpenPlayHouseholdBooking) {
-      const passPart = computeSchedulingBaseTotal(
-        service,
-        slot,
-        guestCount,
-        selectedWindow ?? null,
-        selectedDurationMinutes,
-      )
-      const siblingPart =
-        additionalSiblingUnitPrice != null && additionalSiblingCount > 0
-          ? Math.round(additionalSiblingUnitPrice * additionalSiblingCount * 100) / 100
-          : 0
-      const raw = Math.round((passPart + siblingPart) * 100) / 100
+      const siblingPart = additionalSiblingPassOptions.length > 0
+        ? Object.entries(additionalSiblingPassQuantities).reduce((sum, [serviceId, quantity]) => {
+            const option = siblingPassOptionById.get(serviceId)
+            if (!option || quantity <= 0) {
+              return sum
+            }
+            return sum + option.unitPrice * quantity
+          }, 0)
+        : resolvedLegacySiblingPart({
+            additionalSiblingCount,
+            additionalSiblingUnitPrice,
+          })
+      const raw = Math.round((quantityDrivenBaseTotal + siblingPart) * 100) / 100
       return isFreeInfant ? 0 : raw
     }
-    const raw = computeSchedulingBaseTotal(
-      service,
-      slot,
-      guestCount,
-      selectedWindow ?? null,
-      selectedDurationMinutes,
-    )
+    const raw = quantityDrivenBaseTotal
     return isFreeInfant ? 0 : raw
   }, [
     additionalSiblingCount,
+    additionalSiblingPassOptions.length,
+    additionalSiblingPassQuantities,
     additionalSiblingUnitPrice,
     guestCount,
+    isPlayCategory,
     isFreeInfant,
     selectedDurationMinutes,
     selectedWindow,
     service,
     slot,
+    siblingPassOptionById,
     usesOpenPlayHouseholdBooking,
   ])
 
@@ -489,19 +565,36 @@ export function useBookingForm({
           ]
         : []
     const additionalSiblingLines =
-      additionalSiblingUnitPrice != null && additionalSiblingCount > 0
-        ? [
-            {
-              id: 'bkao-additional-sibling',
-              name: 'Additional sibling',
-              quantity: additionalSiblingCount,
-              unitPrice: additionalSiblingUnitPrice,
-              totalPrice:
-                Math.round(additionalSiblingUnitPrice * additionalSiblingCount * 100) /
-                100,
-            },
-          ]
-        : []
+      additionalSiblingPassOptions.length > 0
+        ? Object.entries(additionalSiblingPassQuantities)
+            .map(([serviceId, quantity]) => {
+              const option = siblingPassOptionById.get(serviceId)
+              if (!option || quantity <= 0) {
+                return null
+              }
+              return {
+                id: `bkao-additional-sibling-${serviceId}`,
+                name: `Additional sibling (${option.name})`,
+                quantity,
+                unitPrice: option.unitPrice,
+                totalPrice: Math.round(option.unitPrice * quantity * 100) / 100,
+              }
+            })
+            .filter(
+              (
+                line,
+              ): line is {
+                id: string
+                name: string
+                quantity: number
+                unitPrice: number
+                totalPrice: number
+              } => line != null,
+            )
+        : resolvedLegacySiblingLines({
+            additionalSiblingCount,
+            additionalSiblingUnitPrice,
+          })
     const categoryIncludedLines = categoryIncludedAddOns.map((addOn) => ({
       id: `bkao-${addOn.id}`,
       name: addOn.name,
@@ -645,6 +738,8 @@ export function useBookingForm({
     additionalAdultTotal,
     additionalAdultUnitPrice,
     additionalSiblingCount,
+    additionalSiblingPassOptions.length,
+    additionalSiblingPassQuantities,
     additionalSiblingUnitPrice,
     categoryIncludedAddOns,
     checkoutCouponCode,
@@ -666,6 +761,7 @@ export function useBookingForm({
     selectedDurationMinutes,
     selectedWindow,
     service,
+    siblingPassOptionById,
     slot,
     source,
     specialInstructions,
@@ -673,6 +769,47 @@ export function useBookingForm({
     contactName,
     actedByStaffId,
   ])
+
+  useEffect(() => {
+    if (additionalSiblingPassOptions.length === 0) {
+      setAdditionalSiblingPassQuantities({})
+      return
+    }
+    setAdditionalSiblingPassQuantities((previous) => {
+      const next: Record<string, number> = {}
+      for (const option of additionalSiblingPassOptions) {
+        const quantity = previous[option.serviceId] ?? 0
+        if (quantity > 0) {
+          next[option.serviceId] = quantity
+        }
+      }
+      return next
+    })
+  }, [additionalSiblingPassOptions])
+
+  useEffect(() => {
+    if (additionalSiblingPassOptions.length === 0) {
+      return
+    }
+    const total = Object.values(additionalSiblingPassQuantities).reduce(
+      (sum, quantity) => sum + Math.max(0, quantity),
+      0,
+    )
+    setAdditionalSiblingCount(total)
+  }, [additionalSiblingPassOptions.length, additionalSiblingPassQuantities])
+
+  const setAdditionalSiblingPassQuantity = useCallback((serviceId: string, quantity: number) => {
+    setAdditionalSiblingPassQuantities((previous) => {
+      const safeQuantity = Math.max(0, Math.floor(quantity))
+      const next = { ...previous }
+      if (safeQuantity <= 0) {
+        delete next[serviceId]
+      } else {
+        next[serviceId] = safeQuantity
+      }
+      return next
+    })
+  }, [])
 
   const submitWaitlist = useCallback(() => {
     if (!slot) return
@@ -735,6 +872,9 @@ export function useBookingForm({
     setAdditionalSiblingCount,
     additionalSiblingUnitPrice,
     showAdditionalSiblingPicker,
+    additionalSiblingPassOptions,
+    additionalSiblingPassQuantities,
+    setAdditionalSiblingPassQuantity,
     maxChildSelections,
     guestCountLabel,
     freeAdultCount,

@@ -14,8 +14,12 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   buildPackagePlacementPatch,
+  DEFAULT_EVENT_PRIVATE_PARTY_PACKAGE_PLACEMENT,
+  DEFAULT_EVENT_WHOLE_PLACE_PACKAGE_PLACEMENT,
   DEFAULT_PRIVATE_PLAY_PACKAGE_PLACEMENT,
   EMPTY_PACKAGE_PLACEMENT,
+  EVENT_PRIVATE_PARTY_ROOM_SUBCATEGORY_ID,
+  EVENT_WHOLE_PLACE_SUBCATEGORY_ID,
   type PackagePlacementDraft,
 } from '@/lib/package-placement'
 import { useScheduling } from '@/lib/scheduling-store'
@@ -66,6 +70,12 @@ function AdminSchedulingPackagesNewPageInner() {
   const [draftStaffCount, setDraftStaffCount] = useState('')
   const [draftPartyRooms, setDraftPartyRooms] = useState('')
   const [placementDraft, setPlacementDraft] = useState<PackagePlacementDraft>(() => {
+    if (prefilledCategoryId === EVENT_PRIVATE_PARTY_ROOM_SUBCATEGORY_ID) {
+      return { ...DEFAULT_EVENT_PRIVATE_PARTY_PACKAGE_PLACEMENT }
+    }
+    if (prefilledCategoryId === EVENT_WHOLE_PLACE_SUBCATEGORY_ID) {
+      return { ...DEFAULT_EVENT_WHOLE_PLACE_PACKAGE_PLACEMENT }
+    }
     if (prefilledCategoryId === 'cat-private-play') {
       return { ...DEFAULT_PRIVATE_PLAY_PACKAGE_PLACEMENT }
     }

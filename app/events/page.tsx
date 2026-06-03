@@ -1,47 +1,39 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import Link from 'next/link'
 import { Search, X } from 'lucide-react'
 
 import { CustomerFooter } from '@/components/customer/footer'
 import { HorizontalScrollSection } from '@/components/customer/horizontal-scroll-section'
 import { CustomerNavbar } from '@/components/customer/navbar'
-import { PrivatePartyRoomOpenPlaySection } from '@/components/customer/private-party-room-open-play-section'
-import { WholePlacePrivatePartyOpenPlaySection } from '@/components/customer/whole-place-private-party-open-play-section'
 import { PromoLinkGridSection } from '@/components/customer/promo-link-grid-section'
 import { ScrollableSectionBreadcrumbs } from '@/components/customer/scrollable-section-breadcrumbs'
+import { EventPackageScrollCard } from '@/components/customer/event-package-scroll-card'
 import { ServiceScrollCard } from '@/components/customer/service-scroll-card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
-  buildPrivateEventBookingHref,
-  resolvePrivateEventBookingServiceId,
-} from '@/lib/event-package-catalog'
-import { hasAssignedConsumerSlot, isEventCatalogService } from '@/lib/scheduling-visibility'
+  buildEventCatalogScrollItems,
+  eventCatalogItemMatchesSearch,
+} from '@/lib/event-catalog-display'
+import {
+  buildSchedulingCategoryById,
+  hasAssignedConsumerSlot,
+  isConsumerEventCatalogService,
+  isConsumerVisibleSchedulingCategory,
+} from '@/lib/scheduling-visibility'
 import { useScheduling } from '@/lib/scheduling-store'
 import type { Event } from '@/lib/types'
 
 const statuses: Array<'All' | Event['status']> = ['All', 'PUBLISHED', 'DRAFT']
+const PRIORITIZED_EVENT_CATEGORY_NAMES = [
+  'Private Party Room & Open Play',
+  'The Whole Place Private Party & Open Play',
+] as const
 
-const PLAY_CATEGORY_IDS = new Set<string>([
-  'cat-open-play',
-  'cat-private-play',
-  'cat-camps-play',
-  'cat-special-play-events',
-  'cat-parents-night',
-  'cat-field-trips',
-  'cat-we-bring-play',
-])
-
+/** Consumer events browse — only the dedicated event sub-categories (not legacy cat-5). */
 function isEventSectionCategory(categoryId: string): boolean {
-  if (categoryId.startsWith('cat-gym-')) {
-    return false
-  }
-  if (PLAY_CATEGORY_IDS.has(categoryId) || categoryId.startsWith('cat-play-')) {
-    return false
-  }
-  return true
+  return categoryId.startsWith('cat-event-')
 }
 
 const TAKE_OUT_PARTY_ITEMS = [
@@ -99,9 +91,11 @@ const WE_BRING_PARTY_ITEMS = [
 ] as const
 
 export default function EventsPage() {
-  const { categories, services, slots } = useScheduling()
+  const { categories, services, slots, packages } = useScheduling()
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<'All' | Event['status']>('All')
+
+  const categoryById = useMemo(() => buildSchedulingCategoryById(categories), [categories])
 
   function handleClear() {
     setSearch('')
@@ -112,59 +106,82 @@ export default function EventsPage() {
     () =>
       services.filter(
         (service) =>
-          isEventCatalogService(service) &&
+          isConsumerEventCatalogService(service, categoryById) &&
           hasAssignedConsumerSlot(service, slots),
       ),
-    [services, slots],
+    [categoryById, services, slots],
   )
-  const featuredPartyServiceId = useMemo(
-    () => resolvePrivateEventBookingServiceId(eventCatalog),
-    [eventCatalog],
-  )
-  const privateEventBookingHref = useMemo(
-    () =>
-      featuredPartyServiceId
-        ? buildPrivateEventBookingHref(featuredPartyServiceId)
-        : null,
-    [featuredPartyServiceId],
-  )
-
-  const filtered = useMemo(() => {
+  const filteredServices = useMemo(() => {
     let result = [...eventCatalog]
-
-    if (search) {
-      const q = search.toLowerCase()
-      result = result.filter(
-        (s) =>
-          s.name.toLowerCase().includes(q) ||
-          (s.sport?.toLowerCase().includes(q) ?? false) ||
-          (s.description?.toLowerCase().includes(q) ?? false),
-      )
-    }
 
     if (status !== 'All') {
       result = result.filter((s) => s.eventStatus === status)
     }
 
     return result
-  }, [eventCatalog, search, status])
+  }, [eventCatalog, status])
+
+  const catalogScrollItems = useMemo(
+    () => buildEventCatalogScrollItems(filteredServices, packages),
+    [filteredServices, packages],
+  )
+
+  const filteredScrollItems = useMemo(() => {
+    if (!search) {
+      return catalogScrollItems
+    }
+    const q = search.toLowerCase()
+    return catalogScrollItems.filter((item) => eventCatalogItemMatchesSearch(item, q))
+  }, [catalogScrollItems, search])
 
   const hasActiveFilters = Boolean(search) || status !== 'All'
   const groupedSections = useMemo(() => {
+    const prioritizedCategoryOrder = new Map<string, number>(
+      PRIORITIZED_EVENT_CATEGORY_NAMES.map((name, index) => [name, index]),
+    )
     const eventCategories = categories
-      .filter((category) => isEventSectionCategory(category.id))
+      .filter(
+        (category) =>
+          isConsumerVisibleSchedulingCategory(category) &&
+          isEventSectionCategory(category.id),
+      )
       .slice()
-      .sort((a, b) => a.displayOrder - b.displayOrder)
+      .sort((a, b) => {
+        const aPriority = prioritizedCategoryOrder.get(a.name)
+        const bPriority = prioritizedCategoryOrder.get(b.name)
+
+        if (aPriority !== undefined && bPriority !== undefined) {
+          return aPriority - bPriority
+        }
+
+        if (aPriority !== undefined) {
+          return -1
+        }
+
+        if (bPriority !== undefined) {
+          return 1
+        }
+
+        return a.displayOrder - b.displayOrder
+      })
 
     const sections = eventCategories.map((category) => ({
       key: category.id,
       title: category.name,
       description: category.description ?? 'Recently added events available for booking.',
-      items: filtered.filter((service) => service.categoryId === category.id),
+      items: filteredScrollItems.filter((item) =>
+        item.kind === 'package'
+          ? item.bookingService.categoryId === category.id
+          : item.service.categoryId === category.id,
+      ),
     }))
 
     const categoryIds = new Set(eventCategories.map((category) => category.id))
-    const uncategorizedItems = filtered.filter((service) => !categoryIds.has(service.categoryId))
+    const uncategorizedItems = filteredScrollItems.filter((item) => {
+      const categoryId =
+        item.kind === 'package' ? item.bookingService.categoryId : item.service.categoryId
+      return !categoryIds.has(categoryId)
+    })
     if (uncategorizedItems.length > 0) {
       sections.push({
         key: 'other-events',
@@ -175,7 +192,7 @@ export default function EventsPage() {
     }
 
     return sections
-  }, [categories, filtered])
+  }, [categories, filteredScrollItems])
   const breadcrumbItems = useMemo(
     () =>
       groupedSections
@@ -255,77 +272,13 @@ export default function EventsPage() {
           </div>
         </section>
 
-        <section className="bg-background pb-4 pt-8">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <div className="rounded-2xl border border-border bg-gradient-to-r from-card to-secondary/50 p-5 shadow-sm md:p-8">
-              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-widest text-accent">
-                    Plan your celebration
-                  </p>
-                  <h2
-                    className="text-2xl font-black text-foreground md:text-3xl"
-                    style={{ fontFamily: 'var(--font-barlow)' }}
-                  >
-                    Book a Venue or Private Room
-                  </h2>
-                  <p className="max-w-2xl text-sm text-muted-foreground">
-                    Host unforgettable birthdays, school celebrations, and private events with
-                    curated packages, guest planning, optional extras, and guided booking.
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-3">
-                  <Link href={privateEventBookingHref ?? '/events'}>
-                    <Button type="button" className="h-11 px-6">
-                      Start private event booking
-                    </Button>
-                  </Link>
-                  <Link href="/events">
-                    <Button type="button" variant="outline" className="h-11 px-6">
-                      Browse event options
-                    </Button>
-                  </Link>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="bg-background pb-4">
-          <div className="mx-auto max-w-7xl space-y-8 px-4 sm:px-6 lg:px-8">
-            <PrivatePartyRoomOpenPlaySection />
-
-            <WholePlacePrivatePartyOpenPlaySection />
-
-            <PromoLinkGridSection
-              eyebrow="Take Out Party"
-              title="Take Out Party"
-              description="Pick up party-ready food, drinks, and essentials curated for your event."
-              items={TAKE_OUT_PARTY_ITEMS}
-              ctaLabel="View Take Out Party"
-              ctaHref="/events/take-out-party"
-            />
-
-            <PromoLinkGridSection
-              eyebrow="We Bring The Party To You"
-              title="We Bring The Party To You"
-              description="Off-site setup, entertainment, and party equipment brought directly to your venue."
-              items={WE_BRING_PARTY_ITEMS}
-              ctaLabel="Plan Off-Site Party"
-              ctaHref="/we-bring-the-party"
-            />
-          </div>
-        </section>
-
-        {/* TODO: Re-enable event catalog browse (Parties & Events, Other Events, service scroll) */}
-        {/*
         <section className="bg-background py-12" aria-live="polite" aria-label="Event results">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <p className="mb-6 text-sm text-muted-foreground">
-              <span className="font-semibold text-foreground">{filtered.length}</span>{' '}
-              {filtered.length === 1 ? 'event' : 'events'}
+              <span className="font-semibold text-foreground">{filteredScrollItems.length}</span>{' '}
+              {filteredScrollItems.length === 1 ? 'listing' : 'listings'}
             </p>
-            {filtered.length === 0 ? (
+            {filteredScrollItems.length === 0 ? (
               <div className="space-y-4 py-20 text-center">
                 <p className="text-2xl font-bold text-muted-foreground">No events found</p>
                 <Button type="button" onClick={handleClear}>
@@ -345,9 +298,17 @@ export default function EventsPage() {
                         title={section.title}
                         description={section.description}
                       >
-                        {section.items.map((service) => (
-                          <ServiceScrollCard key={service.id} service={service} />
-                        ))}
+                        {section.items.map((item) =>
+                          item.kind === 'package' ? (
+                            <EventPackageScrollCard
+                              key={item.pkg.id}
+                              pkg={item.pkg}
+                              bookingService={item.bookingService}
+                            />
+                          ) : (
+                            <ServiceScrollCard key={item.service.id} service={item.service} />
+                          ),
+                        )}
                       </HorizontalScrollSection>
                     </div>
                   ) : null,
@@ -356,7 +317,28 @@ export default function EventsPage() {
             )}
           </div>
         </section>
-        */}
+
+        <section className="bg-background pb-4">
+          <div className="mx-auto max-w-7xl space-y-8 px-4 sm:px-6 lg:px-8">
+            <PromoLinkGridSection
+              eyebrow="Take Out Party"
+              title="Take Out Party"
+              description="Pick up party-ready food, drinks, and essentials curated for your event."
+              items={TAKE_OUT_PARTY_ITEMS}
+              ctaLabel="View Take Out Party"
+              ctaHref="/events/take-out-party"
+            />
+
+            <PromoLinkGridSection
+              eyebrow="We Bring The Party To You"
+              title="We Bring The Party To You"
+              description="Off-site setup, entertainment, and party equipment brought directly to your venue."
+              items={WE_BRING_PARTY_ITEMS}
+              ctaLabel="Plan Off-Site Party"
+              ctaHref="/we-bring-the-party"
+            />
+          </div>
+        </section>
       </main>
       <CustomerFooter />
     </>

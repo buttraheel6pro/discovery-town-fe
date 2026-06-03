@@ -69,6 +69,10 @@ export function PackagePlacementFields({
     topLevelFromPlacementDraft(value),
   )
 
+  useEffect(() => {
+    setProgramArea(topLevelFromPlacementDraft(value))
+  }, [value.displayPages, value.schedulingCategoryIds])
+
   const subCategoryId = value.schedulingCategoryIds[0] ?? ''
 
   const subCategoriesInProgramArea = useMemo(() => {
@@ -79,9 +83,13 @@ export function PackagePlacementFields({
 
   const servicesForSubCategory = useMemo(() => {
     if (!subCategoryId) {
-      return [...assignableServices]
+      return []
     }
-    return assignableServices.filter((service) => service.categoryId === subCategoryId)
+    const inCategory = assignableServices.filter(
+      (service) => service.categoryId === subCategoryId,
+    )
+    const packageOnly = inCategory.filter((service) => service.isPackageService === true)
+    return packageOnly.length > 0 ? packageOnly : inCategory
   }, [assignableServices, subCategoryId])
 
   const selectedService = useMemo(() => {
@@ -106,6 +114,9 @@ export function PackagePlacementFields({
   }, [lockedSubCategoryId])
 
   useEffect(() => {
+    if (!subCategoryId) {
+      return
+    }
     const fallback = subCategoriesInProgramArea[0]?.id ?? ''
     if (!fallback || subCategoriesInProgramArea.some((entry) => entry.id === subCategoryId)) {
       return
@@ -114,14 +125,14 @@ export function PackagePlacementFields({
   }, [onChange, subCategoriesInProgramArea, subCategoryId])
 
   useEffect(() => {
-    if (servicesForSubCategory.length === 0) {
+    if (!subCategoryId || servicesForSubCategory.length === 0) {
       return
     }
     const stillValid = servicesForSubCategory.some((service) => service.id === draftServiceId)
     if (!stillValid) {
       setDraftServiceId(servicesForSubCategory[0]?.id ?? 'unassigned')
     }
-  }, [draftServiceId, servicesForSubCategory, setDraftServiceId])
+  }, [draftServiceId, servicesForSubCategory, setDraftServiceId, subCategoryId])
 
   function handleProgramAreaChange(nextTopLevel: SchedulingTopLevelId) {
     setProgramArea(nextTopLevel)

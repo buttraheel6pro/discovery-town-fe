@@ -24,6 +24,8 @@ export interface BookingFlowCouponSectionProps {
   readonly depositDueToday: number | null
   readonly depositDueOnArrival: number | null
   readonly totalLabel?: ReactNode
+  /** When false, only the coupon panel is shown (totals live elsewhere, e.g. Add to cart). */
+  readonly showPricingSummary?: boolean
 }
 
 export function BookingFlowCouponSection({
@@ -42,6 +44,7 @@ export function BookingFlowCouponSection({
   depositDueToday,
   depositDueOnArrival,
   totalLabel,
+  showPricingSummary = true,
 }: Readonly<BookingFlowCouponSectionProps>) {
   useEffect(() => {
     setCoupon(null, 0)
@@ -59,48 +62,52 @@ export function BookingFlowCouponSection({
         externalAppliedCode={appliedCouponCode}
         externalDiscount={appliedCouponDiscount}
       />
-      <Separator />
-      <div className="space-y-1.5 text-sm">
-        {checkoutCouponDiscount > 0 ? (
-          <>
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>Before promo</span>
-              <span>{formatPrice(totalBeforeCoupon)}</span>
+      {showPricingSummary ? (
+        <>
+          <Separator />
+          <div className="space-y-1.5 text-sm">
+            {checkoutCouponDiscount > 0 ? (
+              <>
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Before promo</span>
+                  <span>{formatPrice(totalBeforeCoupon)}</span>
+                </div>
+                <div className="flex justify-between text-xs font-semibold text-green-700">
+                  <span>Promo</span>
+                  <span>-{formatPrice(checkoutCouponDiscount)}</span>
+                </div>
+              </>
+            ) : null}
+            <div className="flex justify-between font-bold text-base">
+              {totalLabel ?? <span>Total</span>}
+              <span className="text-accent">{formatPrice(grandTotal)}</span>
             </div>
-            <div className="flex justify-between text-xs font-semibold text-green-700">
-              <span>Promo</span>
-              <span>-{formatPrice(checkoutCouponDiscount)}</span>
-            </div>
-          </>
-        ) : null}
-        <div className="flex justify-between font-bold text-base">
-          {totalLabel ?? <span>Total</span>}
-          <span className="text-accent">{formatPrice(grandTotal)}</span>
-        </div>
-        {isFreeInfant && freeInfantMonths != null ? (
-          <p className="text-sm font-semibold text-foreground">
-            Infant (under {freeInfantMonths} months): FREE
-          </p>
-        ) : null}
-        {depositPercent != null &&
-        depositDueToday != null &&
-        depositDueOnArrival != null ? (
-          <div className="space-y-1 text-sm">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Due today (deposit)</span>
-              <span className="font-semibold text-foreground">
-                {formatPrice(depositDueToday)}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Due on arrival (balance)</span>
-              <span className="font-semibold text-foreground">
-                {formatPrice(depositDueOnArrival)}
-              </span>
-            </div>
+            {isFreeInfant && freeInfantMonths != null ? (
+              <p className="text-sm font-semibold text-foreground">
+                Infant (under {freeInfantMonths} months): FREE
+              </p>
+            ) : null}
+            {depositPercent != null &&
+            depositDueToday != null &&
+            depositDueOnArrival != null ? (
+              <div className="space-y-1 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Due today (deposit)</span>
+                  <span className="font-semibold text-foreground">
+                    {formatPrice(depositDueToday)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Due on arrival (balance)</span>
+                  <span className="font-semibold text-foreground">
+                    {formatPrice(depositDueOnArrival)}
+                  </span>
+                </div>
+              </div>
+            ) : null}
           </div>
-        ) : null}
-      </div>
+        </>
+      ) : null}
     </>
   )
 }

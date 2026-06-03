@@ -7,6 +7,7 @@ export type SchedulingTopLevelId = (typeof SCHEDULING_TOP_LEVEL_ORDER)[number]
 const PLAY_CATEGORY_IDS = new Set<string>([
   'cat-open-play',
   'cat-private-play',
+  'cat-summer-camp-play',
   'cat-camps-play',
   'cat-special-play-events',
   'cat-parents-night',
@@ -18,6 +19,7 @@ export const CONSUMER_ALIGNED_CATEGORY_IDS = new Set<string>([
   'cat-open-play',
   'cat-private-play',
   'cat-special-play-events',
+  'cat-summer-camp-play',
   'cat-camps-play',
   'cat-parents-night',
   'cat-field-trips',
@@ -32,7 +34,8 @@ export const CONSUMER_ALIGNED_CATEGORY_IDS = new Set<string>([
   'cat-gym-family',
   'cat-gym-prenatal',
   'cat-gym-special-needs',
-  'cat-5',
+  'cat-event-private-party-room-open-play',
+  'cat-event-whole-place-private-party-open-play',
 ])
 
 export function isConsumerAlignedCategoryId(categoryId: string): boolean {
@@ -66,5 +69,26 @@ export function getSchedulingTopLevelLabel(topLevelId: SchedulingTopLevelId): st
       return 'Event'
     default:
       return 'Event'
+  }
+}
+
+export interface SchedulingConsumerBackLink {
+  readonly href: string
+  readonly label: string
+}
+
+/** Consumer detail hero — return link for Play/Gym/Event top-level categories. */
+export function getSchedulingConsumerBackLink(
+  categoryId: string,
+): SchedulingConsumerBackLink {
+  const topLevel = getSchedulingTopLevelId(categoryId)
+  switch (topLevel) {
+    case 'PLAY':
+      return { href: `/play#${categoryId}`, label: 'Back to Play' }
+    case 'GYM':
+      return { href: `/gym#${categoryId}`, label: 'Back to Gym' }
+    case 'EVENT':
+    default:
+      return { href: '/events', label: 'Back to Events' }
   }
 }

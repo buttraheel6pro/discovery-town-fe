@@ -12,7 +12,11 @@ import { ServiceScrollCard } from '@/components/customer/service-scroll-card'
 import { visibleOpenPlayMembershipOffers } from '@/lib/open-play-membership-offers'
 import { useClients } from '@/lib/client-store'
 import { isOpenPlayPassCatalogService } from '@/lib/open-play-pass-catalog'
-import { hasAssignedConsumerSlot } from '@/lib/scheduling-visibility'
+import {
+  buildSchedulingCategoryById,
+  isConsumerListedSchedulingService,
+  isConsumerVisibleSchedulingCategory,
+} from '@/lib/scheduling-visibility'
 import { SPECIAL_PLAY_EVENTS_CATEGORY_ID } from '@/lib/scheduling-slot-availability'
 import { sortSpecialPlayServices } from '@/lib/special-play-service-order'
 import { useScheduling } from '@/lib/scheduling-store'
@@ -32,13 +36,13 @@ function servicesForPlayCategory(
   categoryId: string,
   services: readonly SchedulingService[],
   slots: readonly SchedulingSlot[],
+  categoryById: ReadonlyMap<string, { readonly isActive: boolean }>,
 ): SchedulingService[] {
   const matched = services.filter(
     (service) =>
-      service.isActive &&
       !isOpenPlayPassCatalogService(service) &&
       service.categoryId === categoryId &&
-      hasAssignedConsumerSlot(service, slots),
+      isConsumerListedSchedulingService(service, categoryById, slots),
   )
   if (categoryId === SPECIAL_PLAY_EVENTS_CATEGORY_ID) {
     return sortSpecialPlayServices(matched)
@@ -59,6 +63,7 @@ const PLAY_CATEGORY_IDS = new Set<string>([
   OPEN_PLAY_CATEGORY_ID,
   'cat-private-play',
   'cat-special-play-events',
+  'cat-summer-camp-play',
   'cat-camps-play',
   'cat-parents-night',
   'cat-field-trips',
@@ -71,7 +76,9 @@ const PLAY_CATEGORY_DESCRIPTIONS: Record<string, string> = {
   'cat-private-play': 'Private room, full venue takeover, and meeting-room conference options.',
   'cat-special-play-events':
     'Character, holiday, fall/winter/spring seasonal festivals, and skill-building programmes.',
-  'cat-camps-play': 'Summer, winter break, spring break, and MLK day camp options.',
+  'cat-summer-camp-play':
+    'Themed summer camp weeks — register for a full week of supervised play and activities.',
+  'cat-camps-play': 'Winter break, spring break, and MLK day camp options.',
   'cat-parents-night': 'Saturday 4-7 PM supervised care for ages 6 months to 7 years.',
   'cat-field-trips': 'Structured group experiences for schools and organizations.',
   'cat-we-bring-play':
@@ -81,6 +88,8 @@ const PLAY_CATEGORY_DESCRIPTIONS: Record<string, string> = {
 export default function PlayPage() {
   const { categories, services, slots } = useScheduling()
   const { membershipPlans } = useClients()
+
+  const categoryById = useMemo(() => buildSchedulingCategoryById(categories), [categories])
 
   const openPlayMembershipOffers = useMemo(
     () => visibleOpenPlayMembershipOffers(membershipPlans),
@@ -92,7 +101,8 @@ export default function PlayPage() {
       categories
         .filter(
           (category) =>
-            PLAY_CATEGORY_IDS.has(category.id) || category.id.startsWith('cat-play-'),
+            isConsumerVisibleSchedulingCategory(category) &&
+            (PLAY_CATEGORY_IDS.has(category.id) || category.id.startsWith('cat-play-')),
         )
         .slice()
         .sort((a, b) => a.displayOrder - b.displayOrder)
@@ -100,7 +110,7 @@ export default function PlayPage() {
           id: category.id,
           title: category.name,
           description: PLAY_CATEGORY_DESCRIPTIONS[category.id] ?? 'Discover play experiences.',
-          services: servicesForPlayCategory(category.id, services, slots),
+          services: servicesForPlayCategory(category.id, services, slots, categoryById),
           membershipOffers:
             category.id === OPEN_PLAY_CATEGORY_ID ? openPlayMembershipOffers : [],
         }))
@@ -108,7 +118,7 @@ export default function PlayPage() {
           (section) =>
             section.services.length > 0 || section.membershipOffers.length > 0,
         ),
-    [categories, openPlayMembershipOffers, services, slots],
+    [categories, categoryById, openPlayMembershipOffers, services, slots],
   )
   const breadcrumbItems = useMemo(
     () =>

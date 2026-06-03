@@ -4,6 +4,7 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { formatLocalYmd } from '@/lib/ymd-date'
 import { cn } from '@/lib/utils'
 
 export function getOpenBookingWeekDates(anchorDate: Date): string[] {
@@ -11,7 +12,7 @@ export function getOpenBookingWeekDates(anchorDate: Date): string[] {
   for (let i = 0; i < 7; i += 1) {
     const d = new Date(anchorDate)
     d.setDate(anchorDate.getDate() + i)
-    dates.push(d.toISOString().split('T')[0])
+    dates.push(formatLocalYmd(d))
   }
   return dates
 }
@@ -37,7 +38,7 @@ export function formatOpenBookingWeekRangeLabel(weekDates: readonly string[]): s
 }
 
 export function getOpenBookingTodayIsoDate(): string {
-  return new Date().toISOString().split('T')[0]
+  return formatLocalYmd(new Date())
 }
 
 export interface OpenBookingWeekToolbarProps {
@@ -91,6 +92,8 @@ export interface OpenBookingWeekDayButtonGridProps {
   readonly weekDates: readonly string[]
   readonly isDateDisabled: (dateStr: string) => boolean
   readonly onDayClick: (dateStr: string) => void
+  /** When true, days are not clickable (view-only calendar). */
+  readonly interactionDisabled?: boolean
   /**
    * When omitted, uses play-style single selection (`selectedDate === dateStr`).
    * Supply for rental per-day range or other custom highlighting.
@@ -105,20 +108,22 @@ export function OpenBookingWeekDayButtonGrid({
   onDayClick,
   selectedDate = null,
   getDayVisual,
+  interactionDisabled = false,
 }: Readonly<OpenBookingWeekDayButtonGridProps>) {
   return (
     <div className="mb-6 grid grid-cols-7 gap-1">
       {weekDates.map((date) => {
         const d = new Date(`${date}T12:00:00`)
-        const disabled = isDateDisabled(date)
+        const notSelectable = isDateDisabled(date)
         const visual =
           getDayVisual?.(date) ??
           ({
             className: cn(
               'flex flex-col items-center rounded-lg border px-1 py-3 text-xs font-semibold transition-colors',
-              disabled && 'cursor-not-allowed border-border bg-muted text-muted-foreground opacity-40',
-              !disabled && selectedDate === date && 'border-accent bg-accent text-accent-foreground',
-              !disabled &&
+              notSelectable &&
+                'cursor-not-allowed border-border bg-muted text-muted-foreground opacity-40',
+              !notSelectable && selectedDate === date && 'border-accent bg-accent text-accent-foreground',
+              !notSelectable &&
                 selectedDate !== date &&
                 'border-border bg-card text-muted-foreground hover:bg-secondary hover:text-foreground',
             ),
@@ -129,12 +134,13 @@ export function OpenBookingWeekDayButtonGrid({
             key={date}
             type="button"
             onClick={() => {
-              if (disabled) return
+              if (interactionDisabled || notSelectable) return
               onDayClick(date)
             }}
-            disabled={disabled}
+            disabled={notSelectable}
             className={visual.className}
             aria-pressed={visual['aria-pressed']}
+            aria-disabled={interactionDisabled || notSelectable}
           >
             <span className="text-[10px] uppercase tracking-wider">
               {d.toLocaleDateString('en-GB', { weekday: 'short' })}

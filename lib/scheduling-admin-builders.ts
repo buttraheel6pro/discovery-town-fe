@@ -144,7 +144,7 @@ export function buildEventServiceFromAdmin(input: {
   imageUrl: string | null
   serviceType?: 'WORKSHOP' | 'CAMP' | 'PARTY_PACKAGE'
 }): SchedulingService {
-  const category = schedulingCategoryOrThrow('cat-5')
+  const category = schedulingCategoryOrThrow('cat-event-private-party-room-open-play')
   const serviceType = input.serviceType ?? 'PARTY_PACKAGE'
   return {
     id: input.id,

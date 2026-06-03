@@ -8,7 +8,11 @@ import { HorizontalScrollSection } from '@/components/customer/horizontal-scroll
 import { CustomerNavbar } from '@/components/customer/navbar'
 import { ScrollableSectionBreadcrumbs } from '@/components/customer/scrollable-section-breadcrumbs'
 import { ServiceScrollCard } from '@/components/customer/service-scroll-card'
-import { hasAssignedConsumerSlot } from '@/lib/scheduling-visibility'
+import {
+  buildSchedulingCategoryById,
+  isConsumerListedSchedulingService,
+  isConsumerVisibleSchedulingCategory,
+} from '@/lib/scheduling-visibility'
 import { useScheduling } from '@/lib/scheduling-store'
 
 const GYM_CATEGORY_DESCRIPTIONS: Record<string, string> = {
@@ -31,25 +35,30 @@ const GYM_CATEGORY_DESCRIPTIONS: Record<string, string> = {
 export default function GymPage() {
   const { categories, services, slots } = useScheduling()
 
+  const categoryById = useMemo(() => buildSchedulingCategoryById(categories), [categories])
+
   const sectionServices = useMemo(
     () =>
       categories
-        .filter((category) => category.id.startsWith('cat-gym-'))
+        .filter(
+          (category) =>
+            isConsumerVisibleSchedulingCategory(category) &&
+            category.id.startsWith('cat-gym-'),
+        )
         .slice()
         .sort((a, b) => a.displayOrder - b.displayOrder)
         .map((category) => ({
           id: category.id,
           title: category.name,
           description: GYM_CATEGORY_DESCRIPTIONS[category.id] ?? 'Fitness experiences for every age.',
-        services: services.filter(
-          (service) =>
-              service.isActive &&
+          services: services.filter(
+            (service) =>
               service.categoryId === category.id &&
-            hasAssignedConsumerSlot(service, slots),
-        ),
+              isConsumerListedSchedulingService(service, categoryById, slots),
+          ),
         }))
         .filter((section) => section.services.length > 0),
-    [categories, services, slots],
+    [categories, categoryById, services, slots],
   )
   const breadcrumbItems = useMemo(
     () =>

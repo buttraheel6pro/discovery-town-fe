@@ -107,7 +107,14 @@ interface SchedulingStore {
   addPackage: (pkg: EventPackage) => void
   updatePackage: (packageId: string, patch: Partial<EventPackage>) => void
   removePackage: (packageId: string) => void
-  duplicatePackage: (packageId: string) => void
+  duplicatePackage: (
+    packageId: string,
+    target?: {
+      serviceId: string
+      displayPages?: EventPackage['displayPages']
+      schedulingCategoryIds?: string[]
+    },
+  ) => void
   addOccasion: (occasion: SchedulingOccasion) => void
   updateOccasion: (occasionId: string, patch: Partial<SchedulingOccasion>) => void
   removeOccasion: (occasionId: string) => void
@@ -287,12 +294,20 @@ export function SchedulingProvider({
       dispatch(removePackageAction(packageId))
     }
 
-    function duplicatePackage(packageId: string) {
+    function duplicatePackage(
+      packageId: string,
+      target?: {
+        serviceId: string
+        displayPages?: EventPackage['displayPages']
+        schedulingCategoryIds?: string[]
+      },
+    ) {
       dispatch(
         duplicatePackageAction({
           packageId,
           copyId: `pkg-${Math.random().toString(16).slice(2, 10)}`,
           nowIso: new Date().toISOString(),
+          target,
         }),
       )
     }

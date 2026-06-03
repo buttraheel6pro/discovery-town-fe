@@ -7,12 +7,19 @@ import { getSchedulingTopLevelId } from '@/lib/scheduling-consumer-categories'
 import { formatPrice, formatSlotDate, formatSlotTimeRange } from '@/lib/utils'
 import type { SchedulingBooking, SchedulingService } from '@/lib/types'
 
-/** “Buy now” on play listing cards only (special play, camps, field trips). */
+/** “Buy now” on play listing cards only (special play, camps). */
 export function usesBuyNowListingCta(service: SchedulingService): boolean {
   return usesEventTicketBookingSidebar(service)
 }
 
 export const PLAY_CART_BOOKING_META_KEY = 'playCartBooking' as const
+
+/** Primary CTA on Play facility, class, and offsite booking flows. */
+export const PLAY_BOOKING_CONFIRM_CART_LABEL = 'Confirm and add to cart' as const
+
+export function getPlayBookingConfirmCartLabel(): string {
+  return PLAY_BOOKING_CONFIRM_CART_LABEL
+}
 export const GYM_CART_BOOKING_META_KEY = 'gymCartBooking' as const
 export const EVENT_CART_BOOKING_META_KEY = 'eventCartBooking' as const
 

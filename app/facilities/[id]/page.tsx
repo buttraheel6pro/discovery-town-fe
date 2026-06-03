@@ -45,10 +45,15 @@ import {
   resolveOfferDisplayPrice,
 } from '@/lib/open-play-membership-offers'
 import { isOpenPlayPassCatalogService } from '@/lib/open-play-pass-catalog'
-import { isPrivatePlayService } from '@/lib/private-play-packages'
+import { shouldUsePrivatePlayDetailLayout } from '@/lib/private-play-packages'
+import {
+  getSchedulingConsumerBackLink,
+  getSchedulingTopLevelId,
+} from '@/lib/scheduling-consumer-categories'
 import {
   buildGymCartBookingDescription,
   buildPlayCartBookingDescription,
+  getPlayBookingConfirmCartLabel,
   GYM_CART_BOOKING_META_KEY,
   isGymFacilityCartCheckoutService,
   isPlayCartCheckoutService,
@@ -56,6 +61,10 @@ import {
 } from '@/lib/play-cart'
 import { usesBuyNowListingCta } from '@/lib/play-cart'
 import { useScheduling } from '@/lib/scheduling-store'
+import {
+  buildSchedulingCategoryById,
+  isConsumerVisibleSchedulingService,
+} from '@/lib/scheduling-visibility'
 import { usesEventTicketBookingSidebar } from '@/lib/scheduling-slot-availability'
 import {
   formatPrice,
@@ -96,18 +105,24 @@ function getFacilityCartCheckoutKind(
 }
 
 function getFacilityConfirmButtonLabel(
+  categoryId: string,
   hasSelectedWindow: boolean,
-  cartCheckoutKind: 'play' | 'gym' | null,
   buyNowListing: boolean,
+  isPassOffering: boolean,
 ): string {
-  if (!hasSelectedWindow) {
-    return buyNowListing ? 'Buy now' : 'Select a time slot'
-  }
+  const isPlayCategory = getSchedulingTopLevelId(categoryId) === 'PLAY'
+
   if (buyNowListing) {
     return 'Buy now'
   }
-  if (cartCheckoutKind !== null) {
-    return 'Confirm and add to cart'
+  if (isPlayCategory) {
+    if (!isPassOffering && !hasSelectedWindow) {
+      return 'Select a time slot'
+    }
+    return getPlayBookingConfirmCartLabel()
+  }
+  if (!hasSelectedWindow) {
+    return 'Select a time slot'
   }
   return 'Confirm booking'
 }
@@ -143,6 +158,10 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
       ),
   )
   const membersOnlyBlocked = service.category.membersOnly === true && !hasActiveMembership
+  const consumerBackLink = useMemo(
+    () => getSchedulingConsumerBackLink(service.categoryId),
+    [service.categoryId],
+  )
   const facilityCartCheckoutKind = getFacilityCartCheckoutKind(service)
   const childAgeRules = useMemo(() => resolveServiceChildAgeRules(service), [service])
 
@@ -216,6 +235,35 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
       selectedWindow?.startAt,
     ],
   )
+  const selectedCategoryAddOnNames = useMemo(() => {
+    const selectedIds = new Set(bookingForm.selectedCategoryAddOnIds)
+    return bookingForm.categoryOptionalAddOns
+      .filter((addOn) => selectedIds.has(addOn.id))
+      .map((addOn) => addOn.name)
+  }, [bookingForm.categoryOptionalAddOns, bookingForm.selectedCategoryAddOnIds])
+  const selectedSiblingPassLabels = useMemo(() => {
+    return bookingForm.additionalSiblingPassOptions
+      .map((option) => {
+        const quantity = bookingForm.additionalSiblingPassQuantities[option.serviceId] ?? 0
+        if (quantity <= 0) {
+          return null
+        }
+        return `${option.name} x${quantity}`
+      })
+      .filter((value): value is string => value != null)
+  }, [
+    bookingForm.additionalSiblingPassOptions,
+    bookingForm.additionalSiblingPassQuantities,
+  ])
+  const selectedAdditionalAdultLabel = useMemo(() => {
+    if (
+      bookingForm.additionalAdultCount < 1 ||
+      bookingForm.additionalAdultUnitPrice == null
+    ) {
+      return null
+    }
+    return `Additional adult x${bookingForm.additionalAdultCount}`
+  }, [bookingForm.additionalAdultCount, bookingForm.additionalAdultUnitPrice])
 
   const requiredWaiverDocs = useMemo(() => {
     if (!service.requiresWaiver) return []
@@ -250,7 +298,7 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
   const sportLabel = service.sport ?? service.serviceType
 
   function handleConfirmBooking() {
-    if (!selectedWindow) return
+    if (!selectedWindow && service.bookingOfferingKind !== 'PASS') return
     if (!bookingForm.canSubmitDetails) return
     if (facilityCartCheckoutKind === 'play') {
       const booking = bookingForm.submitBooking({ persist: false })
@@ -295,10 +343,11 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
   }
 
   const openMode = service.bookingMode === 'OPEN'
+  const isPassOffering = service.bookingOfferingKind === 'PASS'
 
   return (
     <>
-      <div className="relative h-72 sm:h-96">
+      <div className="relative h-36 sm:h-48">
         {service.imageUrl ? (
           <Image
             src={service.imageUrl}
@@ -313,10 +362,10 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
         <div className="absolute inset-0 bg-primary/60" />
         <div className="absolute inset-0 flex flex-col justify-end p-6 sm:p-10">
           <Link
-            href="/facilities"
+            href={consumerBackLink.href}
             className="flex items-center gap-1 text-white/80 hover:text-white text-sm mb-4 w-fit"
           >
-            <ArrowLeft className="w-4 h-4" /> Back to Facilities
+            <ArrowLeft className="w-4 h-4" /> {consumerBackLink.label}
           </Link>
           <div className="flex flex-wrap items-end gap-4 justify-between">
             <div>
@@ -357,8 +406,8 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 space-y-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 grid grid-cols-1 gap-8 lg:grid-cols-3">
+        <div className="space-y-8 lg:col-span-2">
           <section>
             <h2 className="text-xl font-bold mb-3">About this facility</h2>
             <p className="text-muted-foreground leading-relaxed">
@@ -378,7 +427,7 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
             freeCategoryAddOns={bookingForm.categoryIncludedAddOns}
           />
 
-          {openMode ? (
+          {openMode && !isPassOffering ? (
             <>
               <Separator />
               <OpenBookingAvailabilitySection
@@ -395,18 +444,122 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
                 mode="facility"
               />
             </>
-          ) : (
+          ) : !isPassOffering ? (
             <p className="text-sm text-muted-foreground">
               This listing is not open-booking on this view. Try another facility or contact
               reception.
             </p>
-          )}
+          ) : null}
+
         </div>
 
-        <aside>
-          <Card className="sticky top-24 shadow-xl border-border">
+        <aside className="space-y-4 lg:col-span-1 lg:row-span-2 lg:self-start lg:sticky lg:top-24">
+          <Card className="border-border shadow-xl">
             <CardHeader className="pb-3">
-              <CardTitle className="text-lg font-bold">Book this facility</CardTitle>
+              <CardTitle className="text-lg font-bold">Add to cart</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Date</span>
+                  <span className="font-semibold">
+                    {formatDateDisplay(selectedDate)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Start time</span>
+                  <span className="font-semibold">
+                    {selectedWindow ? formatSlotTime(selectedWindow.startAt) : '—'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">{bookingForm.guestCountLabel}</span>
+                  <span className="font-semibold">{bookingForm.guestCount}</span>
+                </div>
+                {selectedPackage ? (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Package</span>
+                    <span className="font-semibold">{selectedPackage.name}</span>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold">Selected options</Label>
+                {selectedSiblingPassLabels.length > 0 ||
+                selectedAdditionalAdultLabel ||
+                selectedCategoryAddOnNames.length > 0 ? (
+                  <ul className="space-y-1 text-sm text-muted-foreground">
+                    {selectedSiblingPassLabels.map((label) => (
+                      <li key={label}>• {label}</li>
+                    ))}
+                    {selectedAdditionalAdultLabel ? (
+                      <li>• {selectedAdditionalAdultLabel}</li>
+                    ) : null}
+                    {selectedCategoryAddOnNames.map((name) => (
+                      <li key={name}>• {name}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No options selected yet.</p>
+                )}
+              </div>
+
+              {membersOnlyBlocked ? (
+                <div className="space-y-2">
+                  <Button
+                    type="button"
+                    className="w-full bg-amber-500 text-white hover:bg-amber-500/90 font-bold h-11"
+                    disabled
+                  >
+                    Members Only
+                  </Button>
+                  <Link
+                    href="/membership"
+                    className="block text-center text-sm text-accent hover:underline"
+                  >
+                    Become a member →
+                  </Link>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between border-t border-border pt-2">
+                    <span className="text-sm text-muted-foreground">Total</span>
+                    <span className="text-lg font-bold text-foreground">
+                      {formatPrice(bookingForm.grandTotal)}
+                    </span>
+                  </div>
+                  <Button
+                    type="button"
+                    className="w-full bg-accent text-accent-foreground hover:bg-accent/90 font-bold h-11"
+                    disabled={
+                      (!isPassOffering && !selectedWindow) ||
+                      !bookingForm.canSubmitDetails ||
+                      !waiversOk
+                    }
+                    onClick={handleConfirmBooking}
+                  >
+                    {getFacilityConfirmButtonLabel(
+                      service.categoryId,
+                      Boolean(selectedWindow),
+                      usesBuyNowListingCta(service),
+                      isPassOffering,
+                    )}
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </aside>
+
+        <aside className="lg:col-span-2">
+          <Card
+            className="border-border shadow-xl"
+          >
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg font-bold">
+                {isPassOffering ? 'Book this pass' : 'Book this facility'}
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-5">
               {bookedOk || addedToCartKind !== null ? (
@@ -442,237 +595,218 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
                 </div>
               ) : (
                 <>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Date</span>
-                      <span className="font-semibold">{formatDateDisplay(selectedDate)}</span>
+                  {!isPassOffering ? (
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Date</span>
+                        <span className="font-semibold">{formatDateDisplay(selectedDate)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Start time</span>
+                        <span className="font-semibold">
+                          {selectedWindow ? formatSlotTime(selectedWindow.startAt) : '—'}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Start time</span>
-                      <span className="font-semibold">
-                        {selectedWindow ? formatSlotTime(selectedWindow.startAt) : '—'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <BookingPassCountField
-                    label={bookingForm.guestCountLabel}
-                    count={bookingForm.guestCount}
-                    min={1}
-                    max={bookingForm.maxPassCount}
-                    onChange={bookingForm.setGuestCount}
-                    helperText={passCountHelperText}
-                  />
-
-                  {bookingForm.showAdditionalSiblingPicker &&
-                  bookingForm.additionalSiblingUnitPrice != null ? (
-                    <BookingAdditionalSiblingField
-                      count={bookingForm.additionalSiblingCount}
-                      unitPrice={bookingForm.additionalSiblingUnitPrice}
-                      passCount={bookingForm.guestCount}
-                      onChange={bookingForm.setAdditionalSiblingCount}
-                    />
                   ) : null}
-
-                  {activePackages.length > 0 ? (
-                    <div className="space-y-2">
-                      <Label className="text-sm font-semibold">Packages</Label>
-                      <PackageSelector
-                        packages={activePackages}
-                        selectedId={selectedPackageId}
-                        onSelect={(id) => setSelectedPackageId(id)}
+                  <div className="space-y-5">
+                    <div>
+                      <BookingPassCountField
+                        label={bookingForm.guestCountLabel}
+                        count={bookingForm.guestCount}
+                        min={1}
+                        max={bookingForm.maxPassCount}
+                        onChange={bookingForm.setGuestCount}
+                        helperText={passCountHelperText}
                       />
-                      {selectedPackage ? (
-                        <Badge variant="secondary" className="w-fit">
-                          Package selected: {selectedPackage.name}
-                        </Badge>
-                      ) : null}
                     </div>
-                  ) : null}
 
-                  {bookingForm.showAdditionalAdultPicker &&
-                  bookingForm.additionalAdultUnitPrice != null ? (
-                    <BookingAdditionalAdultField
-                      count={bookingForm.additionalAdultCount}
-                      unitPrice={bookingForm.additionalAdultUnitPrice}
-                      freeAdultCount={bookingForm.freeAdultCount}
-                      onChange={bookingForm.setAdditionalAdultCount}
-                    />
-                  ) : null}
-
-                  {bookingForm.usesOpenPlayHouseholdBooking ? (
-                    <BookingHouseholdFields
-                      contacts={contacts}
-                      primaryGuardianId={bookingForm.primaryGuardianContactId}
-                      onPrimaryGuardianChange={bookingForm.setPrimaryGuardianContactId}
-                      secondaryGuardianId={bookingForm.secondaryGuardianContactId}
-                      onSecondaryGuardianChange={bookingForm.setSecondaryGuardianContactId}
-                      selectedChildIds={bookingForm.selectedChildIds}
-                      onToggleChild={bookingForm.toggleSelectedChild}
-                      onAddContact={addContact}
-                      onAddRelationship={addRelationship}
-                      idPrefix="facility-household"
-                      maxChildSelections={bookingForm.maxChildSelections}
-                      passCount={bookingForm.guestCount}
-                      additionalSiblingCount={bookingForm.additionalSiblingCount}
-                      isChildAgeEligible={childAgeRules?.isEligible}
-                      ageRestrictionLabel={childAgeRules?.label}
-                    />
-                  ) : null}
-
-                  <BookingCategoryAddons
-                    optional={bookingForm.categoryOptionalAddOns}
-                    selectedOptionalIds={bookingForm.selectedCategoryAddOnIds}
-                    onOptionalToggle={bookingForm.setCategoryAddOnSelected}
-                  />
-
-                  {!bookingForm.usesOpenPlayHouseholdBooking ? (
-                    <BookingFamilyMemberFields
-                      service={service}
-                      contacts={contacts}
-                      selectedChildIds={bookingForm.selectedChildIds}
-                      onToggleChild={bookingForm.toggleSelectedChild}
-                      accompanyingAdultId={bookingForm.accompanyingAdultContactId}
-                      onAccompanyingAdultChange={bookingForm.setAccompanyingAdultContactId}
-                      participantContactId={bookingForm.participantContactId}
-                      onParticipantContactChange={bookingForm.applyParticipantContact}
-                      participantName={bookingForm.participantName}
-                      onParticipantNameChange={bookingForm.setParticipantName}
-                      idPrefix="facility"
-                    />
-                  ) : null}
-
-                  {service.requiresWaiver ? (
-                    requiredWaiverDocs.length === 0 ? (
-                      <div className="flex items-start gap-2">
-                        <Checkbox
-                          id="waiver-f"
-                          checked={bookingForm.waiverAccepted}
-                          onCheckedChange={(v) => bookingForm.setWaiverAccepted(Boolean(v))}
+                    {bookingForm.showAdditionalSiblingPicker &&
+                    (bookingForm.additionalSiblingUnitPrice != null ||
+                      bookingForm.additionalSiblingPassOptions.length > 0) ? (
+                      <div>
+                        <BookingAdditionalSiblingField
+                          count={bookingForm.additionalSiblingCount}
+                          unitPrice={bookingForm.additionalSiblingUnitPrice ?? 0}
+                          passCount={bookingForm.guestCount}
+                          onChange={bookingForm.setAdditionalSiblingCount}
+                          siblingPassOptions={bookingForm.additionalSiblingPassOptions}
+                          siblingPassQuantities={bookingForm.additionalSiblingPassQuantities}
+                          onSiblingPassQuantityChange={
+                            bookingForm.setAdditionalSiblingPassQuantity
+                          }
                         />
-                        <Label htmlFor="waiver-f" className="text-sm leading-relaxed">
-                          I confirm I have read and accept the waiver.
-                        </Label>
                       </div>
-                    ) : (
-                      <div className="space-y-2 rounded-lg border border-border bg-card p-3">
-                        <p className="text-sm font-semibold text-foreground">
-                          Required waivers
-                        </p>
-                        <ul className="space-y-1">
-                          {requiredWaiverDocs.map((doc) => {
-                            const signed = primaryContact
-                              ? isDocumentSignedAndValid(primaryContact.documents, doc.id)
-                              : false
-                            return (
-                              <li
-                                key={doc.id}
-                                className="flex items-center justify-between gap-3 text-sm"
-                              >
-                                <span className="text-muted-foreground">{doc.title}</span>
-                                <span
-                                  className={
-                                    signed
-                                      ? 'text-emerald-700 font-medium'
-                                      : 'text-destructive font-medium'
-                                  }
-                                >
-                                  {signed ? 'Signed' : 'Not signed'}
-                                </span>
-                              </li>
-                            )
-                          })}
-                        </ul>
-                        {waiversOk ? null : (
-                          <p className="text-xs text-muted-foreground">
-                            Please sign required waivers in{' '}
-                            <Link href="/account/documents" className="underline">
-                              Documents & waivers
-                            </Link>{' '}
-                            before booking.
-                          </p>
-                        )}
-                      </div>
-                    )
-                  ) : null}
+                    ) : null}
 
-                  <div className="space-y-2">
-                    <Label htmlFor="notes-f">Notes (optional)</Label>
-                    <Textarea
-                      id="notes-f"
-                      value={bookingForm.notes}
-                      onChange={(e) => bookingForm.setNotes(e.target.value)}
-                      placeholder="Anything we should know?"
-                      rows={3}
+                    {activePackages.length > 0 ? (
+                      <div className="space-y-2">
+                        <Label className="text-sm font-semibold">Packages</Label>
+                        <PackageSelector
+                          packages={activePackages}
+                          selectedId={selectedPackageId}
+                          onSelect={(id) => setSelectedPackageId(id)}
+                        />
+                        {selectedPackage ? (
+                          <Badge variant="secondary" className="w-fit">
+                            Package selected: {selectedPackage.name}
+                          </Badge>
+                        ) : null}
+                      </div>
+                    ) : null}
+
+                    {bookingForm.showAdditionalAdultPicker &&
+                    bookingForm.additionalAdultUnitPrice != null ? (
+                      <div>
+                        <BookingAdditionalAdultField
+                          count={bookingForm.additionalAdultCount}
+                          unitPrice={bookingForm.additionalAdultUnitPrice}
+                          freeAdultCount={bookingForm.freeAdultCount}
+                          onChange={bookingForm.setAdditionalAdultCount}
+                        />
+                      </div>
+                    ) : null}
+
+                    <BookingCategoryAddons
+                      optional={bookingForm.categoryOptionalAddOns}
+                      selectedOptionalIds={bookingForm.selectedCategoryAddOnIds}
+                      onOptionalToggle={bookingForm.setCategoryAddOnSelected}
                     />
+
+                    {bookingForm.needsHouseholdChildren ? (
+                      <div className={isPassOffering ? 'lg:col-span-3' : ''}>
+                        <BookingHouseholdFields
+                          contacts={contacts}
+                          primaryGuardianId={bookingForm.primaryGuardianContactId}
+                          onPrimaryGuardianChange={bookingForm.setPrimaryGuardianContactId}
+                          secondaryGuardianId={bookingForm.secondaryGuardianContactId}
+                          onSecondaryGuardianChange={bookingForm.setSecondaryGuardianContactId}
+                          selectedChildIds={bookingForm.selectedChildIds}
+                          onToggleChild={bookingForm.toggleSelectedChild}
+                          onAddContact={addContact}
+                          onAddRelationship={addRelationship}
+                          idPrefix="facility-household"
+                          maxChildSelections={bookingForm.maxChildSelections}
+                          passCount={bookingForm.guestCount}
+                          additionalSiblingCount={bookingForm.additionalSiblingCount}
+                          isChildAgeEligible={childAgeRules?.isEligible}
+                          ageRestrictionLabel={childAgeRules?.label}
+                        />
+                      </div>
+                    ) : null}
+
+                    {!bookingForm.needsHouseholdChildren ? (
+                      <div className={isPassOffering ? 'lg:col-span-3' : ''}>
+                        <BookingFamilyMemberFields
+                          service={service}
+                          contacts={contacts}
+                          selectedChildIds={bookingForm.selectedChildIds}
+                          onToggleChild={bookingForm.toggleSelectedChild}
+                          accompanyingAdultId={bookingForm.accompanyingAdultContactId}
+                          onAccompanyingAdultChange={bookingForm.setAccompanyingAdultContactId}
+                          participantContactId={bookingForm.participantContactId}
+                          onParticipantContactChange={bookingForm.applyParticipantContact}
+                          participantName={bookingForm.participantName}
+                          onParticipantNameChange={bookingForm.setParticipantName}
+                          idPrefix="facility"
+                        />
+                      </div>
+                    ) : null}
+
+                    {service.requiresWaiver ? (
+                      requiredWaiverDocs.length === 0 ? (
+                        <div className={isPassOffering ? 'flex items-start gap-2 lg:col-span-3' : 'flex items-start gap-2'}>
+                          <Checkbox
+                            id="waiver-f"
+                            checked={bookingForm.waiverAccepted}
+                            onCheckedChange={(v) => bookingForm.setWaiverAccepted(Boolean(v))}
+                          />
+                          <Label htmlFor="waiver-f" className="text-sm leading-relaxed">
+                            I confirm I have read and accept the waiver.
+                          </Label>
+                        </div>
+                      ) : (
+                        <div
+                          className={`space-y-2 rounded-lg border border-border bg-card p-3 ${
+                            isPassOffering ? 'lg:col-span-3' : ''
+                          }`}
+                        >
+                          <p className="text-sm font-semibold text-foreground">
+                            Required waivers
+                          </p>
+                          <ul className="space-y-1">
+                            {requiredWaiverDocs.map((doc) => {
+                              const signed = primaryContact
+                                ? isDocumentSignedAndValid(primaryContact.documents, doc.id)
+                                : false
+                              return (
+                                <li
+                                  key={doc.id}
+                                  className="flex items-center justify-between gap-3 text-sm"
+                                >
+                                  <span className="text-muted-foreground">{doc.title}</span>
+                                  <span
+                                    className={
+                                      signed
+                                        ? 'text-emerald-700 font-medium'
+                                        : 'text-destructive font-medium'
+                                    }
+                                  >
+                                    {signed ? 'Signed' : 'Not signed'}
+                                  </span>
+                                </li>
+                              )
+                            })}
+                          </ul>
+                          {waiversOk ? null : (
+                            <p className="text-xs text-muted-foreground">
+                              Please sign required waivers in{' '}
+                              <Link href="/account/documents" className="underline">
+                                Documents & waivers
+                              </Link>{' '}
+                              before booking.
+                            </p>
+                          )}
+                        </div>
+                      )
+                    ) : null}
+
+                    {!isPassOffering ? (
+                      <div className="space-y-2">
+                        <Label htmlFor="notes-f">Notes (optional)</Label>
+                        <Textarea
+                          id="notes-f"
+                          value={bookingForm.notes}
+                          onChange={(e) => bookingForm.setNotes(e.target.value)}
+                          placeholder="Anything we should know?"
+                          rows={3}
+                        />
+                      </div>
+                    ) : null}
+
+                    {!isPassOffering && service.category.specialInstructionsEnabled ? (
+                      <div className="space-y-2">
+                        <Label htmlFor="special-f">Special instructions (optional)</Label>
+                        <Textarea
+                          id="special-f"
+                          value={bookingForm.specialInstructions}
+                          onChange={(e) => {
+                            const next = e.target.value
+                            bookingForm.setSpecialInstructions(next.slice(0, 2000))
+                          }}
+                          placeholder="Dietary requirements, accessibility needs, preferences..."
+                          rows={3}
+                        />
+                        <p className="text-xs text-muted-foreground text-right">
+                          {bookingForm.specialInstructions.length}/2000
+                        </p>
+                      </div>
+                    ) : null}
+
                   </div>
 
-                  {service.category.specialInstructionsEnabled ? (
-                    <div className="space-y-2">
-                      <Label htmlFor="special-f">Special instructions (optional)</Label>
-                      <Textarea
-                        id="special-f"
-                        value={bookingForm.specialInstructions}
-                        onChange={(e) => {
-                          const next = e.target.value
-                          bookingForm.setSpecialInstructions(next.slice(0, 2000))
-                        }}
-                        placeholder="Dietary requirements, accessibility needs, preferences..."
-                        rows={3}
-                      />
-                      <p className="text-xs text-muted-foreground text-right">
-                        {bookingForm.specialInstructions.length}/2000
-                      </p>
-                    </div>
-                  ) : null}
-
-                  <BookingFlowCouponSection
-                    pricingResetKey={bookingPricingResetKey}
-                    totalBeforeCoupon={bookingForm.totalBeforeCoupon}
-                    grandTotal={bookingForm.grandTotal}
-                    checkoutCouponDiscount={bookingForm.checkoutCouponDiscount}
-                    setCoupon={bookingForm.setCoupon}
-                    appliedCouponCode={bookingForm.checkoutCouponCode}
-                    appliedCouponDiscount={bookingForm.checkoutCouponDiscount}
-                    hasActiveSubscription={hasSubscriptionForCoupons}
-                    contactId={primaryContact?.id}
-                    isFreeInfant={bookingForm.isFreeInfant}
-                    freeInfantMonths={bookingForm.freeInfantMonths}
-                    depositPercent={bookingForm.depositPercent}
-                    depositDueToday={bookingForm.depositDueToday}
-                    depositDueOnArrival={bookingForm.depositDueOnArrival}
-                  />
-
-                  {membersOnlyBlocked ? (
-                    <div className="space-y-2">
-                      <Button
-                        className="w-full bg-amber-500 text-white hover:bg-amber-500/90 font-bold h-11"
-                        disabled
-                      >
-                        Members Only
-                      </Button>
-                      <Link
-                        href="/membership"
-                        className="block text-center text-sm text-accent hover:underline"
-                      >
-                        Become a member →
-                      </Link>
-                    </div>
-                  ) : (
-                    <Button
-                      className="w-full bg-accent text-accent-foreground hover:bg-accent/90 font-bold h-11"
-                      disabled={!selectedWindow || !bookingForm.canSubmitDetails || !waiversOk}
-                      onClick={handleConfirmBooking}
-                    >
-                      {getFacilityConfirmButtonLabel(
-                        Boolean(selectedWindow),
-                        facilityCartCheckoutKind,
-                        usesBuyNowListingCta(service),
-                      )}
-                    </Button>
-                  )}
                   <p className="text-xs text-center text-muted-foreground">
-                    Free cancellation up to 24 hours before your booking
+                    Complete your selections, then use the Add to cart panel.
                   </p>
                 </>
               )}
@@ -690,33 +824,45 @@ export default function FacilityDetailPage({
   const { id } = use(params)
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { services, categories } = useScheduling()
+  const { services, categories, packages } = useScheduling()
   const { membershipPlans } = useClients()
 
   const passOffer = getOpenPlayMembershipOffer(id)
 
+  const categoryById = useMemo(() => buildSchedulingCategoryById(categories), [categories])
+
   const service = useMemo(() => {
     const fromStore = services.find((entry) => entry.id === id)
+    let candidate: SchedulingService | undefined
     if (fromStore?.isActive && isOpenPlayPassCatalogService(fromStore)) {
-      return fromStore
+      candidate = fromStore
+    } else if (!passOffer) {
+      candidate = fromStore
+    } else {
+      const category = categories.find((entry) => entry.id === passOffer.categoryId)
+      if (!category) {
+        candidate = fromStore
+      } else {
+        const { price } = resolveOfferDisplayPrice(membershipPlans, passOffer.kind)
+        candidate = buildPassCatalogSchedulingService(passOffer, category, price)
+      }
     }
-    if (!passOffer) {
-      return fromStore
+    if (!candidate) {
+      return undefined
     }
-    const category = categories.find((entry) => entry.id === passOffer.categoryId)
-    if (!category) {
-      return fromStore
-    }
-    const { price } = resolveOfferDisplayPrice(membershipPlans, passOffer.kind)
-    return buildPassCatalogSchedulingService(passOffer, category, price)
-  }, [categories, id, membershipPlans, passOffer, services])
+    return isConsumerVisibleSchedulingService(candidate, categoryById)
+      ? candidate
+      : undefined
+  }, [categories, categoryById, id, membershipPlans, passOffer, services])
 
   const isPassCatalog =
     passOffer != null || (service != null && isOpenPlayPassCatalogService(service))
-  const isPrivatePlay =
-    service != null && isPrivatePlayService(service)
+  const usesPackageBookingLayout =
+    service != null && shouldUsePrivatePlayDetailLayout(service, packages)
   const redirectsToEventDetail =
-    service != null && usesEventTicketBookingSidebar(service)
+    service != null &&
+    usesEventTicketBookingSidebar(service) &&
+    !shouldUsePrivatePlayDetailLayout(service, packages)
 
   useEffect(() => {
     if (!redirectsToEventDetail || !service) {
@@ -734,8 +880,8 @@ export default function FacilityDetailPage({
         <main className="py-16">
           <div className="max-w-3xl mx-auto px-4 text-center">
             <p className="text-2xl font-bold text-muted-foreground">Facility not found</p>
-            <Link href="/facilities" className="text-accent font-semibold">
-              Back to Facilities
+            <Link href="/play" className="text-accent font-semibold">
+              Back to Play
             </Link>
           </div>
         </main>
@@ -764,7 +910,7 @@ export default function FacilityDetailPage({
       <main>
         {isPassCatalog ? (
           <OpenPlayPassDetail service={service} />
-        ) : isPrivatePlay ? (
+        ) : usesPackageBookingLayout ? (
           <PrivatePlayDetail service={service} />
         ) : (
           <FacilityDetailContent service={service} />

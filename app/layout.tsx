@@ -6,6 +6,7 @@ import { CalendarProvider } from '@/lib/calendar-store'
 import { ClientProvider } from '@/lib/client-store'
 import { CafeInventorySyncBridge } from '@/lib/cafe-inventory-sync-bridge'
 import { CafeProvider } from '@/lib/cafe-store'
+import { CustomerNavLabelsProvider } from '@/lib/customer-nav-labels-provider'
 import { InventoryProvider } from '@/lib/inventory-store'
 import { LocationProvider } from '@/lib/location-store'
 import { AppStoreProvider } from '@/lib/redux/provider'
@@ -63,7 +64,9 @@ export default function RootLayout({
                 <ReportsProvider>
                   <LocationProvider>
                     <CalendarProvider>
-                      <ClientProvider>{children}</ClientProvider>
+                      <ClientProvider>
+                        <CustomerNavLabelsProvider>{children}</CustomerNavLabelsProvider>
+                      </ClientProvider>
                     </CalendarProvider>
                   </LocationProvider>
                 </ReportsProvider>

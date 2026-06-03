@@ -33,6 +33,10 @@ import {
 } from '@/components/ui/popover'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  buildDuplicatePackagePatch,
+  DuplicatePackageDialog,
+} from '@/components/admin/duplicate-package-dialog'
 import { useToast } from '@/hooks/use-toast'
 import { useScheduling } from '@/lib/scheduling-store'
 import { cn, formatPrice } from '@/lib/utils'
@@ -41,8 +45,8 @@ import type { EventPackage } from '@/lib/types'
 interface ServicePackageLinkerProps {
   readonly serviceId: string
   readonly serviceName: string
+  readonly serviceCategoryId: string
   readonly onRequestEditPackage: (packageId: string) => void
-  readonly onRequestDuplicatePackage: (packageId: string) => void
 }
 
 function createPackageId(): string {
@@ -58,8 +62,8 @@ function tierPillClass(tier: EventPackage['tier']): string {
 export function ServicePackageLinker({
   serviceId,
   serviceName,
+  serviceCategoryId,
   onRequestEditPackage,
-  onRequestDuplicatePackage,
 }: Readonly<ServicePackageLinkerProps>) {
   const { toast } = useToast()
   const {
@@ -73,6 +77,7 @@ export function ServicePackageLinker({
   const [attachOpen, setAttachOpen] = useState(false)
   const [miniOpen, setMiniOpen] = useState(false)
   const [detachTarget, setDetachTarget] = useState<EventPackage | null>(null)
+  const [duplicateSource, setDuplicateSource] = useState<EventPackage | null>(null)
   const [inlineError, setInlineError] = useState<string | null>(null)
   const [savingPackage, setSavingPackage] = useState(false)
 
@@ -291,7 +296,7 @@ export function ServicePackageLinker({
                   size="sm"
                   variant="outline"
                   className="h-8 text-xs"
-                  onClick={() => onRequestDuplicatePackage(p.id)}
+                  onClick={() => setDuplicateSource(p)}
                 >
                   Duplicate
                 </Button>
@@ -558,6 +563,23 @@ export function ServicePackageLinker({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <DuplicatePackageDialog
+        open={duplicateSource != null}
+        onOpenChange={(next) => {
+          if (!next) {
+            setDuplicateSource(null)
+          }
+        }}
+        sourcePackage={duplicateSource}
+        defaultServiceId={serviceId}
+        defaultSubCategoryId={serviceCategoryId}
+        onConfirm={({ packageId, serviceId: targetServiceId, placement }) => {
+          duplicatePackage(packageId, buildDuplicatePackagePatch(targetServiceId, placement))
+          setDuplicateSource(null)
+          toast({ title: 'Package duplicated' })
+        }}
+      />
     </div>
   )
 }

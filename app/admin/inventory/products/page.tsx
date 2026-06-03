@@ -102,6 +102,7 @@ export default function AdminInventoryProductsPage() {
   const [categoryId, setCategoryId] = useState<string | null>(null)
   const [categoryFormOpen, setCategoryFormOpen] = useState(false)
   const [categoryName, setCategoryName] = useState('')
+  const [categoryIsActive, setCategoryIsActive] = useState(true)
   const [categoryParentId, setCategoryParentId] = useState<string | null>(null)
   const [editingCategory, setEditingCategory] = useState<ProductCategory | null>(null)
   const [deleteCategoryTarget, setDeleteCategoryTarget] = useState<ProductCategory | null>(null)
@@ -197,6 +198,7 @@ export default function AdminInventoryProductsPage() {
     if (!parent) return
     setEditingCategory(null)
     setCategoryName('')
+    setCategoryIsActive(true)
     setCategoryParentId(parent.id)
     setCategoryFormOpen(true)
   }
@@ -204,6 +206,7 @@ export default function AdminInventoryProductsPage() {
   function openSubCategoryEdit(category: ProductCategory) {
     setEditingCategory(category)
     setCategoryName(category.name)
+    setCategoryIsActive(category.isActive)
     setCategoryParentId(category.parentId ?? null)
     setCategoryFormOpen(true)
   }
@@ -219,12 +222,16 @@ export default function AdminInventoryProductsPage() {
     }
 
     if (editingCategory) {
-      updateProductCategory(editingCategory.id, { name: trimmedName })
+      updateProductCategory(editingCategory.id, {
+        name: trimmedName,
+        isActive: categoryIsActive,
+      })
     } else {
       addProductCategory({
         name: trimmedName,
         productType: parent.productType ?? 'shop',
         parentId: categoryParentId,
+        isActive: categoryIsActive,
       })
     }
     setCategoryFormOpen(false)
@@ -633,7 +640,7 @@ export default function AdminInventoryProductsPage() {
         title={editingCategory ? 'Edit sub-category' : 'New sub-category'}
         description={
           editingCategory
-            ? 'Update sub-category name.'
+            ? 'Update sub-category name and customer visibility.'
             : 'Create a sub-category under the selected category.'
         }
         size="sm"
@@ -665,6 +672,14 @@ export default function AdminInventoryProductsPage() {
             onChange={(event) => setCategoryName(event.target.value)}
             placeholder="Sub-category name"
           />
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-foreground">Active</span>
+            <Switch
+              checked={categoryIsActive}
+              onCheckedChange={setCategoryIsActive}
+              aria-label="Sub-category active"
+            />
+          </div>
         </div>
       </CrudModal>
 

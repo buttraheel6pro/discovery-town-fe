@@ -8,9 +8,13 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 
 import { CrudModal } from '@/components/admin/crud-modal'
+import {
+  EventBookingScheduleFields,
+  type EventBookingScheduleDraft,
+} from '@/components/admin/event-booking-schedule-fields'
 import { EventTypeSelector } from '@/components/admin/event-type-selector'
+import { ServicePackageLinker } from '@/components/admin/service-package-linker'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -32,7 +36,23 @@ import {
   type SchedulingTopLevelId,
 } from '@/lib/scheduling-consumer-categories'
 import { showMaxPassCountAdminField } from '@/lib/booking-pass-count'
+import {
+  OPEN_BOOKING_SLOT_INCREMENT_OPTIONS,
+  adminValueFromSlotIncrementMinutes,
+  slotIncrementMinutesFromAdminValue,
+} from '@/lib/open-booking-slot-windows'
 import { isOpenPlayPassCatalogServiceId } from '@/lib/open-play-pass-catalog'
+import { buildPackageEditHref } from '@/lib/package-placement'
+import {
+  ADMIN_LISTING_KIND_OPTIONS,
+  adminListingKindFromService,
+  draftFieldsFromAdminListingKind,
+  type AdminListingKindSelectValue,
+} from '@/lib/scheduling-listing-kind'
+import {
+  eventBookingScheduleDraftFromService,
+  eventBookingSchedulePatchFromDraft,
+} from '@/lib/event-booking-schedule'
 import { useScheduling } from '@/lib/scheduling-store'
 import { bookingAddOnToSchedulingAddOn, formatPrice } from '@/lib/utils'
 import type {
@@ -40,10 +60,11 @@ import type {
   EventVisibility,
   SchedulingBookingMode,
   SchedulingCategory,
+  SchedulingOfferingKind,
   SchedulingService,
   SchedulingServiceType,
 } from '@/lib/types'
-import { CATEGORY_ADD_ON_CHARGE_FREQUENCIES, SchedulingServiceTypeEnum } from '@/lib/types'
+import { CATEGORY_ADD_ON_CHARGE_FREQUENCIES, EventBookingScheduleModeEnum, SchedulingServiceTypeEnum } from '@/lib/types'
 
 function parseOptionalFloat(value: string): number | null {
   const trimmed = value.trim()
@@ -64,7 +85,8 @@ function draftFromService(service: SchedulingService): CreateDraft {
     categoryId: service.categoryId,
     serviceType: service.serviceType,
     bookingMode: service.bookingMode,
-    eventType: service.eventType,
+    eventType: service.eventType ?? 'PUBLIC',
+    bookingOfferingKind: service.bookingOfferingKind ?? 'SERVICE',
     locationId: service.locationId ?? locations[0]?.id ?? 'loc-1',
     name: service.name,
     description: service.description ?? '',
@@ -78,8 +100,7 @@ function draftFromService(service: SchedulingService): CreateDraft {
     durationMinutes: String(service.durationMinutes),
     minDurationMinutes: service.minDurationMinutes != null ? String(service.minDurationMinutes) : '',
     maxDurationMinutes: service.maxDurationMinutes != null ? String(service.maxDurationMinutes) : '',
-    slotIncrementMinutes:
-      service.slotIncrementMinutes != null ? String(service.slotIncrementMinutes) : '',
+    slotIncrementMinutes: adminValueFromSlotIncrementMinutes(service.slotIncrementMinutes),
     maxConcurrent: service.maxConcurrent != null ? String(service.maxConcurrent) : '',
     minAdvanceHours: service.minAdvanceHours != null ? String(service.minAdvanceHours) : '',
     maxAdvanceHours: service.maxAdvanceHours != null ? String(service.maxAdvanceHours) : '',
@@ -97,6 +118,7 @@ function draftFromService(service: SchedulingService): CreateDraft {
     maxAdultSeats: service.maxAdultSeats != null ? String(service.maxAdultSeats) : '',
     additionalChildPrice: service.additionalChildPrice ?? '',
     isPackageService: Boolean(service.isPackageService),
+    ...eventBookingScheduleDraftFromService(service),
     pendingServiceAddOnLinks: (service.linkedAddOns ?? []).map((row) => ({
       addOnId: row.addOnId,
       addOnName: row.addOnName,
@@ -109,11 +131,12 @@ function draftFromService(service: SchedulingService): CreateDraft {
   }
 }
 
-interface CreateDraft {
+interface CreateDraft extends EventBookingScheduleDraft {
   readonly categoryId: string
   readonly serviceType: SchedulingServiceType
   readonly bookingMode: SchedulingBookingMode
   readonly eventType: EventVisibility
+  readonly bookingOfferingKind: SchedulingOfferingKind
   readonly locationId: string
   readonly name: string
   readonly description: string
@@ -159,7 +182,7 @@ function AdminSchedulingServiceNewPageInner() {
   const router = useRouter()
   const { documents } = useClients()
   const { bookingAddOns } = useInventory()
-  const { categories, services, addService, updateService } = useScheduling()
+  const { categories, services, packages, addService, updateService } = useScheduling()
   const requestedCategoryId = searchParams.get('categoryId')?.trim() ?? ''
   const requestedServiceId = searchParams.get('serviceId')?.trim() ?? ''
   const rawReturnTo = searchParams.get('returnTo')?.trim() ?? '/admin/scheduling/services'
@@ -193,29 +216,9 @@ function AdminSchedulingServiceNewPageInner() {
     return sortedCategories[0]?.id ?? ''
   }, [requestedCategoryId, sortedCategories])
 
-  const lockedTopLevelCategory = useMemo<SchedulingTopLevelId | null>(() => {
-    if (isEditing && editingService) {
-      return getSchedulingTopLevelId(editingService.categoryId)
-    }
-    if (
-      !isEditing &&
-      requestedCategoryId.length > 0 &&
-      sortedCategories.some((entry) => entry.id === requestedCategoryId)
-    ) {
-      return getSchedulingTopLevelId(requestedCategoryId)
-    }
-    return null
-  }, [isEditing, editingService, requestedCategoryId, sortedCategories])
-
-  const newEventHeroDescription = useMemo(() => {
-    if (isEditing) {
-      return 'Update this catalog event. Category is fixed; you can change sub-category and other fields.'
-    }
-    if (lockedTopLevelCategory !== null) {
-      return 'Category matches where you started. You can still change sub-category below.'
-    }
-    return 'Choose category and sub-category, then complete the details.'
-  }, [isEditing, lockedTopLevelCategory])
+  const newEventHeroDescription = isEditing
+    ? 'Update category, sub-category, and other service details.'
+    : 'Choose category and sub-category, then complete the details.'
 
   const [programArea, setProgramArea] = useState<SchedulingTopLevelId>(() =>
     getSchedulingTopLevelId(initialCategoryId),
@@ -226,6 +229,7 @@ function AdminSchedulingServiceNewPageInner() {
     serviceType: 'GYM_CLASS',
     bookingMode: 'SCHEDULED',
     eventType: 'PUBLIC',
+    bookingOfferingKind: 'SERVICE',
     locationId: locations[0]?.id ?? 'loc-1',
     name: '',
     description: '',
@@ -239,7 +243,7 @@ function AdminSchedulingServiceNewPageInner() {
     durationMinutes: '60',
     minDurationMinutes: '',
     maxDurationMinutes: '',
-    slotIncrementMinutes: '',
+    slotIncrementMinutes: 'none',
     maxConcurrent: '',
     minAdvanceHours: '',
     maxAdvanceHours: '',
@@ -255,6 +259,7 @@ function AdminSchedulingServiceNewPageInner() {
     maxAdultSeats: '',
     additionalChildPrice: '',
     isPackageService: false,
+    eventBookingScheduleMode: EventBookingScheduleModeEnum.PER_EVENT,
     pendingServiceAddOnLinks: [],
     isActive: true,
   })
@@ -270,13 +275,6 @@ function AdminSchedulingServiceNewPageInner() {
     setDraft(draftFromService(editingService))
     setProgramArea(getSchedulingTopLevelId(editingService.categoryId))
   }, [editingService])
-
-  useEffect(() => {
-    if (isEditing || lockedTopLevelCategory === null) {
-      return
-    }
-    setProgramArea(lockedTopLevelCategory)
-  }, [isEditing, lockedTopLevelCategory])
 
   useEffect(() => {
     if (editingService || !initialCategoryId) {
@@ -333,10 +331,30 @@ function AdminSchedulingServiceNewPageInner() {
     return sortedCategories.find((entry) => entry.id === draft.categoryId) ?? null
   }, [draft.categoryId, sortedCategories])
 
-  function handleProgramAreaChange(next: SchedulingTopLevelId): void {
-    if (lockedTopLevelCategory !== null) {
+  function openEditPackage(packageId: string) {
+    const pkg = packages.find((entry) => entry.id === packageId)
+    if (!pkg) {
       return
     }
+    const returnParams = new URLSearchParams()
+    if (requestedServiceId) {
+      returnParams.set('serviceId', requestedServiceId)
+    }
+    if (rawReturnTo.startsWith('/admin/')) {
+      returnParams.set('returnTo', rawReturnTo)
+    }
+    const editReturnTo = returnParams.toString()
+      ? `/admin/scheduling/services/new?${returnParams.toString()}`
+      : '/admin/scheduling/services/new'
+    router.push(
+      buildPackageEditHref(packageId, {
+        returnTo: editReturnTo,
+        category: draft.categoryId || undefined,
+      }),
+    )
+  }
+
+  function handleProgramAreaChange(next: SchedulingTopLevelId): void {
     setProgramArea(next)
     setDraft((prev) => {
       const subs = sortedCategories.filter((entry) => getSchedulingTopLevelId(entry.id) === next)
@@ -396,7 +414,7 @@ function AdminSchedulingServiceNewPageInner() {
     const ageMax = parseOptionalInt(draft.ageMax)
     const minDurationMinutes = parseOptionalInt(draft.minDurationMinutes)
     const maxDurationMinutes = parseOptionalInt(draft.maxDurationMinutes)
-    const slotIncrementMinutes = parseOptionalInt(draft.slotIncrementMinutes)
+    const slotIncrementMinutes = slotIncrementMinutesFromAdminValue(draft.slotIncrementMinutes)
     const maxConcurrent = parseOptionalInt(draft.maxConcurrent)
     const minAdvanceHours = parseOptionalInt(draft.minAdvanceHours)
     const maxAdvanceHours = parseOptionalInt(draft.maxAdvanceHours)
@@ -426,6 +444,7 @@ function AdminSchedulingServiceNewPageInner() {
         serviceType: draft.serviceType,
         bookingMode: draft.bookingMode,
         eventType: draft.eventType,
+        bookingOfferingKind: draft.bookingOfferingKind,
         name: draft.name.trim(),
         description: draft.description.trim() || '—',
         durationMinutes,
@@ -441,8 +460,7 @@ function AdminSchedulingServiceNewPageInner() {
           draft.bookingMode === 'OPEN' ? (minDurationMinutes ?? 60) : minDurationMinutes,
         maxDurationMinutes:
           draft.bookingMode === 'OPEN' ? (maxDurationMinutes ?? 240) : maxDurationMinutes,
-        slotIncrementMinutes:
-          draft.bookingMode === 'OPEN' ? (slotIncrementMinutes ?? 60) : slotIncrementMinutes,
+        slotIncrementMinutes,
         maxConcurrent: draft.bookingMode === 'OPEN' ? (maxConcurrent ?? 3) : maxConcurrent,
         minAdvanceHours: minAdvanceHours ?? 0,
         maxAdvanceHours: maxAdvanceHours ?? 168,
@@ -462,6 +480,7 @@ function AdminSchedulingServiceNewPageInner() {
         maxAdultSeats: maxAdultSeats ?? undefined,
         additionalChildPrice: draft.additionalChildPrice.trim() || undefined,
         isPackageService: draft.isPackageService,
+        ...eventBookingSchedulePatchFromDraft(draft),
         linkedAddOns: draft.pendingServiceAddOnLinks.map((row, index) => ({
           id: editingService.linkedAddOns?.[index]?.id ?? newAdminEntityId('cao'),
           categoryId: editingService.id,
@@ -487,6 +506,7 @@ function AdminSchedulingServiceNewPageInner() {
       serviceType: draft.serviceType,
       bookingMode: draft.bookingMode,
       eventType: draft.eventType,
+      bookingOfferingKind: draft.bookingOfferingKind,
       name: draft.name.trim(),
       description: draft.description.trim() || '—',
       durationMinutes,
@@ -500,9 +520,8 @@ function AdminSchedulingServiceNewPageInner() {
       isActive: draft.isActive,
       minDurationMinutes: draft.bookingMode === 'OPEN' ? (minDurationMinutes ?? 60) : minDurationMinutes,
       maxDurationMinutes: draft.bookingMode === 'OPEN' ? (maxDurationMinutes ?? 240) : maxDurationMinutes,
-      slotIncrementMinutes:
-        draft.bookingMode === 'OPEN' ? (slotIncrementMinutes ?? 60) : slotIncrementMinutes,
-      maxConcurrent: draft.bookingMode === 'OPEN' ? (maxConcurrent ?? 3) : maxConcurrent,
+        slotIncrementMinutes,
+        maxConcurrent: draft.bookingMode === 'OPEN' ? (maxConcurrent ?? 3) : maxConcurrent,
       minAdvanceHours: minAdvanceHours ?? 0,
       maxAdvanceHours: maxAdvanceHours ?? 168,
       pricingModel: draft.bookingMode === 'OPEN' ? 'per_hour' : 'flat',
@@ -524,6 +543,7 @@ function AdminSchedulingServiceNewPageInner() {
       maxAdultSeats: maxAdultSeats ?? undefined,
       additionalChildPrice: draft.additionalChildPrice.trim() || undefined,
       isPackageService: draft.isPackageService,
+      ...eventBookingSchedulePatchFromDraft(draft),
       linkedAddOns: draft.pendingServiceAddOnLinks.map((row) => ({
         id: newAdminEntityId('cao'),
         categoryId: createdServiceId,
@@ -575,29 +595,23 @@ function AdminSchedulingServiceNewPageInner() {
             <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
               <div className="min-w-0 space-y-2">
                 <Label>Category</Label>
-                {lockedTopLevelCategory !== null ? (
-                  <div className="rounded-md border border-input bg-muted/30 px-3 py-2 text-sm font-medium text-foreground">
-                    {getSchedulingTopLevelLabel(lockedTopLevelCategory)}
-                  </div>
-                ) : (
-                  <Select
-                    value={programArea}
-                    onValueChange={(value) =>
-                      handleProgramAreaChange(value as SchedulingTopLevelId)
-                    }
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {SCHEDULING_TOP_LEVEL_ORDER.map((topLevelId) => (
-                        <SelectItem key={topLevelId} value={topLevelId}>
-                          {getSchedulingTopLevelLabel(topLevelId)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
+                <Select
+                  value={programArea}
+                  onValueChange={(value) =>
+                    handleProgramAreaChange(value as SchedulingTopLevelId)
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SCHEDULING_TOP_LEVEL_ORDER.map((topLevelId) => (
+                      <SelectItem key={topLevelId} value={topLevelId}>
+                        {getSchedulingTopLevelLabel(topLevelId)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="min-w-0 space-y-2">
                 <Label>Sub-category</Label>
@@ -621,7 +635,7 @@ function AdminSchedulingServiceNewPageInner() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-4">
               <div className="min-w-0 space-y-2">
                 <Label>Location</Label>
                 <Select
@@ -677,14 +691,73 @@ function AdminSchedulingServiceNewPageInner() {
                   </SelectContent>
                 </Select>
               </div>
+              <div className="min-w-0 space-y-2">
+                <Label>Listing kind</Label>
+                <Select
+                  value={adminListingKindFromService({
+                    bookingOfferingKind: draft.bookingOfferingKind,
+                    isPackageService: draft.isPackageService,
+                  })}
+                  onValueChange={(value) => {
+                    const fields = draftFieldsFromAdminListingKind(
+                      value as AdminListingKindSelectValue,
+                    )
+                    setDraft((prev) => ({
+                      ...prev,
+                      bookingOfferingKind: fields.bookingOfferingKind,
+                      isPackageService: fields.isPackageService,
+                      ...(fields.serviceType != null
+                        ? { serviceType: fields.serviceType }
+                        : {}),
+                      ...(fields.bookingMode != null ? { bookingMode: fields.bookingMode } : {}),
+                    }))
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ADMIN_LISTING_KIND_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
-          <div className="space-y-2">
-            <Label>Event visibility</Label>
-            <EventTypeSelector
-              value={draft.eventType}
-              onChange={(value) => setDraft((prev) => ({ ...prev, eventType: value }))}
-              className="w-full"
+          {draft.isPackageService && isEditing && editingService ? (
+            <ServicePackageLinker
+              serviceId={editingService.id}
+              serviceName={editingService.name}
+              serviceCategoryId={editingService.categoryId}
+              onRequestEditPackage={openEditPackage}
+            />
+          ) : null}
+
+          {draft.isPackageService && !isEditing ? (
+            <p className="text-xs text-muted-foreground">
+              Save this event, then edit it again to link packages. Customers see the Private
+              Play layout once at least one package is attached.
+            </p>
+          ) : null}
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Event visibility</Label>
+              <EventTypeSelector
+                value={draft.eventType}
+                onChange={(value) => setDraft((prev) => ({ ...prev, eventType: value }))}
+                className="w-full"
+              />
+            </div>
+
+            <EventBookingScheduleFields
+              draft={{
+                eventBookingScheduleMode: draft.eventBookingScheduleMode,
+              }}
+              onChange={(patch) => setDraft((prev) => ({ ...prev, ...patch }))}
             />
           </div>
 
@@ -876,27 +949,6 @@ function AdminSchedulingServiceNewPageInner() {
               </AccordionContent>
             </AccordionItem>
           </Accordion>
-
-          <div className="flex items-start justify-between gap-4 rounded-lg border border-border bg-card px-3 py-2">
-            <div className="space-y-1">
-              <Label>Package-only service</Label>
-              <p className="text-xs text-muted-foreground">
-                When enabled, customers must select an event package to book.
-              </p>
-            </div>
-            <Switch
-              checked={draft.isPackageService}
-              onCheckedChange={(value) => setDraft((prev) => ({ ...prev, isPackageService: value }))}
-            />
-          </div>
-          {draft.isPackageService ? (
-            <Alert className="border-amber-500/50 bg-amber-500/10">
-              <AlertTitle className="text-amber-950 dark:text-amber-100">Package-only</AlertTitle>
-              <AlertDescription className="text-amber-900/90 dark:text-amber-50/90">
-                After creating this {LABELS.service.toLowerCase()}, open it to link or create packages.
-              </AlertDescription>
-            </Alert>
-          ) : null}
 
           <Accordion type="single" collapsible className="rounded-lg border border-border px-3">
             <AccordionItem value="linked-addons">
@@ -1125,18 +1177,29 @@ function AdminSchedulingServiceNewPageInner() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Slot increment (mins)</Label>
-                    <Input
-                      type="number"
+                    <Label>Slot increment</Label>
+                    <Select
                       value={draft.slotIncrementMinutes}
-                      onChange={(event) =>
-                        setDraft((prev) => ({ ...prev, slotIncrementMinutes: event.target.value }))
+                      onValueChange={(value) =>
+                        setDraft((prev) => ({ ...prev, slotIncrementMinutes: value }))
                       }
-                    />
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select increment" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {OPEN_BOOKING_SLOT_INCREMENT_OPTIONS.map((option) => (
+                          <SelectItem key={option.label} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2">
                     <Label>Max concurrent</Label>
                     <Input
+                      className="w-full"
                       type="number"
                       value={draft.maxConcurrent}
                       onChange={(event) =>
