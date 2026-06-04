@@ -4,6 +4,10 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
 
 import {
+  catalogSlugFromProductType,
+  isProductCatalogSlug,
+} from '@/lib/catalog-slugs'
+import {
   coupons as baseCoupons,
   orders as baseOrders,
   staffAssignments as seedStaffAssignments,
@@ -488,6 +492,13 @@ export function InventoryProvider({
           ? productCategories.find((category) => category.id === parentKey)?.productType
           : null
       const nextProductType = input.productType?.trim().toLowerCase() || parentProductType || 'shop'
+      const parentRow =
+        parentKey != null
+          ? productCategories.find((category) => category.id === parentKey) ?? null
+          : null
+      const catalogSlug = catalogSlugFromProductType(
+        input.productType ?? parentRow?.catalogSlug ?? parentRow?.productType ?? 'shop',
+      )
       const siblings = productCategories.filter((category) => (category.parentId ?? null) === parentKey)
       const maxOrder = siblings.reduce((max, category) => Math.max(max, category.displayOrder), 0)
       const created: ProductCategory = {
@@ -499,6 +510,9 @@ export function InventoryProvider({
         displayOrder: maxOrder + 1,
         isActive: input.isActive ?? true,
         productType: nextProductType,
+        catalogSlug,
+        placementCatalogSlug: isProductCatalogSlug(catalogSlug) ? catalogSlug : undefined,
+        placementParentId: parentKey,
         parentId: parentKey,
         ...(Array.isArray(input.rentalAcknowledgments)
           ? {

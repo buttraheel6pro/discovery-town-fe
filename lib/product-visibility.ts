@@ -1,8 +1,12 @@
 /** Shared visibility helpers for inventory products and categories on customer routes. */
+import {
+  buildProductRootIdsBySlug,
+  productCategoryAppearsOnCustomerMenu,
+} from '@/lib/catalog-placement'
 import type { Product, ProductCategory } from '@/lib/types'
 
-/** Internal gift add-on categories — browse on /store/shop only, not listed there. */
-export const SHOP_CATALOG_HIDDEN_CATEGORY_IDS = new Set<string>([
+/** Internal gift categories — hidden from customer browse; items stay as gift linked add-ons. */
+export const CUSTOMER_HIDDEN_CATEGORY_IDS = new Set<string>([
   'pcat-gift-basket-components',
   'pcat-gift-delivery-addons',
 ])
@@ -12,14 +16,17 @@ export type ProductCategoryVisibilityFields = Pick<
   'id' | 'isActive' | 'parentId'
 >
 
-export function isShopCatalogHiddenCategoryId(categoryId: string): boolean {
-  return SHOP_CATALOG_HIDDEN_CATEGORY_IDS.has(categoryId)
+export function isCustomerHiddenCategoryId(categoryId: string): boolean {
+  return CUSTOMER_HIDDEN_CATEGORY_IDS.has(categoryId)
 }
 
 export function isConsumerVisibleProductCategory(
   category: ProductCategoryVisibilityFields,
   categoryById: ReadonlyMap<string, ProductCategoryVisibilityFields>,
 ): boolean {
+  if (isCustomerHiddenCategoryId(category.id)) {
+    return false
+  }
   if (category.isActive === false) {
     return false
   }
@@ -34,14 +41,11 @@ export function isConsumerVisibleProductCategory(
   return isConsumerVisibleProductCategory(parent, categoryById)
 }
 
-/** Shop browse (/store/shop) — excludes internal gift add-on categories. */
+/** Shop browse (/store/shop) — same consumer rules including hidden internal categories. */
 export function isShopCatalogVisibleProductCategory(
   category: ProductCategoryVisibilityFields,
   categoryById: ReadonlyMap<string, ProductCategoryVisibilityFields>,
 ): boolean {
-  if (isShopCatalogHiddenCategoryId(category.id)) {
-    return false
-  }
   return isConsumerVisibleProductCategory(category, categoryById)
 }
 
@@ -79,9 +83,6 @@ export function isShopCatalogVisibleProduct(
   product: Pick<Product, 'isActive' | 'availableOnline' | 'categoryId'>,
   categoryById: ReadonlyMap<string, ProductCategoryVisibilityFields>,
 ): boolean {
-  if (isShopCatalogHiddenCategoryId(product.categoryId)) {
-    return false
-  }
   return isConsumerVisibleProduct(product, categoryById)
 }
 
@@ -92,19 +93,54 @@ export function isGiftAddOnVisibleProduct(
   return product.isActive && product.availableOnline !== false
 }
 
+/** Rental detail “You may also like” — same rules as gift linked add-ons. */
+export function isRentalAddOnVisibleProduct(
+  product: Pick<Product, 'isActive' | 'availableOnline'>,
+): boolean {
+  return isGiftAddOnVisibleProduct(product)
+}
+
 /** Whether a product type has at least one consumer-visible category. */
 export function hasConsumerVisibleProductType(
   productType: string,
   categories: readonly ProductCategory[],
 ): boolean {
   const categoryById = buildProductCategoryById(categories)
+  const productRootIdsBySlug = buildProductRootIdsBySlug(categories)
   const categoryVisible =
     productType === 'shop'
       ? isShopCatalogVisibleProductCategory
       : isConsumerVisibleProductCategory
   return categories.some(
     (category) =>
-      (category.productType ?? 'shop') === productType &&
-      categoryVisible(category, categoryById),
+      productCategoryAppearsOnCustomerMenu(
+        category,
+        productType,
+        productRootIdsBySlug,
+      ) && categoryVisible(category, categoryById),
   )
+}
+
+/** Consumer-visible categories for a store/rentals menu (placement-aware). */
+export function filterConsumerVisibleCategoriesForMenu(
+  productType: string,
+  categories: readonly ProductCategory[],
+  categoryVisible: (
+    category: ProductCategoryVisibilityFields,
+    categoryById: ReadonlyMap<string, ProductCategoryVisibilityFields>,
+  ) => boolean,
+): ProductCategory[] {
+  const categoryById = buildProductCategoryById(categories)
+  const productRootIdsBySlug = buildProductRootIdsBySlug(categories)
+  return categories
+    .filter(
+      (category) =>
+        productCategoryAppearsOnCustomerMenu(
+          category,
+          productType,
+          productRootIdsBySlug,
+        ) && categoryVisible(category, categoryById),
+    )
+    .slice()
+    .sort((left, right) => left.displayOrder - right.displayOrder)
 }

@@ -6,24 +6,52 @@ import { Search, X } from 'lucide-react'
 import { CustomerFooter } from '@/components/customer/footer'
 import { HorizontalScrollSection } from '@/components/customer/horizontal-scroll-section'
 import { CustomerNavbar } from '@/components/customer/navbar'
-import { PromoLinkGridSection } from '@/components/customer/promo-link-grid-section'
+import { SchedulingMenuProductRails } from '@/components/customer/scheduling-menu-product-rails'
+import { OpenPlayMembershipOfferCard } from '@/components/customer/open-play-membership-offer-card'
 import { ScrollableSectionBreadcrumbs } from '@/components/customer/scrollable-section-breadcrumbs'
 import { EventPackageScrollCard } from '@/components/customer/event-package-scroll-card'
 import { ServiceScrollCard } from '@/components/customer/service-scroll-card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { useClients } from '@/lib/client-store'
+import { useCafe } from '@/lib/cafe-store'
+import { useInventory } from '@/lib/inventory-store'
+import { buildProductSectionsForSchedulingMenu } from '@/lib/product-scheduling-menu-sections'
+import { partitionProductSectionsForEventsPage } from '@/lib/take-out-party-catalog'
+import {
+  buildSchedulingMenuBrowseCrumbsFromPageOrder,
+  eventsMenuSectionCrumbs,
+  schedulingMenuProductRailsCrumbs,
+} from '@/lib/scheduling-menu-browse'
 import {
   buildEventCatalogScrollItems,
   eventCatalogItemMatchesSearch,
 } from '@/lib/event-catalog-display'
 import {
+  buildOpenPlayConsumerSection,
+  dedupeOpenPlayMenuCategories,
+  isOpenPlaySchedulingCategory,
+  openPlayCategoryIds,
+} from '@/lib/open-play-consumer-section'
+import {
   buildSchedulingCategoryById,
+  filterConsumerSchedulingCategoriesForMenu,
   hasAssignedConsumerSlot,
   isConsumerEventCatalogService,
-  isConsumerVisibleSchedulingCategory,
 } from '@/lib/scheduling-visibility'
 import { useScheduling } from '@/lib/scheduling-store'
-import type { Event } from '@/lib/types'
+import type { Event, SchedulingService } from '@/lib/types'
+import type { OpenPlayMembershipOffer } from '@/lib/open-play-membership-offers'
+import type { EventCatalogScrollItem } from '@/lib/event-catalog-display'
+
+interface EventsGroupedSection {
+  readonly key: string
+  readonly title: string
+  readonly description: string
+  readonly items: EventCatalogScrollItem[]
+  readonly openPlayServices: SchedulingService[]
+  readonly membershipOffers: OpenPlayMembershipOffer[]
+}
 
 const statuses: Array<'All' | Event['status']> = ['All', 'PUBLISHED', 'DRAFT']
 const PRIORITIZED_EVENT_CATEGORY_NAMES = [
@@ -31,71 +59,45 @@ const PRIORITIZED_EVENT_CATEGORY_NAMES = [
   'The Whole Place Private Party & Open Play',
 ] as const
 
-/** Consumer events browse — only the dedicated event sub-categories (not legacy cat-5). */
-function isEventSectionCategory(categoryId: string): boolean {
-  return categoryId.startsWith('cat-event-')
+const OPEN_PLAY_EVENTS_DESCRIPTION =
+  '2-hour, sibling, and multi-pass sessions plus membership and seasonal passes.'
+
+function eventsSectionHasContent(section: EventsGroupedSection): boolean {
+  return (
+    section.items.length > 0 ||
+    section.openPlayServices.length > 0 ||
+    section.membershipOffers.length > 0
+  )
 }
-
-const TAKE_OUT_PARTY_ITEMS = [
-  {
-    id: 'takeout-pizza',
-    title: 'Pizza Trays',
-    imageUrl: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=1200&q=80',
-    href: '/events/take-out-party',
-  },
-  {
-    id: 'takeout-cupcakes',
-    title: 'Cupcakes',
-    imageUrl: 'https://images.unsplash.com/photo-1486427944299-d1955d23e34d?w=1200&q=80',
-    href: '/events/take-out-party',
-  },
-  {
-    id: 'takeout-snacks',
-    title: 'Party Snacks',
-    imageUrl: 'https://images.unsplash.com/photo-1499636136210-6f4ee915583e?w=1200&q=80',
-    href: '/events/take-out-party',
-  },
-  {
-    id: 'takeout-drinks',
-    title: 'Drinks & Supplies',
-    imageUrl: 'https://images.unsplash.com/photo-1497534446932-c925b458314e?w=1200&q=80',
-    href: '/events/take-out-party',
-  },
-] as const
-
-const WE_BRING_PARTY_ITEMS = [
-  {
-    id: 'bring-inflatables',
-    title: 'Inflatables',
-    imageUrl: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=1200&q=80',
-    href: '/we-bring-the-party',
-  },
-  {
-    id: 'bring-games',
-    title: 'Interactive Games',
-    imageUrl: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=1200&q=80',
-    href: '/we-bring-the-party',
-  },
-  {
-    id: 'bring-entertainers',
-    title: 'Entertainers',
-    imageUrl: 'https://images.unsplash.com/photo-1527529482837-4698179dc6ce?w=1200&q=80',
-    href: '/we-bring-the-party',
-  },
-  {
-    id: 'bring-catering',
-    title: 'Party Catering',
-    imageUrl: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=1200&q=80',
-    href: '/we-bring-the-party',
-  },
-] as const
 
 export default function EventsPage() {
   const { categories, services, slots, packages } = useScheduling()
+  const { products, productCategories } = useInventory()
+  const { cafeProducts } = useCafe()
+  const { membershipPlans } = useClients()
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<'All' | Event['status']>('All')
 
   const categoryById = useMemo(() => buildSchedulingCategoryById(categories), [categories])
+
+  const openPlayAliasIds = useMemo(
+    () => new Set(openPlayCategoryIds(categories)),
+    [categories],
+  )
+
+  const openPlaySection = useMemo(
+    () =>
+      buildOpenPlayConsumerSection({
+        menuSlug: 'events',
+        categories,
+        services,
+        slots,
+        plans: membershipPlans,
+        categoryById,
+        description: OPEN_PLAY_EVENTS_DESCRIPTION,
+      }),
+    [categories, categoryById, membershipPlans, services, slots],
+  )
 
   function handleClear() {
     setSearch('')
@@ -134,18 +136,27 @@ export default function EventsPage() {
     return catalogScrollItems.filter((item) => eventCatalogItemMatchesSearch(item, q))
   }, [catalogScrollItems, search])
 
+  const scrollItemsExcludingOpenPlay = useMemo(
+    () =>
+      filteredScrollItems.filter((item) => {
+        const categoryId =
+          item.kind === 'package'
+            ? item.bookingService.categoryId
+            : item.service.categoryId
+        return !openPlayAliasIds.has(categoryId)
+      }),
+    [filteredScrollItems, openPlayAliasIds],
+  )
+
   const hasActiveFilters = Boolean(search) || status !== 'All'
   const groupedSections = useMemo(() => {
     const prioritizedCategoryOrder = new Map<string, number>(
       PRIORITIZED_EVENT_CATEGORY_NAMES.map((name, index) => [name, index]),
     )
-    const eventCategories = categories
-      .filter(
-        (category) =>
-          isConsumerVisibleSchedulingCategory(category) &&
-          isEventSectionCategory(category.id),
-      )
-      .slice()
+    const eventCategories = dedupeOpenPlayMenuCategories(
+      filterConsumerSchedulingCategoriesForMenu('events', categories),
+    )
+      .filter((category) => !isOpenPlaySchedulingCategory(category))
       .sort((a, b) => {
         const aPriority = prioritizedCategoryOrder.get(a.name)
         const bPriority = prioritizedCategoryOrder.get(b.name)
@@ -165,19 +176,38 @@ export default function EventsPage() {
         return a.displayOrder - b.displayOrder
       })
 
-    const sections = eventCategories.map((category) => ({
+    const sections: EventsGroupedSection[] = eventCategories.map((category) => ({
       key: category.id,
       title: category.name,
       description: category.description ?? 'Recently added events available for booking.',
-      items: filteredScrollItems.filter((item) =>
+      items: scrollItemsExcludingOpenPlay.filter((item) =>
         item.kind === 'package'
           ? item.bookingService.categoryId === category.id
           : item.service.categoryId === category.id,
       ),
+      openPlayServices: [],
+      membershipOffers: [],
     }))
 
+    if (
+      openPlaySection &&
+      (openPlaySection.services.length > 0 || openPlaySection.membershipOffers.length > 0)
+    ) {
+      sections.unshift({
+        key: openPlaySection.category.id,
+        title: openPlaySection.category.name,
+        description: openPlaySection.description,
+        items: [],
+        openPlayServices: openPlaySection.services,
+        membershipOffers: openPlaySection.membershipOffers,
+      })
+    }
+
     const categoryIds = new Set(eventCategories.map((category) => category.id))
-    const uncategorizedItems = filteredScrollItems.filter((item) => {
+    if (openPlaySection) {
+      categoryIds.add(openPlaySection.category.id)
+    }
+    const uncategorizedItems = scrollItemsExcludingOpenPlay.filter((item) => {
       const categoryId =
         item.kind === 'package' ? item.bookingService.categoryId : item.service.categoryId
       return !categoryIds.has(categoryId)
@@ -188,22 +218,59 @@ export default function EventsPage() {
         title: 'Other Events',
         description: 'Recently added events that are available for booking.',
         items: uncategorizedItems,
+        openPlayServices: [],
+        membershipOffers: [],
       })
     }
 
     return sections
-  }, [categories, filteredScrollItems])
-  const breadcrumbItems = useMemo(
+  }, [categories, openPlaySection, scrollItemsExcludingOpenPlay])
+
+  const visibleListingCount = useMemo(() => {
+    const scrollCount = scrollItemsExcludingOpenPlay.length
+    const openPlayCount =
+      (openPlaySection?.services.length ?? 0) + (openPlaySection?.membershipOffers.length ?? 0)
+    return scrollCount + openPlayCount
+  }, [openPlaySection, scrollItemsExcludingOpenPlay.length])
+
+  const productSections = useMemo(
     () =>
-      groupedSections
-        .filter((section) => section.items.length > 0)
-        .map((section) => ({
-          id: section.key,
-          label: section.title,
-          href: `#events-section-${section.key}`,
-        })),
+      buildProductSectionsForSchedulingMenu({
+        menuSlug: 'events',
+        productCategories,
+        products,
+        cafeProducts,
+      }),
+    [cafeProducts, productCategories, products],
+  )
+
+  const { beforeTakeOutPartySections, takeOutPartySections } = useMemo(() => {
+    const partitioned = partitionProductSectionsForEventsPage(productSections)
+    return {
+      beforeTakeOutPartySections: partitioned.beforeTakeOutParty,
+      takeOutPartySections: partitioned.takeOutParty,
+    }
+  }, [productSections])
+
+  const visibleEventSections = useMemo(
+    () => groupedSections.filter(eventsSectionHasContent),
     [groupedSections],
   )
+
+  const breadcrumbItems = useMemo(
+    () =>
+      buildSchedulingMenuBrowseCrumbsFromPageOrder([
+        ...schedulingMenuProductRailsCrumbs(beforeTakeOutPartySections),
+        ...eventsMenuSectionCrumbs(visibleEventSections),
+        ...schedulingMenuProductRailsCrumbs(takeOutPartySections),
+      ]),
+    [beforeTakeOutPartySections, takeOutPartySections, visibleEventSections],
+  )
+
+  const hasVisibleSections =
+    productSections.length > 0 ||
+    visibleEventSections.length > 0 ||
+    takeOutPartySections.length > 0
 
   return (
     <>
@@ -275,10 +342,10 @@ export default function EventsPage() {
         <section className="bg-background py-12" aria-live="polite" aria-label="Event results">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <p className="mb-6 text-sm text-muted-foreground">
-              <span className="font-semibold text-foreground">{filteredScrollItems.length}</span>{' '}
-              {filteredScrollItems.length === 1 ? 'listing' : 'listings'}
+              <span className="font-semibold text-foreground">{visibleListingCount}</span>{' '}
+              {visibleListingCount === 1 ? 'listing' : 'listings'}
             </p>
-            {filteredScrollItems.length === 0 ? (
+            {!hasVisibleSections ? (
               <div className="space-y-4 py-20 text-center">
                 <p className="text-2xl font-bold text-muted-foreground">No events found</p>
                 <Button type="button" onClick={handleClear}>
@@ -291,13 +358,28 @@ export default function EventsPage() {
                   <h2 className="text-2xl font-black text-foreground">Browse event categories</h2>
                   <ScrollableSectionBreadcrumbs items={breadcrumbItems} />
                 </section>
-                {groupedSections.map((section) =>
-                  section.items.length > 0 ? (
+                {beforeTakeOutPartySections.length > 0 ? (
+                  <SchedulingMenuProductRails
+                    menuSlug="events"
+                    sections={beforeTakeOutPartySections}
+                  />
+                ) : null}
+                {groupedSections.map((section) => {
+                  if (!eventsSectionHasContent(section)) {
+                    return null
+                  }
+                  return (
                     <div key={section.key} id={`events-section-${section.key}`}>
                       <HorizontalScrollSection
                         title={section.title}
                         description={section.description}
                       >
+                        {section.openPlayServices.map((service) => (
+                          <ServiceScrollCard key={service.id} service={service} />
+                        ))}
+                        {section.membershipOffers.map((offer) => (
+                          <OpenPlayMembershipOfferCard key={offer.id} offer={offer} />
+                        ))}
                         {section.items.map((item) =>
                           item.kind === 'package' ? (
                             <EventPackageScrollCard
@@ -311,32 +393,16 @@ export default function EventsPage() {
                         )}
                       </HorizontalScrollSection>
                     </div>
-                  ) : null,
-                )}
+                  )
+                })}
+                {takeOutPartySections.length > 0 ? (
+                  <SchedulingMenuProductRails
+                    menuSlug="events"
+                    sections={takeOutPartySections}
+                  />
+                ) : null}
               </div>
             )}
-          </div>
-        </section>
-
-        <section className="bg-background pb-4">
-          <div className="mx-auto max-w-7xl space-y-8 px-4 sm:px-6 lg:px-8">
-            <PromoLinkGridSection
-              eyebrow="Take Out Party"
-              title="Take Out Party"
-              description="Pick up party-ready food, drinks, and essentials curated for your event."
-              items={TAKE_OUT_PARTY_ITEMS}
-              ctaLabel="View Take Out Party"
-              ctaHref="/events/take-out-party"
-            />
-
-            <PromoLinkGridSection
-              eyebrow="We Bring The Party To You"
-              title="We Bring The Party To You"
-              description="Off-site setup, entertainment, and party equipment brought directly to your venue."
-              items={WE_BRING_PARTY_ITEMS}
-              ctaLabel="Plan Off-Site Party"
-              ctaHref="/we-bring-the-party"
-            />
           </div>
         </section>
       </main>

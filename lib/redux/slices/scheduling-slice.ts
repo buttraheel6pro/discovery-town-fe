@@ -13,12 +13,14 @@ import {
   schedulingSlots,
   schedulingWaitlistEntries,
 } from '@/lib/mock-data'
+import { normalizeOpenPlaySchedulingCatalog } from '@/lib/open-play-consumer-section'
 import { withoutOpenPlayPassCatalogServices } from '@/lib/open-play-pass-catalog'
 import { SPECIAL_PLAY_SERVICE_ORDER } from '@/lib/special-play-service-order'
 import {
   RETIRED_WE_BRING_PLAY_SERVICE_IDS,
   WE_BRING_PLAY_SERVICE_IDS,
 } from '@/lib/we-bring-play-offerings'
+import { enrichSchedulingCategories } from '@/lib/catalog-placement'
 import type { RootState } from '@/lib/redux/store'
 import type {
   CategoryAddOn,
@@ -399,19 +401,39 @@ function mergeSchedulingWithCatalogDefaults(persisted: SchedulingState): Schedul
     syncCategoryToServices(merged, category.id)
   }
 
-  return merged
+  const normalized = normalizeOpenPlaySchedulingCatalog({
+    categories: merged.categories,
+    services: merged.services,
+  })
+
+  return {
+    ...merged,
+    categories: normalized.categories,
+    services: normalized.services,
+  }
 }
 
 function cloneInitialState(): SchedulingState {
-  return withoutRetiredSchedulingCatalog({
-    categories: schedulingCategories.map((category) => ({
+  const enrichedCategories = enrichSchedulingCategories(schedulingCategories).map(
+    (category) => ({
       ...category,
       linkedAddOns: category.linkedAddOns?.map((link) => ({ ...link })),
-    })),
-    services: withoutOpenPlayPassCatalogServices(schedulingServices).map((service) => ({
+    }),
+  )
+  const baseServices = withoutOpenPlayPassCatalogServices(schedulingServices).map(
+    (service) => ({
       ...service,
       linkedAddOns: service.linkedAddOns?.map((link) => ({ ...link })),
-    })),
+    }),
+  )
+  const normalized = normalizeOpenPlaySchedulingCatalog({
+    categories: enrichedCategories,
+    services: baseServices,
+  })
+
+  return withoutRetiredSchedulingCatalog({
+    categories: normalized.categories,
+    services: normalized.services,
     slots: schedulingSlots.map((slot) => ({
       ...slot,
       service: { ...slot.service },

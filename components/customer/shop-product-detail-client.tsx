@@ -6,6 +6,7 @@ import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { Minus, Plus, ShoppingCart } from 'lucide-react'
 
+import { ShopProductLinkedAddOnSection } from '@/components/customer/shop-product-linked-add-on-section'
 import { ShopImageGallery } from '@/components/customer/shop-image-gallery'
 import { ShopProductCard } from '@/components/customer/shop-product-card'
 import { Button } from '@/components/ui/button'
@@ -34,6 +35,10 @@ export interface ShopProductDetailClientProps {
   readonly rentalSlotEndAt?: string
   /** Shop merchandising variants (size, colour, etc.). */
   readonly shopAttributeGroups?: AttributeGroup[]
+  /** When true, rental add-ons render outside this component (e.g. below availability). */
+  readonly deferRentalLinkedAddOnSection?: boolean
+  readonly relatedQuantities?: Readonly<Record<string, number>>
+  readonly onRelatedQuantitiesChange?: (next: Record<string, number>) => void
 }
 
 function isColorGroup(groupName: string): boolean {
@@ -98,6 +103,9 @@ export function ShopProductDetailClient({
   rentalSlotStartAt = '',
   rentalSlotEndAt = '',
   shopAttributeGroups = [],
+  deferRentalLinkedAddOnSection = false,
+  relatedQuantities: relatedQuantitiesProp,
+  onRelatedQuantitiesChange,
 }: Readonly<ShopProductDetailClientProps>) {
   const router = useRouter()
   const { toast } = useToast()
@@ -105,7 +113,8 @@ export function ShopProductDetailClient({
 
   const [qtyRaw, setQtyRaw] = useState('1')
   const [selectedGiftQuantity, setSelectedGiftQuantity] = useState(0)
-  const [selectedRelatedQuantities, setSelectedRelatedQuantities] = useState<Record<string, number>>({})
+  const [internalRelatedQuantities, setInternalRelatedQuantities] = useState<Record<string, number>>({})
+  const selectedRelatedQuantities = relatedQuantitiesProp ?? internalRelatedQuantities
 
   const qty = useMemo(() => {
     const parsed = Number.parseInt(qtyRaw || '1', 10)
@@ -572,6 +581,70 @@ export function ShopProductDetailClient({
     }
 
     if (!validateAndPersistRentalSchedule()) return
+
+    const selectedRentalAddOns = Object.entries(selectedRelatedQuantities)
+      .map(([relatedId, quantity]) => {
+        const relatedProduct = related.find((row) => row.id === relatedId) ?? null
+        if (!relatedProduct || quantity <= 0) return null
+        return {
+          productId: relatedProduct.id,
+          name: relatedProduct.name,
+          imageUrl: relatedProduct.imageUrl ?? '/placeholder.jpg',
+          unitPrice: relatedProduct.memberPrice ?? relatedProduct.price,
+          quantity,
+        }
+      })
+      .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
+    const rentalAddOnTotal = selectedRentalAddOns.reduce(
+      (sum, item) => sum + item.unitPrice * item.quantity,
+      0,
+    )
+    const rentalLineTotal = selectedRentalUnitPrice * qty + rentalAddOnTotal
+
+    if (selectedRentalAddOns.length > 0) {
+      const scheduleDescription =
+        shopProduct.rentalBillingType === 'PER_DAY'
+          ? `${rentalFromDate.trim()} to ${rentalToDate.trim()}`
+          : formatSlotTimeRange(rentalSlotStartAt.trim(), rentalSlotEndAt.trim())
+      addCustomCartItem({
+        type: 'product',
+        name: `${shopProduct.name} rental`,
+        description: `${shopProduct.sku ?? 'Rental'} · ${scheduleDescription}`,
+        price: rentalLineTotal,
+        quantity: 1,
+        imageUrl: shopProduct.imageUrl ?? '/placeholder.jpg',
+        metadata: {
+          rentalBundle: true,
+          primary: {
+            productId: shopProduct.id,
+            name: shopProduct.name,
+            imageUrl: shopProduct.imageUrl ?? '/placeholder.jpg',
+            unitPrice: selectedRentalUnitPrice,
+            quantity: qty,
+            rentalBillingType: shopProduct.rentalBillingType,
+            rentalFromDate:
+              shopProduct.rentalBillingType === 'PER_DAY' ? rentalFromDate.trim() : undefined,
+            rentalToDate:
+              shopProduct.rentalBillingType === 'PER_DAY' ? rentalToDate.trim() : undefined,
+            rentalSlotStartAt:
+              shopProduct.rentalBillingType === 'PER_HOUR' ||
+              shopProduct.rentalBillingType === 'PER_HALF_DAY'
+                ? rentalSlotStartAt.trim()
+                : undefined,
+            rentalSlotEndAt:
+              shopProduct.rentalBillingType === 'PER_HOUR' ||
+              shopProduct.rentalBillingType === 'PER_HALF_DAY'
+                ? rentalSlotEndAt.trim()
+                : undefined,
+            rentalDays: perDaySelectedDays ?? undefined,
+            rentalHours: hourlyDurationHours ?? undefined,
+          },
+          addOns: selectedRentalAddOns,
+        },
+      })
+      return
+    }
+
     if (shopProduct.rentalBillingType === 'PER_DAY') {
       const isoRange = toIsoRange(rentalFromDate, rentalToDate)
       if (!isoRange) return
@@ -689,17 +762,32 @@ export function ShopProductDetailClient({
     0,
   )
   const selectedGiftTotal = heroUnitPrice * selectedGiftQuantity
-  const grandTotal = isGiftProduct ? selectedGiftTotal + selectedRelatedTotal : totalPrice
   const hasRentalSelection =
     requiresRentalCalendar &&
     ((rentalBilling === 'PER_DAY' && perDayRangeComplete) ||
       ((rentalBilling === 'PER_HOUR' || rentalBilling === 'PER_HALF_DAY') && slotScheduleComplete))
+  const rentalGrandTotal = totalPrice + selectedRelatedTotal
+  const grandTotal = isGiftProduct
+    ? selectedGiftTotal + selectedRelatedTotal
+    : isRental
+      ? rentalGrandTotal
+      : totalPrice
+  const showGiftLinkedAddOnSection = isGiftProduct && selectedGiftQuantity > 0
+  const showRentalLinkedAddOnSection =
+    isRental && related.length > 0 && !deferRentalLinkedAddOnSection
+  const showLinkedPackageDetails =
+    (isGiftProduct || isRental) &&
+    (linkedProducts.length > 0 || linkedCoupons.length > 0)
+  const linkedPackageDetailsTitle = isRental ? 'Rental package details' : 'Gift bundle details'
+  const linkedProductFallbackDescription = isRental
+    ? 'Included with this rental'
+    : 'Gift bundle product'
   const showInlineRentalControls = !isRental
   const alignImageWithDetails = true
   const showPinnedStandardCheckout = !isGiftProduct && !isRental && needsVariantPick && showShopOptions
 
   function updateRelatedQuantity(productId: string, delta: number) {
-    setSelectedRelatedQuantities((prev) => {
+    const apply = (prev: Record<string, number>) => {
       const current = prev[productId] ?? 0
       const next = Math.max(0, current + delta)
       const out = { ...prev }
@@ -709,7 +797,12 @@ export function ShopProductDetailClient({
         out[productId] = next
       }
       return out
-    })
+    }
+    if (onRelatedQuantitiesChange) {
+      onRelatedQuantitiesChange(apply(selectedRelatedQuantities))
+      return
+    }
+    setInternalRelatedQuantities(apply)
   }
 
   function renderVariantCustomiseSection() {
@@ -991,9 +1084,9 @@ export function ShopProductDetailClient({
             </div>
           ) : null}
 
-          {linkedProducts.length > 0 || linkedAddOnProducts.length > 0 || linkedCoupons.length > 0 ? (
+          {showLinkedPackageDetails ? (
             <div className="space-y-4 rounded-xl border border-border bg-card p-4">
-              <h2 className="text-base font-semibold text-foreground">Gift bundle details</h2>
+              <h2 className="text-base font-semibold text-foreground">{linkedPackageDetailsTitle}</h2>
               {linkedProducts.length > 0 ? (
                 <div className="space-y-2">
                   <p className="text-sm font-medium text-foreground">Included products</p>
@@ -1034,7 +1127,7 @@ export function ShopProductDetailClient({
                               {linkedProduct.name}
                             </p>
                             <p className="text-xs text-muted-foreground">
-                              {linkedProduct.description ?? 'Gift bundle product'}
+                              {linkedProduct.description ?? linkedProductFallbackDescription}
                             </p>
                             <p className="text-sm font-semibold text-foreground">
                               {formatPrice(linkedProduct.memberPrice ?? linkedProduct.price)}
@@ -1213,55 +1306,13 @@ export function ShopProductDetailClient({
     </div>
   )
 
-  const giftRelatedSection = (
-    <section className="space-y-4">
-      <h2
-        className="text-xl font-black text-foreground"
-        style={{ fontFamily: 'var(--font-barlow)' }}
-      >
-        {relatedTitle}
-      </h2>
-      {related.length > 0 ? (
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {related.map((p) => {
-            const unit = p.memberPrice ?? p.price
-            const selectedQty = selectedRelatedQuantities[p.id] ?? 0
-            return (
-              <div key={p.id} className="overflow-hidden rounded-xl border border-border bg-card">
-                <div className="relative aspect-[4/3] bg-muted/30">
-                  <Image
-                    src={p.imageUrl ?? '/placeholder.jpg'}
-                    alt={p.name}
-                    fill
-                    className="object-cover"
-                    sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                  />
-                </div>
-                <div className="space-y-2 p-5">
-                  <p
-                    className="text-base font-bold leading-tight text-foreground"
-                    style={{ fontFamily: 'var(--font-barlow)' }}
-                  >
-                    {p.name}
-                  </p>
-                  <p className="text-xs text-muted-foreground">{p.sku ?? '—'}</p>
-                  <p className="text-lg font-black text-foreground">{formatPrice(unit)}</p>
-                </div>
-                <Button
-                  type="button"
-                  className="mx-5 mb-5 mt-0 w-[calc(100%-2.5rem)] bg-accent text-accent-foreground hover:bg-accent/90 font-semibold"
-                  onClick={() => updateRelatedQuantity(p.id, 1)}
-                >
-                  {selectedQty > 0 ? `Added (${selectedQty})` : 'Add item'}
-                </Button>
-              </div>
-            )
-          })}
-        </div>
-      ) : (
-        <p className="text-sm text-muted-foreground">No add-on products available right now.</p>
-      )}
-    </section>
+  const linkedAddOnRelatedSection = (
+    <ShopProductLinkedAddOnSection
+      related={related}
+      relatedTitle={relatedTitle}
+      selectedQuantities={selectedRelatedQuantities}
+      onUpdateQuantity={updateRelatedQuantity}
+    />
   )
 
   const giftLineRowClass =
@@ -1455,11 +1506,62 @@ export function ShopProductDetailClient({
               </p>
             </div>
           </div>
+          {selectedRelatedRows.map((row) => (
+            <div
+              key={row.product.id}
+              className={giftLineRowClass}
+              aria-label={`Add-on: ${row.product.name}`}
+            >
+              <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-border">
+                <Image
+                  src={row.product.imageUrl ?? '/placeholder.jpg'}
+                  alt=""
+                  fill
+                  className="object-cover"
+                  sizes="56px"
+                />
+              </div>
+              <div className="shrink-0 tabular-nums">
+                <p className="text-sm font-semibold text-foreground">{formatPrice(row.unitPrice)}</p>
+                <p className="text-xs text-muted-foreground">each</p>
+              </div>
+              <div className="ml-auto flex shrink-0 flex-col items-end gap-1.5">
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-9 w-9"
+                    onClick={() => updateRelatedQuantity(row.product.id, -1)}
+                    aria-label="Decrease add-on quantity"
+                  >
+                    <Minus className="h-4 w-4" />
+                  </Button>
+                  <span className="min-w-[2rem] text-center text-sm font-semibold tabular-nums">
+                    {row.quantity}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-9 w-9"
+                    onClick={() => updateRelatedQuantity(row.product.id, 1)}
+                    aria-label="Increase add-on quantity"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+                <p className="text-right text-sm font-bold tabular-nums text-foreground">
+                  {formatPrice(row.unitPrice * row.quantity)}
+                </p>
+              </div>
+            </div>
+          ))}
         </div>
         <div className="mt-5 rounded-lg border border-border bg-muted/20 px-4 py-3">
           <div className="flex items-center justify-between text-sm">
             <span className="font-medium text-foreground">Total</span>
-            <span className="font-bold tabular-nums text-foreground">{formatPrice(totalPrice)}</span>
+            <span className="font-bold tabular-nums text-foreground">{formatPrice(rentalGrandTotal)}</span>
           </div>
           <Button
             className="mt-4 w-full bg-accent text-accent-foreground hover:bg-accent/90 font-semibold"
@@ -1558,10 +1660,10 @@ export function ShopProductDetailClient({
     >
       {productDetailSection}
 
-      {isGiftProduct && selectedGiftQuantity > 0 ? (
+      {showGiftLinkedAddOnSection ? (
         <div className="relative">
           <div className="min-w-0 transition-all duration-300 ease-out">
-            {giftRelatedSection}
+            {linkedAddOnRelatedSection}
           </div>
           <div className="mt-6 xl:hidden">
             {giftCheckoutCard}
@@ -1571,6 +1673,12 @@ export function ShopProductDetailClient({
               {giftCheckoutCard}
             </div>
           </div>
+        </div>
+      ) : null}
+
+      {showRentalLinkedAddOnSection ? (
+        <div className="min-w-0 transition-all duration-300 ease-out">
+          {linkedAddOnRelatedSection}
         </div>
       ) : null}
 

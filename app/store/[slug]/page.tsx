@@ -10,7 +10,9 @@ import { CustomerNavbar } from '@/components/customer/navbar'
 import { PromoLinkGridSection } from '@/components/customer/promo-link-grid-section'
 import { ScrollableSectionBreadcrumbs } from '@/components/customer/scrollable-section-breadcrumbs'
 import { CafeStoreProductCard } from '@/components/customer/cafe-store-product-card'
+import { SchedulingProductMenuRails } from '@/components/customer/scheduling-product-menu-rails'
 import { ShopProductCard } from '@/components/customer/shop-product-card'
+import { useClients } from '@/lib/client-store'
 import { useCafe } from '@/lib/cafe-store'
 import {
   cafeProductIdsForInventoryCategory,
@@ -21,12 +23,21 @@ import {
 import { useInventory } from '@/lib/inventory-store'
 import {
   buildProductCategoryById,
+  filterConsumerVisibleCategoriesForMenu,
   hasConsumerVisibleProductType,
   isConsumerVisibleProduct,
   isConsumerVisibleProductCategory,
   isShopCatalogVisibleProduct,
   isShopCatalogVisibleProductCategory,
 } from '@/lib/product-visibility'
+import { buildSchedulingSectionsForProductMenu } from '@/lib/scheduling-product-menu-sections'
+import {
+  buildSchedulingMenuBrowseCrumbsFromPageOrder,
+  schedulingProductMenuRailsCrumbs,
+} from '@/lib/scheduling-menu-browse'
+import type { SchedulingMenuBrowseCrumb } from '@/lib/scheduling-menu-browse'
+import { hasConsumerSchedulingOnProductMenu } from '@/lib/scheduling-visibility'
+import { useScheduling } from '@/lib/scheduling-store'
 import type { ProductCategory } from '@/lib/types'
 
 interface StoreTypePageProps {
@@ -52,13 +63,13 @@ const CAFE_SERVICE_LINK_ITEMS = [
     id: 'cafe-take-out',
     title: 'Take Out',
     imageUrl: 'https://images.unsplash.com/photo-1482049016688-2d3e1b311543?w=1200&q=80',
-    href: '/events/take-out-party',
+    href: '/store/cafe-food#take-out-party',
   },
   {
     id: 'cafe-delivery-catering',
     title: 'Delivery / Catering',
     imageUrl: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=1200&q=80',
-    href: '/we-bring-the-party',
+    href: '/rentals#we-bring-play-to-you',
   },
 ] as const
 
@@ -72,6 +83,8 @@ function fromSlug(value: string): string {
 export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) {
   const resolvedParams = use(params)
   const { products, productCategories } = useInventory()
+  const { categories: schedulingCategories, services, slots, packages } = useScheduling()
+  const { membershipPlans } = useClients()
   const { cafeProducts, attributeGroups } = useCafe()
   const productType = fromSlug(resolvedParams.slug)
   if (productType === 'rentals') {
@@ -82,7 +95,13 @@ export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) 
     [productCategories],
   )
 
-  if (!hasConsumerVisibleProductType(productType, productCategories)) {
+  const hasProducts = hasConsumerVisibleProductType(productType, productCategories)
+  const hasScheduling = hasConsumerSchedulingOnProductMenu(
+    productType,
+    schedulingCategories,
+    productCategories,
+  )
+  if (!hasProducts && !hasScheduling) {
     notFound()
   }
 
@@ -95,13 +114,11 @@ export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) 
     : isConsumerVisibleProduct
 
   const sections = useMemo<CategorySection[]>(() => {
-    const categoriesForType = productCategories
-      .filter(
-        (category) =>
-          (category.productType ?? 'shop') === productType &&
-          isCategoryVisible(category, categoryById),
-      )
-      .sort((left, right) => left.displayOrder - right.displayOrder)
+    const categoriesForType = filterConsumerVisibleCategoriesForMenu(
+      productType,
+      productCategories,
+      isCategoryVisible,
+    )
     const categoriesById = new Map(categoriesForType.map((category) => [category.id, category]))
     const rootCategoryIds = new Set(
       categoriesForType.filter((category) => category.parentId === null).map((category) => category.id),
@@ -149,13 +166,11 @@ export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) 
     if (!isCafeAndFood) {
       return [] as ProductCategory[]
     }
-    const categoriesForType = productCategories
-      .filter(
-        (category) =>
-          (category.productType ?? 'shop') === productType &&
-          isConsumerVisibleProductCategory(category, categoryById),
-      )
-      .sort((left, right) => left.displayOrder - right.displayOrder)
+    const categoriesForType = filterConsumerVisibleCategoriesForMenu(
+      productType,
+      productCategories,
+      isConsumerVisibleProductCategory,
+    )
     const rootCategoryIds = new Set(
       categoriesForType
         .filter((category) => category.parentId === null)
@@ -164,7 +179,7 @@ export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) 
     return categoriesForType.filter(
       (category) => category.parentId !== null || rootCategoryIds.size === 0,
     )
-  }, [categoryById, isCafeAndFood, productCategories, productType])
+  }, [isCafeAndFood, productCategories, productType])
 
   const cafeSections = useMemo(() => {
     if (!isCafeAndFood) return []
@@ -229,20 +244,56 @@ export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) 
     products,
   ])
 
-  const breadcrumbItems = useMemo(() => {
+  const schedulingSections = useMemo(
+    () =>
+      buildSchedulingSectionsForProductMenu({
+        productType,
+        productCategories,
+        schedulingCategories,
+        services,
+        slots,
+        packages,
+        plans: membershipPlans,
+      }),
+    [
+      membershipPlans,
+      productCategories,
+      productType,
+      packages,
+      schedulingCategories,
+      services,
+      slots,
+    ],
+  )
+
+  const breadcrumbItems = useMemo((): SchedulingMenuBrowseCrumb[] => {
+    const schedulingCrumbs = schedulingProductMenuRailsCrumbs(schedulingSections)
     if (isCafeAndFood) {
-      return cafeSections.map((section) => ({
+      const cafeCrumbs = cafeSections.map((section) => ({
         id: section.id,
         label: section.category,
         href: `#${section.slug}`,
       }))
+      return buildSchedulingMenuBrowseCrumbsFromPageOrder([
+        ...schedulingCrumbs,
+        ...cafeCrumbs,
+      ])
     }
-    return sections.map((section) => ({
+    const productCrumbs = sections.map((section) => ({
       id: section.category.id,
       label: section.category.name,
       href: `#${section.category.slug || section.category.id}`,
     }))
-  }, [cafeSections, isCafeAndFood, sections])
+    return buildSchedulingMenuBrowseCrumbsFromPageOrder([
+      ...schedulingCrumbs,
+      ...productCrumbs,
+    ])
+  }, [cafeSections, isCafeAndFood, schedulingSections, sections])
+
+  const hasStoreContent =
+    sections.length > 0 ||
+    schedulingSections.length > 0 ||
+    (isCafeAndFood && cafeSections.length > 0)
 
   return (
     <>
@@ -265,7 +316,7 @@ export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) 
 
         <section className="bg-background py-10">
           <div className="mx-auto max-w-7xl space-y-10 px-4 sm:px-6 lg:px-8">
-            {sections.length === 0 ? (
+            {!hasStoreContent ? (
                   <div className="rounded-xl border border-border bg-card p-10 text-center">
                     <p className="text-sm font-semibold text-foreground">
                       No products available right now.
@@ -279,6 +330,7 @@ export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) 
                       </h2>
                       <ScrollableSectionBreadcrumbs items={breadcrumbItems} />
                     </section>
+                    <SchedulingProductMenuRails productType={productType} />
                     {cafeSections.map((section) => (
                       <div key={section.id} id={section.slug} className="scroll-mt-32">
                         <HorizontalScrollSection
@@ -313,6 +365,7 @@ export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) 
                       </h2>
                       <ScrollableSectionBreadcrumbs items={breadcrumbItems} />
                     </section>
+                    <SchedulingProductMenuRails productType={productType} />
                     {sections.map((section) => (
                       <div
                         key={section.category.id}

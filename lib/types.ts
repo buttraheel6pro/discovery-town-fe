@@ -1,6 +1,8 @@
 // Discovery Town - Sports Complex ERP Platform Types
 // Based on the official SRS document
 
+import type { CatalogSlug } from '@/lib/catalog-slugs'
+
 // ============================================
 // ENUMS
 // ============================================
@@ -977,6 +979,12 @@ export interface ProductCategory {
   isActive?: boolean;
   /** Business grouping key (e.g. shop, cafe&food, gifts, rentals). */
   productType?: string;
+  /** Canonical catalog slug for products in this category (stable when placement moves). */
+  catalogSlug?: CatalogSlug;
+  /** Admin menu accordion slug (may differ from canonical). */
+  placementCatalogSlug?: CatalogSlug;
+  /** Parent row id for admin menu grouping (product root or cross-menu). */
+  placementParentId?: string | null;
   /** When set, this category is nested under a top-level category. */
   parentId?: string | null;
   /**
@@ -1918,6 +1926,11 @@ export interface SchedulingCategory {
   icon: string | null;
   displayOrder: number;
   isActive: boolean;
+  /** Canonical scheduling bucket (gym, play, events). */
+  catalogSlug?: CatalogSlug;
+  /** Admin menu accordion slug (may list under product menus). */
+  placementCatalogSlug?: CatalogSlug;
+  placementParentId?: string | null;
   description?: string;
   requiresAttendee?: boolean;
   membersOnly?: boolean;
@@ -2587,7 +2600,10 @@ export type CafeCategory =
   | "Sweets"
   | "Pastries"
   | "Baked Food"
-  | "Toasts";
+  | "Toasts"
+  | "Party Food & Drinks"
+  | "Party Desserts"
+  | "Party Decor";
 
 export interface CafeModifier {
   id: string;

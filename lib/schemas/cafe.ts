@@ -18,6 +18,9 @@ export const cafeCategorySchema = z.enum([
   'Pastries',
   'Baked Food',
   'Toasts',
+  'Party Food & Drinks',
+  'Party Desserts',
+  'Party Decor',
 ])
 
 export const cafeModifierSchema = z.object({

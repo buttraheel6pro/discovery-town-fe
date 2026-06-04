@@ -7,6 +7,7 @@ import { CustomerFooter } from '@/components/customer/footer'
 import { CustomerNavbar } from '@/components/customer/navbar'
 import { ShopProductCard } from '@/components/customer/shop-product-card'
 import { useInventory } from '@/lib/inventory-store'
+import { findProductCategoryBySlugOnCustomerMenu } from '@/lib/catalog-placement'
 import {
   buildProductCategoryById,
   isConsumerVisibleProduct,
@@ -32,7 +33,11 @@ export function RentalProductList({
   )
 
   const categoryIds = useMemo(() => {
-    const target = productCategories.find((category) => category.slug === categorySlug)
+    const target = findProductCategoryBySlugOnCustomerMenu(
+      productCategories,
+      categorySlug,
+      'rentals',
+    )
     if (!target || !isProductCategoryActiveForConsumer(target.id, categoryById)) {
       return []
     }

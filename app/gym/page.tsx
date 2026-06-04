@@ -6,16 +6,28 @@ import { useMemo } from 'react'
 import { CustomerFooter } from '@/components/customer/footer'
 import { HorizontalScrollSection } from '@/components/customer/horizontal-scroll-section'
 import { CustomerNavbar } from '@/components/customer/navbar'
+import { SchedulingMenuProductRails } from '@/components/customer/scheduling-menu-product-rails'
+import { OpenPlayMembershipOfferCard } from '@/components/customer/open-play-membership-offer-card'
 import { ScrollableSectionBreadcrumbs } from '@/components/customer/scrollable-section-breadcrumbs'
 import { ServiceScrollCard } from '@/components/customer/service-scroll-card'
+import { useClients } from '@/lib/client-store'
+import { useCafe } from '@/lib/cafe-store'
+import { useInventory } from '@/lib/inventory-store'
 import {
-  buildSchedulingCategoryById,
-  isConsumerListedSchedulingService,
-  isConsumerVisibleSchedulingCategory,
-} from '@/lib/scheduling-visibility'
+  buildOpenPlayConsumerSection,
+} from '@/lib/open-play-consumer-section'
+import { buildProductSectionsForSchedulingMenu } from '@/lib/product-scheduling-menu-sections'
+import { collectServicesForSchedulingConsumerMenu } from '@/lib/scheduling-consumer-menu-services'
+import {
+  buildSchedulingMenuPageBrowseCrumbs,
+  schedulingCategoriesForConsumerMenu,
+} from '@/lib/scheduling-menu-browse'
+import { buildSchedulingCategoryById } from '@/lib/scheduling-visibility'
 import { useScheduling } from '@/lib/scheduling-store'
 
 const GYM_CATEGORY_DESCRIPTIONS: Record<string, string> = {
+  'cat-open-play':
+    '2-hour, sibling, and multi-pass sessions plus membership and seasonal passes.',
   'cat-gym-babies': 'Sensory-rich exploration, soft surfaces, and early motor milestones.',
   'cat-gym-toddlers': 'Parent-guided movement, balance basics, and social play routines.',
   'cat-gym-preschool':
@@ -33,41 +45,94 @@ const GYM_CATEGORY_DESCRIPTIONS: Record<string, string> = {
 }
 
 export default function GymPage() {
-  const { categories, services, slots } = useScheduling()
+  const { categories, services, slots, packages } = useScheduling()
+  const { products, productCategories } = useInventory()
+  const { cafeProducts } = useCafe()
+  const { membershipPlans } = useClients()
 
   const categoryById = useMemo(() => buildSchedulingCategoryById(categories), [categories])
 
-  const sectionServices = useMemo(
-    () =>
-      categories
-        .filter(
-          (category) =>
-            isConsumerVisibleSchedulingCategory(category) &&
-            category.id.startsWith('cat-gym-'),
-        )
-        .slice()
-        .sort((a, b) => a.displayOrder - b.displayOrder)
-        .map((category) => ({
-          id: category.id,
-          title: category.name,
-          description: GYM_CATEGORY_DESCRIPTIONS[category.id] ?? 'Fitness experiences for every age.',
-          services: services.filter(
-            (service) =>
-              service.categoryId === category.id &&
-              isConsumerListedSchedulingService(service, categoryById, slots),
-          ),
-        }))
-        .filter((section) => section.services.length > 0),
-    [categories, categoryById, services, slots],
+  const gymSchedulingCategories = useMemo(
+    () => schedulingCategoriesForConsumerMenu('gym', categories),
+    [categories],
   )
+
+  const openPlaySection = useMemo(
+    () =>
+      buildOpenPlayConsumerSection({
+        menuSlug: 'gym',
+        categories,
+        services,
+        slots,
+        plans: membershipPlans,
+        categoryById,
+        description:
+          GYM_CATEGORY_DESCRIPTIONS['cat-open-play'] ??
+          '2-hour, sibling, and multi-pass sessions plus membership and seasonal passes.',
+      }),
+    [categories, categoryById, membershipPlans, services, slots],
+  )
+
+  const contentGymSections = useMemo(() => {
+    const schedulingSections = gymSchedulingCategories.map((category) => ({
+      id: category.id,
+      title: category.name,
+      description: GYM_CATEGORY_DESCRIPTIONS[category.id] ?? 'Fitness experiences for every age.',
+      services: collectServicesForSchedulingConsumerMenu(
+        category,
+        'gym',
+        services,
+        slots,
+        packages,
+        categoryById,
+      ),
+      membershipOffers: [] as const,
+    }))
+
+    const openPlayBlock =
+      openPlaySection &&
+      (openPlaySection.services.length > 0 || openPlaySection.membershipOffers.length > 0)
+        ? [
+            {
+              id: openPlaySection.category.id,
+              title: openPlaySection.category.name,
+              description: openPlaySection.description,
+              services: openPlaySection.services,
+              membershipOffers: openPlaySection.membershipOffers,
+            },
+          ]
+        : []
+
+    return [...openPlayBlock, ...schedulingSections].filter(
+      (section) => section.services.length > 0 || section.membershipOffers.length > 0,
+    )
+  }, [
+    categoryById,
+    gymSchedulingCategories,
+    openPlaySection,
+    packages,
+    services,
+    slots,
+  ])
+
+  const productSections = useMemo(
+    () =>
+      buildProductSectionsForSchedulingMenu({
+        menuSlug: 'gym',
+        productCategories,
+        products,
+        cafeProducts,
+      }),
+    [cafeProducts, productCategories, products],
+  )
+
   const breadcrumbItems = useMemo(
     () =>
-      sectionServices.map((section) => ({
-        id: section.id,
-        label: section.title,
-        href: `#${section.id}`,
-      })),
-    [sectionServices],
+      buildSchedulingMenuPageBrowseCrumbs({
+        productSections,
+        contentSections: contentGymSections,
+      }),
+    [contentGymSections, productSections],
   )
 
   return (
@@ -95,7 +160,8 @@ export default function GymPage() {
               <h2 className="text-2xl font-black text-foreground">Browse gym categories</h2>
               <ScrollableSectionBreadcrumbs items={breadcrumbItems} />
             </section>
-            {sectionServices.map((section) => (
+            <SchedulingMenuProductRails menuSlug="gym" />
+            {contentGymSections.map((section) => (
               <div key={section.id} id={section.id}>
                 <HorizontalScrollSection
                   title={section.title}
@@ -103,6 +169,9 @@ export default function GymPage() {
                 >
                   {section.services.map((service) => (
                     <ServiceScrollCard key={service.id} service={service} />
+                  ))}
+                  {section.membershipOffers.map((offer) => (
+                    <OpenPlayMembershipOfferCard key={offer.id} offer={offer} />
                   ))}
                 </HorizontalScrollSection>
               </div>

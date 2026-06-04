@@ -10,10 +10,14 @@ import { CafeProductEditor } from '@/components/admin/cafe-product-editor'
 import { ShopProductEditor } from '@/components/admin/shop-product-editor'
 import { GiftProductForm, type GiftProductDraft } from '@/components/admin/gift-product-form'
 import { ProductForm, type ProductDraft, draftToProductPatch, productToDraft } from '@/components/admin/product-form'
-import { RentalProductForm } from '@/components/admin/rental-product-form'
+import {
+  RentalProductForm,
+  type RentalProductLinkFields,
+} from '@/components/admin/rental-product-form'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/hooks/use-toast'
+import { productTypeFromEditorSlug } from '@/lib/product-catalog'
 import { useInventory } from '@/lib/inventory-store'
 import { useScheduling } from '@/lib/scheduling-store'
 import type { Product } from '@/lib/types'
@@ -115,6 +119,47 @@ function AdminInventoryProductsNewPageInner() {
       categories,
     ),
   )
+  const [rentalLinkDraft, setRentalLinkDraft] = useState<RentalProductLinkFields>({
+    productIds: [],
+    addOnProductIds: [],
+    couponIds: [],
+    couponsWithPackage: false,
+    basketCapacity: '',
+  })
+  const parsedRentalBasketCapacity = useMemo(
+    () => toIntOrUndefined(rentalLinkDraft.basketCapacity),
+    [rentalLinkDraft.basketCapacity],
+  )
+  const rentalBasketLinksRequired = useMemo(
+    () => rentalLinkDraft.basketCapacity.trim().length > 0,
+    [rentalLinkDraft.basketCapacity],
+  )
+  const rentalSaveBlockedByBasket = useMemo(() => {
+    if (!rentalBasketLinksRequired) return false
+    return (
+      parsedRentalBasketCapacity == null ||
+      parsedRentalBasketCapacity < 0 ||
+      rentalLinkDraft.productIds.length !== parsedRentalBasketCapacity
+    )
+  }, [
+    parsedRentalBasketCapacity,
+    rentalBasketLinksRequired,
+    rentalLinkDraft.productIds.length,
+  ])
+  const activeProductPickerOptions = useMemo(
+    () =>
+      products
+        .filter((product) => product.isActive)
+        .map((product) => ({
+          id: product.id,
+          name: product.name,
+          sku: product.sku,
+          imageUrl: product.imageUrl,
+          description: product.description,
+          price: product.memberPrice ?? product.price,
+        })),
+    [products],
+  )
   const [giftDraft, setGiftDraft] = useState<GiftProductDraft>({
     name: '',
     sku: '',
@@ -178,6 +223,29 @@ function AdminInventoryProductsNewPageInner() {
     return parsed
   }
 
+  function splitRentalFormValue(
+    next: RentalProductLinkFields & ProductDraft,
+  ): { draft: ProductDraft; links: RentalProductLinkFields } {
+    const {
+      productIds,
+      addOnProductIds,
+      couponIds,
+      couponsWithPackage,
+      basketCapacity,
+      ...draft
+    } = next
+    return {
+      draft: { ...draft, isRental: true },
+      links: {
+        productIds,
+        addOnProductIds,
+        couponIds,
+        couponsWithPackage,
+        basketCapacity,
+      },
+    }
+  }
+
   function persistCreate() {
     if (isGiftsMode) {
       const parsedBasketCapacity = toIntOrUndefined(giftDraft.basketCapacity)
@@ -236,6 +304,7 @@ function AdminInventoryProductsNewPageInner() {
         giftPriceUpperLimit: toNumberOrUndefined(giftDraft.giftPriceUpperLimit) ?? null,
         giftOccasionIds: giftDraft.occasionIds,
         giftOccasionId: giftDraft.occasionIds[0] ?? null,
+        productType: productTypeFromEditorSlug('gifts'),
       }
       addProduct(created)
       router.push(returnTo)
@@ -243,6 +312,26 @@ function AdminInventoryProductsNewPageInner() {
     }
 
     if (isRentalsMode) {
+      const basketLinksRequired = rentalLinkDraft.basketCapacity.trim().length > 0
+      const parsedBasketCapacity = toIntOrUndefined(rentalLinkDraft.basketCapacity)
+      if (basketLinksRequired) {
+        if (parsedBasketCapacity == null || parsedBasketCapacity < 0) {
+          toast({
+            title: 'Invalid capacity',
+            description: 'Enter a valid capacity before creating a rental product.',
+            variant: 'destructive',
+          })
+          return
+        }
+        if (rentalLinkDraft.productIds.length !== parsedBasketCapacity) {
+          toast({
+            title: 'Capacity mismatch',
+            description: `Select exactly ${parsedBasketCapacity} items in Products to match capacity.`,
+            variant: 'destructive',
+          })
+          return
+        }
+      }
       if (!draft.rentalBillingType) {
         toast({
           title: 'Rental billing required',
@@ -307,6 +396,14 @@ function AdminInventoryProductsNewPageInner() {
         maxRentalDays: patch.maxRentalDays,
         rentalSlotIncrementMinutes: patch.rentalSlotIncrementMinutes,
         depositAmount: patch.depositAmount,
+        giftProductIds: basketLinksRequired ? rentalLinkDraft.productIds : [],
+        giftAddOnProductIds: basketLinksRequired ? rentalLinkDraft.addOnProductIds : [],
+        giftVoucherCouponIds: basketLinksRequired ? rentalLinkDraft.couponIds : [],
+        giftCouponsWithPackage: basketLinksRequired
+          ? rentalLinkDraft.couponsWithPackage
+          : false,
+        basketCapacity: basketLinksRequired ? parsedBasketCapacity : undefined,
+        productType: productTypeFromEditorSlug('rentals'),
       }
       addProduct(created)
       router.push(returnTo)
@@ -315,6 +412,9 @@ function AdminInventoryProductsNewPageInner() {
 
     const wantsPromote = draft.canBeAddOn
     const patch = draftToProductPatch(draft)
+    const resolvedCategory =
+      categories.find((entry) => entry.id === (patch.categoryId ?? categories[0]?.id ?? '')) ??
+      null
     const nowIso = new Date().toISOString()
     const id = `prod-admin-${Date.now()}`
     const created: Product = {
@@ -343,6 +443,9 @@ function AdminInventoryProductsNewPageInner() {
       galleryImages: [],
       createdAt: nowIso,
       updatedAt: nowIso,
+      productType: productTypeFromEditorSlug(
+        isShopMode ? 'shop' : isGiftsMode ? 'gifts' : isRentalsMode ? 'rentals' : 'shop',
+      ),
     }
     addProduct(created)
     if (wantsPromote) {
@@ -403,35 +506,24 @@ function AdminInventoryProductsNewPageInner() {
               onChange={setGiftDraft}
               giftsCategoryName={giftsRootCategory?.name ?? 'Gifts'}
               subCategories={giftsSubCategories}
-              productOptions={products
-                .filter((product) => product.isActive)
-                .map((product) => ({
-                  id: product.id,
-                  name: product.name,
-                  sku: product.sku,
-                  imageUrl: product.imageUrl,
-                  description: product.description,
-                  price: product.memberPrice ?? product.price,
-                }))}
-              addOnOptions={products
-                .filter((product) => product.isActive)
-                .map((product) => ({
-                  id: product.id,
-                  name: product.name,
-                  sku: product.sku,
-                  imageUrl: product.imageUrl,
-                  description: product.description,
-                  price: product.memberPrice ?? product.price,
-                }))}
+              productOptions={activeProductPickerOptions}
+              addOnOptions={activeProductPickerOptions}
               couponOptions={coupons.filter((coupon) => coupon.isActive)}
               occasions={occasions}
             />
           ) : isRentalsMode ? (
             <RentalProductForm
-              value={{ ...draft, isRental: true }}
-              onChange={setDraft}
+              value={{ ...draft, isRental: true, ...rentalLinkDraft }}
+              onChange={(next) => {
+                const split = splitRentalFormValue(next)
+                setDraft(split.draft)
+                setRentalLinkDraft(split.links)
+              }}
               rentalsCategoryName={rentalsRootCategory?.name ?? 'Rentals'}
               subCategories={rentalsSubCategories}
+              productOptions={activeProductPickerOptions}
+              addOnOptions={activeProductPickerOptions}
+              couponOptions={coupons.filter((coupon) => coupon.isActive)}
             />
           ) : (
             <ProductForm value={draft} onChange={setDraft} categories={categories} />
@@ -453,7 +545,8 @@ function AdminInventoryProductsNewPageInner() {
                 (isRentalsMode &&
                   (
                     draft.categoryId.trim().length === 0 ||
-                    !draft.rentalBillingType
+                    !draft.rentalBillingType ||
+                    rentalSaveBlockedByBasket
                   ))
               }
             >

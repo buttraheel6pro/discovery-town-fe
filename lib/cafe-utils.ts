@@ -1,5 +1,9 @@
 /** Shared cafe helpers — modifier UI rules, cart summaries, availability filtering. */
 
+import {
+  collectTakeOutPartyCategoryIds,
+  TAKE_OUT_PARTY_ROOT_CATEGORY_ID,
+} from '@/lib/take-out-party-catalog'
 import type {
   AttributeGroup,
   AttributeOption,
@@ -31,6 +35,9 @@ export const INVENTORY_CATEGORY_ID_TO_CAFE_CATEGORY: Record<string, CafeCategory
   'pcat-cafe-snacks': 'Snacks',
   'pcat-cafe-take-out-link': 'Salads & Snacks',
   'pcat-cafe-delivery-catering-link': 'Salads & Snacks',
+  'pcat-party-food': 'Party Food & Drinks',
+  'pcat-party-desserts': 'Party Desserts',
+  'pcat-party-decor': 'Party Decor',
 }
 
 /** URL segment → canonical cafe category label. */
@@ -58,6 +65,10 @@ export const CAFE_CATEGORY_BY_SLUG: Record<string, CafeCategory> = {
   'cafe-pizza': 'Pizza',
   'cafe-sandwiches': 'Sandwiches',
   toasts: 'Toasts',
+  'take-out-party': 'Party Food & Drinks',
+  'party-food-drinks': 'Party Food & Drinks',
+  'party-desserts': 'Party Desserts',
+  'party-decor': 'Party Decor',
 }
 
 export function cafeCategoryToSlug(category: CafeCategory): string {
@@ -406,7 +417,11 @@ export function cafeProductIdsForInventoryCategory(
 
 /** Whether a product id belongs to the cafe catalog (mock or admin-created). */
 export function isCafeCatalogProductId(id: string): boolean {
-  return id.startsWith('prod-cafe-') || id.startsWith('cp-')
+  return (
+    id.startsWith('prod-cafe-') ||
+    id.startsWith('cp-') ||
+    id.startsWith('prod-cafe-food-takeout-')
+  )
 }
 
 /** Canonical Snacks menu product ids. */
@@ -569,15 +584,28 @@ export function isCafeFoodInventoryProduct(product: Product): boolean {
   return isCafeCatalogProductId(product.id)
 }
 
+function cafeFoodCategoryIdsForAdmin(
+  inventoryCategoryId: string,
+  productCategories: readonly ProductCategory[],
+): Set<string> {
+  const takeOutTree = collectTakeOutPartyCategoryIds(productCategories)
+  if (inventoryCategoryId === TAKE_OUT_PARTY_ROOT_CATEGORY_ID) {
+    return takeOutTree
+  }
+  return new Set([inventoryCategoryId])
+}
+
 /** Active cafe&food inventory products for a sub-category (admin sidebar counts). */
 export function countCafeFoodProductsForInventoryCategory(
   products: readonly Product[],
   inventoryCategoryId: string,
+  productCategories: readonly ProductCategory[] = [],
 ): number {
+  const categoryIds = cafeFoodCategoryIdsForAdmin(inventoryCategoryId, productCategories)
   return products.filter(
     (product) =>
       product.isActive &&
-      product.categoryId === inventoryCategoryId &&
+      categoryIds.has(product.categoryId) &&
       isCafeFoodInventoryProduct(product),
   ).length
 }
@@ -586,11 +614,13 @@ export function countCafeFoodProductsForInventoryCategory(
 export function listCafeFoodProductsForInventoryCategory(
   products: readonly Product[],
   inventoryCategoryId: string,
+  productCategories: readonly ProductCategory[] = [],
 ): Product[] {
+  const categoryIds = cafeFoodCategoryIdsForAdmin(inventoryCategoryId, productCategories)
   return products.filter(
     (product) =>
       product.isActive &&
-      product.categoryId === inventoryCategoryId &&
+      categoryIds.has(product.categoryId) &&
       isCafeFoodInventoryProduct(product),
   )
 }

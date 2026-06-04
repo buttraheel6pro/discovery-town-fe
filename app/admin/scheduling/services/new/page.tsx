@@ -54,6 +54,7 @@ import {
   eventBookingSchedulePatchFromDraft,
 } from '@/lib/event-booking-schedule'
 import { useScheduling } from '@/lib/scheduling-store'
+import { findWeBringPlayOfferingByServiceId } from '@/lib/we-bring-play-offerings'
 import { bookingAddOnToSchedulingAddOn, formatPrice } from '@/lib/utils'
 import type {
   CategoryAddOnChargeFrequency,
@@ -201,6 +202,16 @@ function AdminSchedulingServiceNewPageInner() {
     }
     router.replace('/admin/memberships')
   }, [requestedServiceId, router])
+
+  useEffect(() => {
+    const offering = findWeBringPlayOfferingByServiceId(requestedServiceId)
+    if (!offering) {
+      return
+    }
+    router.replace(
+      `/admin/inventory/products/${offering.productId}/edit?returnTo=${encodeURIComponent(returnTo)}`,
+    )
+  }, [requestedServiceId, returnTo, router])
 
   const sortedCategories = useMemo(() => {
     return categories

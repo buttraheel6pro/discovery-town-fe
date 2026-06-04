@@ -12,7 +12,9 @@ import {
   OPEN_PLAY_MEMBERSHIP_PASS_SERVICE_ID,
   OPEN_PLAY_SEASONAL_PASS_SERVICE_ID,
 } from '@/lib/open-play-pass-catalog'
+import type { SchedulingCategoryPlacementFields } from '@/lib/catalog-placement'
 import { useScheduling } from '@/lib/scheduling-store'
+import { buildSchedulingCategoryById } from '@/lib/scheduling-visibility'
 import { cn } from '@/lib/utils'
 import {
   isEventSlotCartCheckoutService,
@@ -43,7 +45,7 @@ function getServiceHref(
     return `/events/${service.id}`
   }
   if (service.categoryId === 'cat-we-bring-play') {
-    return `/we-bring-to-play?service=${service.id}`
+    return '/play#product-menu-pcat-we-bring-party'
   }
 
   if (
@@ -69,6 +71,7 @@ function getServiceHref(
 function getCtaLabel(
   service: SchedulingService,
   packages: readonly EventPackage[],
+  categoryById: ReadonlyMap<string, SchedulingCategoryPlacementFields>,
 ): string {
   if (isPrivatePlayService(service) || usesPlayPackageBookingLayout(service, packages)) {
     return 'Buy now'
@@ -83,10 +86,12 @@ function getCtaLabel(
     return 'Plan booking'
   }
   if (service.bookingMode === 'SCHEDULED') {
+    const category = categoryById.get(service.categoryId) ?? null
     const addsToCartFromDetail =
-      isPlayClassCartCheckoutService(service) ||
+      isPlayClassCartCheckoutService(service, category) ||
       isGymClassCartCheckoutService(service) ||
-      (isEventSlotCartCheckoutService(service) && !isGymClassCartCheckoutService(service))
+      (isEventSlotCartCheckoutService(service, categoryById) &&
+        !isGymClassCartCheckoutService(service))
     if (addsToCartFromDetail) {
       return 'Add to cart'
     }
@@ -96,7 +101,11 @@ function getCtaLabel(
 }
 
 export function ServiceScrollCard({ service }: Readonly<ServiceScrollCardProps>) {
-  const { packages } = useScheduling()
+  const { packages, categories } = useScheduling()
+  const categoryById = useMemo(
+    () => buildSchedulingCategoryById(categories),
+    [categories],
+  )
   const isPassCatalog = isOpenPlayPassCatalogService(service)
   const activePackageCount = useMemo(
     () => packages.filter((pkg) => pkg.serviceId === service.id && pkg.isActive).length,
@@ -175,7 +184,7 @@ export function ServiceScrollCard({ service }: Readonly<ServiceScrollCardProps>)
             className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
             size="sm"
           >
-            {getCtaLabel(service, packages)}
+            {getCtaLabel(service, packages, categoryById)}
           </Button>
         }
       />

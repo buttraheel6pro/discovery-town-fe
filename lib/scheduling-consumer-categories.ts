@@ -1,5 +1,11 @@
 /** Gym / Play / Event grouping for consumer-aligned scheduling category ids. */
 
+import {
+  getCustomerSchedulingMenuSlug,
+  type SchedulingCategoryPlacementFields,
+} from '@/lib/catalog-placement'
+import type { SchedulingCatalogSlug } from '@/lib/catalog-slugs'
+
 export const SCHEDULING_TOP_LEVEL_ORDER = ['GYM', 'PLAY', 'EVENT'] as const
 
 export type SchedulingTopLevelId = (typeof SCHEDULING_TOP_LEVEL_ORDER)[number]
@@ -14,6 +20,20 @@ const PLAY_CATEGORY_IDS = new Set<string>([
   'cat-field-trips',
   'cat-we-bring-play',
 ])
+
+/** Pre–consumer-catalog ids (cat-1 … cat-6) — admin/seed only, not customer menus. */
+export const LEGACY_SCHEDULING_CATEGORY_IDS = new Set<string>([
+  'cat-1',
+  'cat-2',
+  'cat-3',
+  'cat-4',
+  'cat-5',
+  'cat-6',
+])
+
+export function isLegacySchedulingCategoryId(categoryId: string): boolean {
+  return LEGACY_SCHEDULING_CATEGORY_IDS.has(categoryId)
+}
 
 export const CONSUMER_ALIGNED_CATEGORY_IDS = new Set<string>([
   'cat-open-play',
@@ -50,6 +70,9 @@ export function isConsumerAlignedCategoryId(categoryId: string): boolean {
 }
 
 export function getSchedulingTopLevelId(categoryId: string): SchedulingTopLevelId {
+  if (isLegacySchedulingCategoryId(categoryId)) {
+    return 'EVENT'
+  }
   if (categoryId.startsWith('cat-gym-')) {
     return 'GYM'
   }
@@ -77,10 +100,35 @@ export interface SchedulingConsumerBackLink {
   readonly label: string
 }
 
-/** Consumer detail hero — return link for Play/Gym/Event top-level categories. */
-export function getSchedulingConsumerBackLink(
+function consumerBackLinkForMenuSlug(
+  menuSlug: SchedulingCatalogSlug,
   categoryId: string,
 ): SchedulingConsumerBackLink {
+  switch (menuSlug) {
+    case 'play':
+      return { href: `/play#${categoryId}`, label: 'Back to Play' }
+    case 'gym':
+      return { href: `/gym#${categoryId}`, label: 'Back to Gym' }
+    case 'events':
+    default:
+      return {
+        href: `/events#events-section-${categoryId}`,
+        label: 'Back to Events',
+      }
+  }
+}
+
+/** Consumer detail hero — return link using placement when available. */
+export function getSchedulingConsumerBackLink(
+  categoryId: string,
+  category?: SchedulingCategoryPlacementFields | null,
+): SchedulingConsumerBackLink {
+  const menuSlug = category
+    ? getCustomerSchedulingMenuSlug(category)
+    : null
+  if (menuSlug) {
+    return consumerBackLinkForMenuSlug(menuSlug, categoryId)
+  }
   const topLevel = getSchedulingTopLevelId(categoryId)
   switch (topLevel) {
     case 'PLAY':
@@ -89,6 +137,9 @@ export function getSchedulingConsumerBackLink(
       return { href: `/gym#${categoryId}`, label: 'Back to Gym' }
     case 'EVENT':
     default:
-      return { href: '/events', label: 'Back to Events' }
+      return {
+        href: `/events#events-section-${categoryId}`,
+        label: 'Back to Events',
+      }
   }
 }

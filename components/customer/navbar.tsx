@@ -17,6 +17,11 @@ import {
 } from '@/lib/customer-nav-labels'
 
 const PLAY_NAV_KEY: CustomerNavLabelKey = 'play'
+import {
+  PRODUCT_CATALOG_SLUGS,
+  catalogSlugToProductType,
+  storeSlugFromCatalogSlug,
+} from '@/lib/catalog-slugs'
 import { useInventory } from '@/lib/inventory-store'
 import { hasConsumerVisibleProductType } from '@/lib/product-visibility'
 import { cn } from '@/lib/utils'
@@ -25,10 +30,6 @@ interface NavbarLinkItem {
   readonly label: string
   readonly href: string
   readonly description?: string
-}
-
-function toStoreSlug(productType: string): string {
-  return productType.replace(/&/g, '-')
 }
 
 function isActivePath(pathname: string, href: string): boolean {
@@ -42,25 +43,26 @@ export function CustomerNavbar() {
   const { labels, hidden } = useCustomerNavLabels()
 
   const storeItems = useMemo<NavbarLinkItem[]>(() => {
-    const productTypeValues = [
-      ...new Set(productCategories.map((category) => category.productType ?? 'shop')),
-    ]
-      .filter((productType) => productType !== 'rentals')
-      .filter((productType) => hasConsumerVisibleProductType(productType, productCategories))
-    const sortedProductTypes = productTypeValues.sort((left, right) => left.localeCompare(right))
-
-    const dynamicItems = sortedProductTypes.flatMap((productType) => {
-      const navKey = productTypeToNavLabelKey(productType)
-      if (navKey == null || !isCustomerNavItemVisible(navKey, hidden)) {
-        return []
-      }
-      const label = labels[navKey]
-      return [{
-        label,
-        href: `/store/${toStoreSlug(productType)}`,
-        description: `Browse ${label} collections`,
-      }]
-    })
+    const dynamicItems = PRODUCT_CATALOG_SLUGS.filter((slug) => slug !== 'rentals')
+      .filter((slug) =>
+        hasConsumerVisibleProductType(
+          catalogSlugToProductType(slug),
+          productCategories,
+        ),
+      )
+      .flatMap((slug) => {
+        const productType = catalogSlugToProductType(slug)
+        const navKey = productTypeToNavLabelKey(productType)
+        if (navKey == null || !isCustomerNavItemVisible(navKey, hidden)) {
+          return []
+        }
+        const label = labels[navKey]
+        return [{
+          label,
+          href: `/store/${storeSlugFromCatalogSlug(slug)}`,
+          description: `Browse ${label} collections`,
+        }]
+      })
 
     const items: NavbarLinkItem[] = [...dynamicItems]
     if (

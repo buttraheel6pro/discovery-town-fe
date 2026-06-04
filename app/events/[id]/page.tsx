@@ -139,7 +139,11 @@ function EventDetailContent({
   eventSlotBase,
 }: Readonly<{ service: SchedulingService; eventSlotBase: SchedulingSlot | undefined }>) {
   const searchParams = useSearchParams()
-  const { slots, packages } = useScheduling()
+  const { slots, packages, categories } = useScheduling()
+  const categoryById = useMemo(
+    () => buildSchedulingCategoryById(categories),
+    [categories],
+  )
   const { contacts, subscriptions, documents, addContact, addRelationship } = useClients()
   const { addCustomCartItem } = useInventory()
 
@@ -194,8 +198,8 @@ function EventDetailContent({
   }, [scheduleSlotId, slots])
 
   const consumerBackLink = useMemo(
-    () => getSchedulingConsumerBackLink(service.categoryId),
-    [service.categoryId],
+    () => getSchedulingConsumerBackLink(service.categoryId, service.category),
+    [service.category, service.categoryId],
   )
 
   const eventDisplayMeta = useMemo(() => {
@@ -355,7 +359,7 @@ function EventDetailContent({
     (usesTicketBookingSidebar && (eventSlot != null || service.eventStatus === 'PUBLISHED'))
   const eventSlotRegistrationCartCheckout =
     !isPrivateEventJourney &&
-    (isEventSlotCartCheckoutService(service) || usesTicketBookingSidebar)
+    (isEventSlotCartCheckoutService(service, categoryById) || usesTicketBookingSidebar)
   const privateRoomPackages = useMemo(() => {
     if (isPrivateEventJourney && isPrivateEventHubService(service)) {
       return partyRoomPackagesFromCatalog(packages)

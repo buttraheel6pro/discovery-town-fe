@@ -147,9 +147,14 @@ function formatStartTimeDisplay(startAt: string | null): string {
 }
 
 function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }>) {
-  const { slots, packages } = useScheduling()
+  const { slots, packages, categories } = useScheduling()
   const { contacts, subscriptions, documents, addContact, addRelationship } = useClients()
   const { addCustomCartItem } = useInventory()
+
+  const categoryById = useMemo(
+    () => buildSchedulingCategoryById(categories),
+    [categories],
+  )
 
   const primaryContact =
     contacts.find((c) => c.contactType === 'CUSTOMER') ?? contacts[0] ?? null
@@ -173,13 +178,13 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
   )
   const membersOnlyBlocked = service.category.membersOnly === true && !hasActiveMembership
   const consumerBackLink = useMemo(
-    () => getSchedulingConsumerBackLink(service.categoryId),
-    [service.categoryId],
+    () => getSchedulingConsumerBackLink(service.categoryId, service.category),
+    [service.category, service.categoryId],
   )
   const gymClassCartCheckout = isGymClassCartCheckoutService(service)
   const eventClassCartCheckout =
-    isEventSlotCartCheckoutService(service) && !gymClassCartCheckout
-  const playClassCartCheckout = isPlayClassCartCheckoutService(service)
+    isEventSlotCartCheckoutService(service, categoryById) && !gymClassCartCheckout
+  const playClassCartCheckout = isPlayClassCartCheckoutService(service, service.category)
   const instructor: Instructors | undefined = service.instructorId
     ? instructors.find((i) => i.instructorId === service.instructorId || i.id === service.instructorId)
     : undefined

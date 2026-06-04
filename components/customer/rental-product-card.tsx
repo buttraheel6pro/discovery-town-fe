@@ -8,6 +8,7 @@ import { Clock3 } from 'lucide-react'
 import { RentalFulfillmentBadge } from '@/components/customer/rental-fulfillment-badge'
 import { Button } from '@/components/ui/button'
 import { useInventory } from '@/lib/inventory-store'
+import { rentalProductPrimaryAction } from '@/lib/rental-product'
 import { cn, formatPrice } from '@/lib/utils'
 import type { Product } from '@/lib/types'
 
@@ -39,10 +40,7 @@ function getPricingLabel(product: Product): string {
 export function RentalProductCard({ product, className }: Readonly<RentalProductCardProps>) {
   const { addToCart } = useInventory()
   const isAvailable = product.stockCount > 0
-  const requiresRentalSchedule =
-    product.rentalBillingType === 'PER_DAY' ||
-    product.rentalBillingType === 'PER_HOUR' ||
-    product.rentalBillingType === 'PER_HALF_DAY'
+  const primaryAction = rentalProductPrimaryAction(product)
 
   return (
     <article className={cn('overflow-hidden rounded-xl border border-border bg-card', className)}>
@@ -75,20 +73,16 @@ export function RentalProductCard({ product, className }: Readonly<RentalProduct
         <p className={cn('text-xs font-semibold', isAvailable ? 'text-green-700' : 'text-red-700')}>
           {isAvailable ? 'Available' : 'Fully booked'}
         </p>
-        {requiresRentalSchedule ? (
+        {primaryAction.usesScheduleLink ? (
           <Button className="w-full" asChild>
-            <Link href={`/shop/${product.id}#rental-dates`}>
-              {product.rentalBillingType === 'PER_DAY'
-                ? 'Select rental dates'
-                : 'Select dates & slot'}
-            </Link>
+            <Link href={primaryAction.href}>{primaryAction.label}</Link>
           </Button>
         ) : (
           <Button
             className="w-full"
             onClick={() => addToCart({ product })}
           >
-            Add to Rental Cart
+            {primaryAction.label}
           </Button>
         )}
       </div>

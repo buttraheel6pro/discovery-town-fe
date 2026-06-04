@@ -1,9 +1,11 @@
 /** Where membership plans appear — gym / play / events pages and scheduling sub-categories. */
+import { getCustomerSchedulingMenuSlug } from '@/lib/catalog-placement'
+import type { SchedulingCatalogSlug } from '@/lib/catalog-slugs'
 import {
-  getSchedulingTopLevelId,
   getSchedulingTopLevelLabel,
   type SchedulingTopLevelId,
 } from '@/lib/scheduling-consumer-categories'
+import { filterConsumerSchedulingCategoriesForMenu } from '@/lib/scheduling-visibility'
 import type { MembershipPlan, SchedulingCategory } from '@/lib/types'
 
 export type MembershipDisplayPage = 'gym' | 'play' | 'events' | 'membership'
@@ -18,27 +20,29 @@ export const MEMBERSHIP_DISPLAY_PAGE_OPTIONS: readonly {
   { value: 'events', label: 'Events (/events)' },
 ] as const
 
-const PLAY_SCHEDULING_CATEGORY_IDS = new Set<string>([
-  'cat-open-play',
-  'cat-private-play',
-  'cat-special-play-events',
-  'cat-summer-camp-play',
-  'cat-camps-play',
-  'cat-parents-night',
-  'cat-field-trips',
-  'cat-we-bring-play',
-])
+function membershipPageFromMenuSlug(
+  menuSlug: SchedulingCatalogSlug,
+): MembershipDisplayPage {
+  return menuSlug
+}
 
 export function resolveSchedulingCategoryPage(
   categoryId: string,
+  category?: Pick<
+    SchedulingCategory,
+    'id' | 'catalogSlug' | 'placementCatalogSlug' | 'placementParentId'
+  > | null,
 ): MembershipDisplayPage | null {
+  const menuSlug = category
+    ? getCustomerSchedulingMenuSlug(category)
+    : null
+  if (menuSlug) {
+    return membershipPageFromMenuSlug(menuSlug)
+  }
   if (categoryId.startsWith('cat-gym-')) {
     return 'gym'
   }
-  if (PLAY_SCHEDULING_CATEGORY_IDS.has(categoryId) || categoryId.startsWith('cat-play-')) {
-    return 'play'
-  }
-  if (categoryId.startsWith('cat-play')) {
+  if (categoryId.startsWith('cat-play') || categoryId === 'cat-open-play') {
     return 'play'
   }
   return 'events'
@@ -92,13 +96,12 @@ export function schedulingCategoriesForDisplayPage(
   if (page === 'membership') {
     return []
   }
-  const topLevel = displayPageToTopLevel(page)
-  if (!topLevel) {
+  const menuSlug: SchedulingCatalogSlug | null =
+    page === 'gym' ? 'gym' : page === 'play' ? 'play' : page === 'events' ? 'events' : null
+  if (!menuSlug) {
     return []
   }
-  return categories
-    .filter((entry) => entry.isActive && getSchedulingTopLevelId(entry.id) === topLevel)
-    .sort((a, b) => a.displayOrder - b.displayOrder)
+  return filterConsumerSchedulingCategoriesForMenu(menuSlug, categories)
 }
 
 export function primaryDisplayPageFromDraft(

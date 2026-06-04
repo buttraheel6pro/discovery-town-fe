@@ -16,6 +16,12 @@ import {
   shopProducts,
 } from '@/lib/mock-data'
 import type { RootState } from '@/lib/redux/store'
+import { enrichProductCategories } from '@/lib/catalog-placement'
+import {
+  buildSeedProductCategories,
+  mergeInventoryWithCatalogDefaults,
+} from '@/lib/inventory-catalog-merge'
+import { enrichProductWithCanonicalType } from '@/lib/product-catalog'
 import type { AddOn, CafeProduct, Product, ProductCategory } from '@/lib/types'
 
 export const INVENTORY_STORAGE_KEY = 'discovery-town:inventory-store:v1'
@@ -81,10 +87,12 @@ function dedupeProductsById(products: readonly Product[]): Product[] {
   return unique
 }
 
-function cloneInitialState(): InventoryState {
-  const productCategories = [...baseProductCategories, ...shopProductCategories].map(
-    (category) => withDefaultCategoryActive({ ...category }),
-  )
+function buildInitialInventoryState(): InventoryState {
+  const productCategories = buildSeedProductCategories([
+    ...baseProductCategories,
+    ...shopProductCategories,
+  ])
+  const categoryById = new Map(productCategories.map((category) => [category.id, category]))
   const tenantId = 'tenant-1'
   const cafeCatalogProducts = buildCafeCatalogInventoryProducts(
     MOCK_CAFE_PRODUCTS,
@@ -98,7 +106,9 @@ function cloneInitialState(): InventoryState {
 
   return {
     products: seededProducts.map((product) =>
-      withFallbackImageUrl({ ...product }),
+      withFallbackImageUrl(
+        enrichProductWithCanonicalType(product, categoryById, productCategories),
+      ),
     ),
     productCategories,
     bookingAddOns: [...legacySeedAddOns, ...eventModuleBookingAddOns].map((addOn) => ({
@@ -108,13 +118,15 @@ function cloneInitialState(): InventoryState {
   }
 }
 
+const SEED_INVENTORY_STATE = buildInitialInventoryState()
+
 const inventorySlice = createSlice({
   name: 'inventory',
-  initialState: cloneInitialState(),
+  initialState: SEED_INVENTORY_STATE,
   reducers: {
     hydrateInventoryState(_state, action: PayloadAction<InventoryState>) {
       const dedupedProducts = dedupeProductsById(action.payload.products ?? [])
-      return {
+      const persisted: InventoryState = {
         products: dedupedProducts.map((product) =>
           withFallbackImageUrl({ ...product }),
         ),
@@ -128,6 +140,7 @@ const inventorySlice = createSlice({
           applicableServiceTypes: [...addOn.applicableServiceTypes],
         })),
       }
+      return mergeInventoryWithCatalogDefaults(persisted, SEED_INVENTORY_STATE)
     },
     addProduct(state, action: PayloadAction<Product>) {
       const nextProduct = withFallbackImageUrl(action.payload)

@@ -1,6 +1,16 @@
-/** Catalog for We Bring Play To You — play page cards and off-site request products. */
+/** Catalog for We Bring Play To You — rentals menu and legacy scheduling seed rows. */
+
+import type {
+  SchedulingCategory,
+  SchedulingService,
+  SchedulingServiceAddOn,
+} from '@/lib/types'
 
 export const WE_BRING_PLAY_CATEGORY_ID = 'cat-we-bring-play' as const
+
+export function isWeBringPlaySchedulingCategoryId(categoryId: string): boolean {
+  return categoryId === WE_BRING_PLAY_CATEGORY_ID
+}
 
 /** Legacy rows removed from customer play — may still exist in persisted scheduling state. */
 export const RETIRED_WE_BRING_PLAY_SERVICE_IDS = [
@@ -127,4 +137,56 @@ export function findWeBringPlayOfferingByProductId(
   productId: string,
 ): WeBringPlayOffering | undefined {
   return WE_BRING_PLAY_OFFERINGS.find((entry) => entry.productId === productId)
+}
+
+export function isWeBringPlayCatalogServiceId(serviceId: string): boolean {
+  return findWeBringPlayOfferingByServiceId(serviceId) != null
+}
+
+/** Admin scheduling “service” rows that are edited as rental products. */
+export function resolveAdminSchedulingServiceEditHref(
+  serviceId: string,
+  returnTo: string,
+): string {
+  const offering = findWeBringPlayOfferingByServiceId(serviceId)
+  if (offering) {
+    return `/admin/inventory/products/${offering.productId}/edit?returnTo=${encodeURIComponent(returnTo)}`
+  }
+  return `/admin/scheduling/services/new?serviceId=${encodeURIComponent(serviceId)}&returnTo=${encodeURIComponent(returnTo)}`
+}
+
+/** Inactive scheduling seed rows (customer listing is rentals catalog). */
+export function buildWeBringPlaySchedulingServices(params: {
+  readonly category: SchedulingCategory
+  readonly eventAddOns: readonly SchedulingServiceAddOn[]
+}): SchedulingService[] {
+  return WE_BRING_PLAY_OFFERINGS.map((offering) => ({
+    id: offering.serviceId,
+    locationId: 'loc-1',
+    categoryId: WE_BRING_PLAY_CATEGORY_ID,
+    category: params.category,
+    serviceType: 'PRIVATE_HIRE' as const,
+    bookingMode: 'OPEN' as const,
+    name: offering.name,
+    description: offering.description,
+    durationMinutes: 180,
+    capacity: 50,
+    basePrice: offering.basePrice,
+    subscriptionPrice: null,
+    requiresWaiver: false,
+    ageMin: 1,
+    ageMax: 14,
+    isActive: false,
+    minDurationMinutes: null,
+    maxDurationMinutes: null,
+    slotIncrementMinutes: null,
+    maxConcurrent: null,
+    minAdvanceHours: 72,
+    maxAdvanceHours: 2160,
+    pricingModel: 'flat' as const,
+    imageUrl: offering.imageUrl,
+    tags: [...offering.tags],
+    sport: 'FAMILY_EVENT' as const,
+    addOns: [...params.eventAddOns],
+  }))
 }

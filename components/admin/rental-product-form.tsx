@@ -1,9 +1,13 @@
 /** Rental product form with locked Rentals category and rental settings. */
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 
+import {
+  ProductLinkMultiSelect,
+  type ProductLinkPickerOption,
+} from '@/components/admin/product-link-multi-select'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -11,15 +15,42 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
-import type { ProductCategory, RentalBillingType } from '@/lib/types'
+import type { Coupon, ProductCategory, RentalBillingType } from '@/lib/types'
 
 import type { ProductDraft } from './product-form'
 
+export interface RentalProductLinkFields {
+  productIds: string[]
+  addOnProductIds: string[]
+  couponIds: string[]
+  couponsWithPackage: boolean
+  basketCapacity: string
+}
+
+export type RentalProductDraft = ProductDraft & RentalProductLinkFields
+
 export interface RentalProductFormProps {
-  readonly value: ProductDraft
-  readonly onChange: (next: ProductDraft) => void
+  readonly value: RentalProductDraft
+  readonly onChange: (next: RentalProductDraft) => void
   readonly rentalsCategoryName: string
   readonly subCategories: ProductCategory[]
+  readonly productOptions: Array<{
+    id: string
+    name: string
+    sku?: string
+    imageUrl?: string
+    description?: string
+    price: number
+  }>
+  readonly addOnOptions: Array<{
+    id: string
+    name: string
+    sku?: string
+    imageUrl?: string
+    description?: string
+    price?: number
+  }>
+  readonly couponOptions: Coupon[]
 }
 
 export function RentalProductForm({
@@ -27,15 +58,75 @@ export function RentalProductForm({
   onChange,
   rentalsCategoryName,
   subCategories,
+  productOptions,
+  addOnOptions,
+  couponOptions,
 }: Readonly<RentalProductFormProps>) {
   const [uploading, setUploading] = useState(false)
+  const [basketCapacityError, setBasketCapacityError] = useState<string | null>(null)
 
   const set = useCallback(
-    <K extends keyof ProductDraft>(key: K, next: ProductDraft[K]) => {
+    <K extends keyof RentalProductDraft>(key: K, next: RentalProductDraft[K]) => {
       onChange({ ...value, [key]: next })
     },
     [onChange, value],
   )
+
+  const productPickerOptions = useMemo<ProductLinkPickerOption[]>(
+    () =>
+      productOptions.map((product) => ({
+        id: product.id,
+        label: product.name,
+        secondary: product.sku,
+        imageUrl: product.imageUrl,
+        description: product.description,
+        price: product.price,
+      })),
+    [productOptions],
+  )
+
+  const addOnPickerOptions = useMemo<ProductLinkPickerOption[]>(
+    () =>
+      addOnOptions.map((product) => ({
+        id: product.id,
+        label: product.name,
+        secondary: product.sku,
+        imageUrl: product.imageUrl,
+        description: product.description,
+        price: product.price,
+      })),
+    [addOnOptions],
+  )
+
+  const couponPickerOptions = useMemo<ProductLinkPickerOption[]>(
+    () =>
+      couponOptions.map((coupon) => {
+        const maybeCoupon = coupon as unknown as Record<string, unknown>
+        const imageUrl =
+          typeof maybeCoupon.imageUrl === 'string' ? maybeCoupon.imageUrl : undefined
+        return {
+          id: coupon.id,
+          label: `${coupon.code} - ${coupon.name}`,
+          imageUrl,
+        }
+      }),
+    [couponOptions],
+  )
+
+  const basketCapacityLimit = useMemo(() => {
+    const parsed = Number.parseInt(value.basketCapacity.trim(), 10)
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      return undefined
+    }
+    return parsed
+  }, [value.basketCapacity])
+
+  useEffect(() => {
+    if (typeof basketCapacityLimit !== 'number') return
+    setBasketCapacityError(null)
+    if (value.productIds.length <= basketCapacityLimit) return
+    set('productIds', value.productIds.slice(0, basketCapacityLimit))
+  }, [basketCapacityLimit, set, value.productIds])
 
   const rentalPricingLabel = useMemo(() => {
     switch (value.rentalBillingType) {
@@ -467,6 +558,80 @@ export function RentalProductForm({
           />
         </div>
       </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="rental-capacity">Capacity</Label>
+        <Input
+          id="rental-capacity"
+          type="number"
+          step="1"
+          min="0"
+          className={cn(
+            'w-full',
+            basketCapacityError ? 'border-destructive focus-visible:ring-destructive/30' : '',
+          )}
+          value={value.basketCapacity}
+          onChange={(event) => {
+            const next = event.target.value
+            set('basketCapacity', next)
+            const parsed = Number.parseInt(next.trim(), 10)
+            if (Number.isFinite(parsed) && parsed >= 0) {
+              setBasketCapacityError(null)
+            }
+          }}
+          placeholder="0"
+        />
+        {basketCapacityError ? (
+          <p className="text-xs text-destructive">{basketCapacityError}</p>
+        ) : null}
+      </div>
+
+      <ProductLinkMultiSelect
+        label="Products"
+        placeholder="Select products"
+        searchPlaceholder="Search products..."
+        options={productPickerOptions}
+        selectedIds={value.productIds}
+        onChange={(next) => set('productIds', next)}
+        maxSelections={basketCapacityLimit}
+        requiresLimit={true}
+        onBlockedSelection={() =>
+          setBasketCapacityError('First select capacity.')
+        }
+        helperText={
+          typeof basketCapacityLimit === 'number'
+            ? `Select exactly ${basketCapacityLimit} products to match capacity.`
+            : 'Set capacity first to lock product selection count.'
+        }
+      />
+
+      <ProductLinkMultiSelect
+        label="Nice to have addon products"
+        placeholder="Select addon products"
+        searchPlaceholder="Search addon products..."
+        options={addOnPickerOptions}
+        selectedIds={value.addOnProductIds}
+        onChange={(next) => set('addOnProductIds', next)}
+      />
+
+      <ProductLinkMultiSelect
+        label="Voucher coupons"
+        placeholder="Select voucher coupons"
+        searchPlaceholder="Search coupons..."
+        options={couponPickerOptions}
+        selectedIds={value.couponIds}
+        onChange={(next) => set('couponIds', next)}
+        modalExtraContent={
+          <div className="flex items-center justify-between">
+            <Label htmlFor="rental-coupons-with-package">With package</Label>
+            <Switch
+              id="rental-coupons-with-package"
+              checked={value.couponsWithPackage}
+              onCheckedChange={(next) => set('couponsWithPackage', next)}
+            />
+          </div>
+        }
+      />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="space-y-2">

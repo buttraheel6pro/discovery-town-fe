@@ -26,7 +26,7 @@ interface PrivatePlayDetailProps {
 }
 
 export function PrivatePlayDetail({ service }: Readonly<PrivatePlayDetailProps>) {
-  const { packages } = useScheduling()
+  const { categories, packages } = useScheduling()
   const listingPackages = useMemo(
     () => resolvePrivatePlayListingPackages(service, packages),
     [packages, service],
@@ -53,7 +53,10 @@ export function PrivatePlayDetail({ service }: Readonly<PrivatePlayDetailProps>)
     [listingPackages, selectedPackageId],
   )
 
-  const consumerBackLink = getSchedulingConsumerBackLink(service.categoryId)
+  const consumerBackLink = getSchedulingConsumerBackLink(
+    service.categoryId,
+    categories.find((entry) => entry.id === service.categoryId) ?? null,
+  )
 
   return (
     <>

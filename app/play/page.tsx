@@ -6,69 +6,28 @@ import { useMemo } from 'react'
 import { CustomerFooter } from '@/components/customer/footer'
 import { HorizontalScrollSection } from '@/components/customer/horizontal-scroll-section'
 import { CustomerNavbar } from '@/components/customer/navbar'
+import { SchedulingMenuProductRails } from '@/components/customer/scheduling-menu-product-rails'
 import { OpenPlayMembershipOfferCard } from '@/components/customer/open-play-membership-offer-card'
 import { ScrollableSectionBreadcrumbs } from '@/components/customer/scrollable-section-breadcrumbs'
 import { ServiceScrollCard } from '@/components/customer/service-scroll-card'
-import { visibleOpenPlayMembershipOffers } from '@/lib/open-play-membership-offers'
 import { useClients } from '@/lib/client-store'
-import { isOpenPlayPassCatalogService } from '@/lib/open-play-pass-catalog'
+import { useCafe } from '@/lib/cafe-store'
+import { useInventory } from '@/lib/inventory-store'
 import {
-  buildSchedulingCategoryById,
-  isConsumerListedSchedulingService,
-  isConsumerVisibleSchedulingCategory,
-} from '@/lib/scheduling-visibility'
+  buildOpenPlayConsumerSection,
+  isOpenPlaySchedulingCategory,
+} from '@/lib/open-play-consumer-section'
+import { collectServicesForSchedulingConsumerMenu } from '@/lib/scheduling-consumer-menu-services'
+import { buildProductSectionsForSchedulingMenu } from '@/lib/product-scheduling-menu-sections'
+import {
+  buildSchedulingMenuPageBrowseCrumbs,
+  schedulingCategoriesForConsumerMenu,
+} from '@/lib/scheduling-menu-browse'
+import { buildSchedulingCategoryById } from '@/lib/scheduling-visibility'
 import { SPECIAL_PLAY_EVENTS_CATEGORY_ID } from '@/lib/scheduling-slot-availability'
 import { sortSpecialPlayServices } from '@/lib/special-play-service-order'
 import { useScheduling } from '@/lib/scheduling-store'
-import {
-  WE_BRING_PLAY_CATEGORY_ID,
-  WE_BRING_PLAY_SERVICE_IDS,
-} from '@/lib/we-bring-play-offerings'
-import type { SchedulingService, SchedulingSlot } from '@/lib/types'
-
-const WE_BRING_PLAY_SERVICE_ORDER = new Map(
-  WE_BRING_PLAY_SERVICE_IDS.map((id, index) => [id, index]),
-)
-
-const OPEN_PLAY_CATEGORY_ID = 'cat-open-play'
-
-function servicesForPlayCategory(
-  categoryId: string,
-  services: readonly SchedulingService[],
-  slots: readonly SchedulingSlot[],
-  categoryById: ReadonlyMap<string, { readonly isActive: boolean }>,
-): SchedulingService[] {
-  const matched = services.filter(
-    (service) =>
-      !isOpenPlayPassCatalogService(service) &&
-      service.categoryId === categoryId &&
-      isConsumerListedSchedulingService(service, categoryById, slots),
-  )
-  if (categoryId === SPECIAL_PLAY_EVENTS_CATEGORY_ID) {
-    return sortSpecialPlayServices(matched)
-  }
-  if (categoryId === WE_BRING_PLAY_CATEGORY_ID) {
-    return matched
-      .filter((service) => WE_BRING_PLAY_SERVICE_ORDER.has(service.id))
-      .sort(
-        (a, b) =>
-          (WE_BRING_PLAY_SERVICE_ORDER.get(a.id) ?? 0) -
-          (WE_BRING_PLAY_SERVICE_ORDER.get(b.id) ?? 0),
-      )
-  }
-  return matched
-}
-
-const PLAY_CATEGORY_IDS = new Set<string>([
-  OPEN_PLAY_CATEGORY_ID,
-  'cat-private-play',
-  'cat-special-play-events',
-  'cat-summer-camp-play',
-  'cat-camps-play',
-  'cat-parents-night',
-  'cat-field-trips',
-  'cat-we-bring-play',
-])
+import type { EventPackage, SchedulingCategory, SchedulingService, SchedulingSlot } from '@/lib/types'
 
 const PLAY_CATEGORY_DESCRIPTIONS: Record<string, string> = {
   'cat-open-play':
@@ -81,53 +40,113 @@ const PLAY_CATEGORY_DESCRIPTIONS: Record<string, string> = {
   'cat-camps-play': 'Winter break, spring break, and MLK day camp options.',
   'cat-parents-night': 'Saturday 4-7 PM supervised care for ages 6 months to 7 years.',
   'cat-field-trips': 'Structured group experiences for schools and organizations.',
-  'cat-we-bring-play':
-    'Mobile inflatables, games, entertainment, and party setup brought to your venue.',
+}
+
+function servicesForPlayCategory(
+  category: SchedulingCategory,
+  services: readonly SchedulingService[],
+  slots: readonly SchedulingSlot[],
+  packages: readonly EventPackage[],
+  categoryById: ReadonlyMap<string, SchedulingCategory>,
+): SchedulingService[] {
+  const matched = collectServicesForSchedulingConsumerMenu(
+    category,
+    'play',
+    services,
+    slots,
+    packages,
+    categoryById,
+  )
+  if (category.id === SPECIAL_PLAY_EVENTS_CATEGORY_ID) {
+    return sortSpecialPlayServices(matched)
+  }
+  return matched
 }
 
 export default function PlayPage() {
-  const { categories, services, slots } = useScheduling()
+  const { categories, services, slots, packages } = useScheduling()
+  const { products, productCategories } = useInventory()
+  const { cafeProducts } = useCafe()
   const { membershipPlans } = useClients()
 
   const categoryById = useMemo(() => buildSchedulingCategoryById(categories), [categories])
 
-  const openPlayMembershipOffers = useMemo(
-    () => visibleOpenPlayMembershipOffers(membershipPlans),
-    [membershipPlans],
+  const playSchedulingCategories = useMemo(
+    () => schedulingCategoriesForConsumerMenu('play', categories),
+    [categories],
   )
 
-  const sectionServices = useMemo(
+  const openPlaySection = useMemo(
     () =>
-      categories
-        .filter(
-          (category) =>
-            isConsumerVisibleSchedulingCategory(category) &&
-            (PLAY_CATEGORY_IDS.has(category.id) || category.id.startsWith('cat-play-')),
-        )
-        .slice()
-        .sort((a, b) => a.displayOrder - b.displayOrder)
-        .map((category) => ({
-          id: category.id,
-          title: category.name,
-          description: PLAY_CATEGORY_DESCRIPTIONS[category.id] ?? 'Discover play experiences.',
-          services: servicesForPlayCategory(category.id, services, slots, categoryById),
-          membershipOffers:
-            category.id === OPEN_PLAY_CATEGORY_ID ? openPlayMembershipOffers : [],
-        }))
-        .filter(
-          (section) =>
-            section.services.length > 0 || section.membershipOffers.length > 0,
-        ),
-    [categories, categoryById, openPlayMembershipOffers, services, slots],
+      buildOpenPlayConsumerSection({
+        menuSlug: 'play',
+        categories,
+        services,
+        slots,
+        plans: membershipPlans,
+        categoryById,
+        description:
+          PLAY_CATEGORY_DESCRIPTIONS['cat-open-play'] ??
+          '2-hour, sibling, and multi-pass session bookings. Membership and seasonal passes are listed below.',
+      }),
+    [categories, categoryById, membershipPlans, services, slots],
   )
+
+  const contentPlaySections = useMemo(() => {
+    const schedulingSections = playSchedulingCategories.map((category) => ({
+      id: category.id,
+      title: category.name,
+      description: PLAY_CATEGORY_DESCRIPTIONS[category.id] ?? 'Discover play experiences.',
+      services: servicesForPlayCategory(category, services, slots, packages, categoryById),
+      membershipOffers: [] as const,
+    }))
+
+    const openPlayBlock =
+      openPlaySection &&
+      (openPlaySection.services.length > 0 || openPlaySection.membershipOffers.length > 0)
+        ? [
+            {
+              id: openPlaySection.category.id,
+              title: openPlaySection.category.name,
+              description: openPlaySection.description,
+              services: openPlaySection.services,
+              membershipOffers: openPlaySection.membershipOffers,
+            },
+          ]
+        : []
+
+    return [...openPlayBlock, ...schedulingSections].filter(
+      (section) => section.services.length > 0 || section.membershipOffers.length > 0,
+    )
+  }, [
+    categories,
+    categoryById,
+    openPlaySection,
+    packages,
+    playSchedulingCategories,
+    services,
+    slots,
+  ])
+
+  const productSections = useMemo(
+    () =>
+      buildProductSectionsForSchedulingMenu({
+        menuSlug: 'play',
+        productCategories,
+        products,
+        cafeProducts,
+      }),
+    [cafeProducts, productCategories, products],
+  )
+
   const breadcrumbItems = useMemo(
     () =>
-      sectionServices.map((section) => ({
-        id: section.id,
-        label: section.title,
-        href: `#${section.id}`,
-      })),
-    [sectionServices],
+      buildSchedulingMenuPageBrowseCrumbs({
+        productSections,
+        contentSections: contentPlaySections,
+        productSectionsLast: true,
+      }),
+    [contentPlaySections, productSections],
   )
 
   return (
@@ -155,7 +174,7 @@ export default function PlayPage() {
               <h2 className="text-2xl font-black text-foreground">Browse play categories</h2>
               <ScrollableSectionBreadcrumbs items={breadcrumbItems} />
             </section>
-            {sectionServices.map((section) => (
+            {contentPlaySections.map((section) => (
               <div key={section.id} id={section.id}>
                 <HorizontalScrollSection
                   title={section.title}
@@ -170,6 +189,7 @@ export default function PlayPage() {
                 </HorizontalScrollSection>
               </div>
             ))}
+            <SchedulingMenuProductRails menuSlug="play" />
           </div>
         </section>
       </main>

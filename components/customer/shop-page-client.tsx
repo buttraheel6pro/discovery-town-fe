@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils'
 import { useInventory } from '@/lib/inventory-store'
 import {
   buildProductCategoryById,
+  filterConsumerVisibleCategoriesForMenu,
   isShopCatalogVisibleProduct,
   isShopCatalogVisibleProductCategory,
 } from '@/lib/product-visibility'
@@ -54,24 +55,18 @@ export function ShopPageClient() {
   )
 
   const topCategories = useMemo<ProductCategory[]>(() => {
-    return productCategories
-      .filter(
-        (category) =>
-          (category.productType ?? 'shop') === 'shop' &&
-          isShopCatalogVisibleProductCategory(category, categoryById),
-      )
-      .slice()
-      .sort((a, b) => a.displayOrder - b.displayOrder)
-  }, [categoryById, productCategories])
+    return filterConsumerVisibleCategoriesForMenu(
+      'shop',
+      productCategories,
+      isShopCatalogVisibleProductCategory,
+    )
+  }, [productCategories])
 
   const activeCategory = useMemo(() => {
     if (!activeCategoryId) return null
-    const match = productCategories.find((c) => c.id === activeCategoryId) ?? null
-    if (!match || !isShopCatalogVisibleProductCategory(match, categoryById)) {
-      return null
-    }
+    const match = topCategories.find((c) => c.id === activeCategoryId) ?? null
     return match
-  }, [activeCategoryId, categoryById, productCategories])
+  }, [activeCategoryId, topCategories])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()

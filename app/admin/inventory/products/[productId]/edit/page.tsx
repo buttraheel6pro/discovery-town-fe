@@ -15,10 +15,15 @@ import {
   draftToProductPatch,
   productToDraft,
 } from '@/components/admin/product-form'
-import { RentalProductForm } from '@/components/admin/rental-product-form'
+import {
+  RentalProductForm,
+  type RentalProductLinkFields,
+} from '@/components/admin/rental-product-form'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/hooks/use-toast'
+import { resolveProductEditorSlug, type ProductEditorSlug } from '@/lib/product-catalog'
+import { usesRentalBasketBundle } from '@/lib/rental-product'
 import { useInventory } from '@/lib/inventory-store'
 import { useScheduling } from '@/lib/scheduling-store'
 import type { Product } from '@/lib/types'
@@ -79,6 +84,31 @@ export default function AdminInventoryProductEditPage() {
           categories,
         ),
   )
+  const [rentalLinkDraft, setRentalLinkDraft] = useState<RentalProductLinkFields>({
+    productIds: [],
+    addOnProductIds: [],
+    couponIds: [],
+    couponsWithPackage: false,
+    basketCapacity: '',
+  })
+  const parsedRentalBasketCapacity = useMemo(
+    () => toIntOrUndefined(rentalLinkDraft.basketCapacity),
+    [rentalLinkDraft.basketCapacity],
+  )
+  const activeProductPickerOptions = useMemo(
+    () =>
+      products
+        .filter((entry) => entry.isActive)
+        .map((entry) => ({
+          id: entry.id,
+          name: entry.name,
+          sku: entry.sku,
+          imageUrl: entry.imageUrl,
+          description: entry.description,
+          price: entry.memberPrice ?? entry.price,
+        })),
+    [products],
+  )
   const [giftDraft, setGiftDraft] = useState<GiftProductDraft>({
     name: '',
     sku: '',
@@ -105,26 +135,32 @@ export default function AdminInventoryProductEditPage() {
   const categoryById = useMemo(() => {
     return new Map(productCategories.map((entry) => [entry.id, entry]))
   }, [productCategories])
-  const isGiftProduct = useMemo(() => {
-    if (!product) return false
+  const editorSlug = useMemo((): ProductEditorSlug => {
+    if (!product) return 'shop'
     const category = categoryById.get(product.categoryId) ?? null
-    return (category?.productType ?? '').toLowerCase() === 'gifts'
-  }, [categoryById, product])
-  const isRentalProduct = useMemo(() => {
-    if (!product) return false
-    const category = categoryById.get(product.categoryId) ?? null
-    return (category?.productType ?? '').toLowerCase() === 'rentals'
-  }, [categoryById, product])
-  const isCafeAndFoodProduct = useMemo(() => {
-    if (!product) return false
-    const category = categoryById.get(product.categoryId) ?? null
-    return (category?.productType ?? '').toLowerCase() === 'cafe&food'
-  }, [categoryById, product])
-  const isShopProductType = useMemo(() => {
-    if (!product) return false
-    const category = categoryById.get(product.categoryId) ?? null
-    return (category?.productType ?? '').toLowerCase() === 'shop'
-  }, [categoryById, product])
+    return resolveProductEditorSlug(product, category, productCategories)
+  }, [categoryById, product, productCategories])
+  const isGiftProduct = editorSlug === 'gifts'
+  const isRentalProduct = editorSlug === 'rentals'
+  const rentalBasketLinksRequired = useMemo(() => {
+    if (!isRentalProduct) return false
+    if (rentalLinkDraft.basketCapacity.trim().length > 0) return true
+    return product != null && usesRentalBasketBundle(product)
+  }, [isRentalProduct, product, rentalLinkDraft.basketCapacity])
+  const rentalSaveBlockedByBasket = useMemo(() => {
+    if (!rentalBasketLinksRequired) return false
+    return (
+      parsedRentalBasketCapacity == null ||
+      parsedRentalBasketCapacity < 0 ||
+      rentalLinkDraft.productIds.length !== parsedRentalBasketCapacity
+    )
+  }, [
+    parsedRentalBasketCapacity,
+    rentalBasketLinksRequired,
+    rentalLinkDraft.productIds.length,
+  ])
+  const isCafeAndFoodProduct = editorSlug === 'cafe-food'
+  const isShopProductType = editorSlug === 'shop'
   const giftsRootCategory = useMemo(() => {
     return categories.find(
       (category) =>
@@ -187,11 +223,45 @@ export default function AdminInventoryProductEditPage() {
     })
   }, [giftsSubCategories, isGiftProduct, product])
 
+  useEffect(() => {
+    if (!product || !isRentalProduct) return
+    setRentalLinkDraft({
+      productIds: product.giftProductIds ?? [],
+      addOnProductIds: product.giftAddOnProductIds ?? [],
+      couponIds: product.giftVoucherCouponIds ?? [],
+      couponsWithPackage: product.giftCouponsWithPackage ?? false,
+      basketCapacity: product.basketCapacity != null ? String(product.basketCapacity) : '',
+    })
+  }, [isRentalProduct, product])
+
   const lockedPromotedAddOn = useMemo(() => {
     if (!product?.linkedAddOnId) return null
     const name = bookingAddOns.find((a) => a.id === product.linkedAddOnId)?.name ?? product.name
     return { id: product.linkedAddOnId, name }
   }, [bookingAddOns, product])
+
+  function splitRentalFormValue(
+    next: RentalProductLinkFields & ProductDraft,
+  ): { draft: ProductDraft; links: RentalProductLinkFields } {
+    const {
+      productIds,
+      addOnProductIds,
+      couponIds,
+      couponsWithPackage,
+      basketCapacity,
+      ...draft
+    } = next
+    return {
+      draft: { ...draft, isRental: true },
+      links: {
+        productIds,
+        addOnProductIds,
+        couponIds,
+        couponsWithPackage,
+        basketCapacity,
+      },
+    }
+  }
 
   function persistEdit() {
     if (!product) return
@@ -242,6 +312,27 @@ export default function AdminInventoryProductEditPage() {
     }
 
     if (isRentalProduct) {
+      const basketLinksRequired =
+        rentalLinkDraft.basketCapacity.trim().length > 0 || usesRentalBasketBundle(product)
+      const parsedBasketCapacity = toIntOrUndefined(rentalLinkDraft.basketCapacity)
+      if (basketLinksRequired) {
+        if (parsedBasketCapacity == null || parsedBasketCapacity < 0) {
+          toast({
+            title: 'Invalid capacity',
+            description: 'Enter a valid capacity before saving a rental product.',
+            variant: 'destructive',
+          })
+          return
+        }
+        if (rentalLinkDraft.productIds.length !== parsedBasketCapacity) {
+          toast({
+            title: 'Capacity mismatch',
+            description: `Select exactly ${parsedBasketCapacity} items in Products to match capacity.`,
+            variant: 'destructive',
+          })
+          return
+        }
+      }
       if (!draft.rentalBillingType) {
         toast({
           title: 'Rental billing required',
@@ -266,6 +357,13 @@ export default function AdminInventoryProductEditPage() {
         ...patch,
         price: resolvedRentalPrice ?? patch.price ?? product.price,
         isRental: true,
+        giftProductIds: basketLinksRequired ? rentalLinkDraft.productIds : [],
+        giftAddOnProductIds: basketLinksRequired ? rentalLinkDraft.addOnProductIds : [],
+        giftVoucherCouponIds: basketLinksRequired ? rentalLinkDraft.couponIds : [],
+        giftCouponsWithPackage: basketLinksRequired
+          ? rentalLinkDraft.couponsWithPackage
+          : false,
+        basketCapacity: basketLinksRequired ? parsedBasketCapacity : undefined,
       })
       router.push(returnTo)
       return
@@ -392,10 +490,17 @@ export default function AdminInventoryProductEditPage() {
             />
           ) : isRentalProduct ? (
             <RentalProductForm
-              value={{ ...draft, isRental: true }}
-              onChange={setDraft}
+              value={{ ...draft, isRental: true, ...rentalLinkDraft }}
+              onChange={(next) => {
+                const split = splitRentalFormValue(next)
+                setDraft(split.draft)
+                setRentalLinkDraft(split.links)
+              }}
               rentalsCategoryName={rentalsRootCategory?.name ?? 'Rentals'}
               subCategories={rentalsSubCategories}
+              productOptions={activeProductPickerOptions}
+              addOnOptions={activeProductPickerOptions}
+              couponOptions={coupons.filter((coupon) => coupon.isActive)}
             />
           ) : (
             <ProductForm
@@ -409,7 +514,16 @@ export default function AdminInventoryProductEditPage() {
             <Link href={returnTo}>
               <Button type="button" variant="outline">Cancel</Button>
             </Link>
-            <Button type="button" onClick={persistEdit}>Save</Button>
+            <Button
+              type="button"
+              onClick={persistEdit}
+              disabled={
+                (isRentalProduct && !draft.rentalBillingType) ||
+                (isRentalProduct && rentalSaveBlockedByBasket)
+              }
+            >
+              Save
+            </Button>
           </div>
         </CardContent>
       </Card>

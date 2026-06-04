@@ -30,6 +30,7 @@ import {
 } from '@/lib/booking-pass-count'
 import { resolveServiceChildAgeRules } from '@/lib/booking-child-age'
 import { PARENTS_NIGHT_OUT_SERVICE_ID } from '@/lib/booking-household'
+import { getCustomerSchedulingMenuSlug } from '@/lib/catalog-placement'
 import { getSchedulingTopLevelId } from '@/lib/scheduling-consumer-categories'
 import { usesEventTicketBookingSidebar } from '@/lib/scheduling-slot-availability'
 import {
@@ -340,7 +341,10 @@ export function useBookingForm({
     [service],
   )
   const freeAdultCount = useMemo(() => resolveFreeAdultCount(service), [service])
-  const isPlayCategory = getSchedulingTopLevelId(service.categoryId) === 'PLAY'
+  const isPlayCategory =
+    (service.category != null &&
+      getCustomerSchedulingMenuSlug(service.category) === 'play') ||
+    getSchedulingTopLevelId(service.categoryId) === 'PLAY'
   const guestCountLabel =
     usesOpenPlayHouseholdBooking || isPlayCategory ? 'No of passes' : 'Guests'
   const passCountHelperText = useMemo(

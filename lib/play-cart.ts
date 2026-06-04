@@ -2,8 +2,12 @@
 
 import { isOpenPlayPassCatalogService } from '@/lib/open-play-pass-catalog'
 import { usesEventTicketBookingSidebar } from '@/lib/scheduling-slot-availability'
-import { isEventCatalogService } from '@/lib/scheduling-visibility'
+import {
+  getCustomerSchedulingMenuSlug,
+  type SchedulingCategoryPlacementFields,
+} from '@/lib/catalog-placement'
 import { getSchedulingTopLevelId } from '@/lib/scheduling-consumer-categories'
+import { isEventCatalogService } from '@/lib/scheduling-visibility'
 import { formatPrice, formatSlotDate, formatSlotTimeRange } from '@/lib/utils'
 import type { SchedulingBooking, SchedulingService } from '@/lib/types'
 
@@ -45,17 +49,33 @@ export function isGymClassCartCheckoutService(service: SchedulingService): boole
   return service.categoryId.startsWith('cat-gym-')
 }
 
+function serviceOnPlayMenu(
+  service: SchedulingService,
+  category?: SchedulingCategoryPlacementFields | null,
+): boolean {
+  const menuSlug = category ? getCustomerSchedulingMenuSlug(category) : null
+  if (menuSlug) {
+    return menuSlug === 'play'
+  }
+  return getSchedulingTopLevelId(service.categoryId) === 'PLAY'
+}
+
 /** Play top-level class sessions (camps, parents night, etc.) checkout via cart like open play. */
-export function isPlayClassCartCheckoutService(service: SchedulingService): boolean {
+export function isPlayClassCartCheckoutService(
+  service: SchedulingService,
+  category?: SchedulingCategoryPlacementFields | null,
+): boolean {
   if (isGymClassCartCheckoutService(service)) return false
-  if (isEventSlotCartCheckoutService(service)) return false
+  if (isEventSlotCartCheckoutService(service, category ? new Map([[category.id, category]]) : undefined)) {
+    return false
+  }
   const classLike =
     service.serviceType === 'GYM_CLASS' ||
     service.serviceType === 'SWIM_CLASS' ||
     service.serviceType === 'COACHING_SESSION' ||
     service.serviceType === 'FITNESS_ASSESSMENT'
   if (!classLike) return false
-  return getSchedulingTopLevelId(service.categoryId) === 'PLAY'
+  return serviceOnPlayMenu(service, category ?? null)
 }
 
 export function isPlayCartBookingMetadata(
@@ -77,8 +97,11 @@ export function isEventCartBookingMetadata(
 }
 
 /** Scheduled event catalog services use cart checkout on the event detail page. */
-export function isEventSlotCartCheckoutService(service: SchedulingService): boolean {
-  return isEventCatalogService(service)
+export function isEventSlotCartCheckoutService(
+  service: SchedulingService,
+  categoryById?: ReadonlyMap<string, SchedulingCategoryPlacementFields>,
+): boolean {
+  return isEventCatalogService(service, categoryById)
 }
 
 export interface EventCartDescriptionExtras {

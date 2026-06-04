@@ -4,13 +4,23 @@
 import { Suspense, useEffect, useMemo, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 
+import { SchedulingProductMenuRails } from '@/components/customer/scheduling-product-menu-rails'
 import { RentalCategoryGrid } from '@/components/customer/rental-category-grid'
+import { useClients } from '@/lib/client-store'
+import { buildSchedulingSectionsForProductMenu } from '@/lib/scheduling-product-menu-sections'
+import {
+  buildSchedulingMenuBrowseCrumbsFromPageOrder,
+  schedulingProductMenuRailsCrumbs,
+} from '@/lib/scheduling-menu-browse'
+import { hasConsumerSchedulingOnProductMenu } from '@/lib/scheduling-visibility'
+import { useScheduling } from '@/lib/scheduling-store'
 import { CustomerFooter } from '@/components/customer/footer'
 import { CustomerNavbar } from '@/components/customer/navbar'
 import { RentalLandingHero } from '@/components/customer/rental-landing-hero'
 import { useInventory } from '@/lib/inventory-store'
 import {
   buildProductCategoryById,
+  filterConsumerVisibleCategoriesForMenu,
   isConsumerVisibleProduct,
   isConsumerVisibleProductCategory,
 } from '@/lib/product-visibility'
@@ -26,6 +36,8 @@ export default function RentalsLandingPage() {
 function RentalsLandingPageContent() {
   const searchParams = useSearchParams()
   const hasSeededDemo = useRef(false)
+  const { categories: schedulingCategories, services, slots, packages } = useScheduling()
+  const { membershipPlans } = useClients()
   const {
     products,
     productCategories,
@@ -43,26 +55,79 @@ function RentalsLandingPageContent() {
 
   const categories = useMemo(
     () =>
-      productCategories
-        .filter(
-          (category) =>
-            category.productType === 'rentals' &&
-            category.parentId === 'pcat-rentals' &&
-            isConsumerVisibleProductCategory(category, categoryById),
-        )
-        .sort((a, b) => a.displayOrder - b.displayOrder),
-    [categoryById, productCategories],
+      filterConsumerVisibleCategoriesForMenu(
+        'rentals',
+        productCategories,
+        (category, byId) =>
+          (category.parentId ?? null) !== null &&
+          isConsumerVisibleProductCategory(category, byId),
+      ),
+    [productCategories],
   )
+
+  const rentalCategoryIds = useMemo(
+    () => new Set(categories.map((category) => category.id)),
+    [categories],
+  )
+
   const rentalProducts = useMemo(
     () =>
       products
         .filter(
           (product) =>
             isConsumerVisibleProduct(product, categoryById) &&
-            product.categoryId.startsWith('pcat-rentals-'),
+            rentalCategoryIds.has(product.categoryId),
         )
         .sort((a, b) => Number(b.isFeatured) - Number(a.isFeatured)),
-    [categoryById, products],
+    [categoryById, products, rentalCategoryIds],
+  )
+
+  const schedulingSections = useMemo(
+    () =>
+      buildSchedulingSectionsForProductMenu({
+        productType: 'rentals',
+        productCategories,
+        schedulingCategories,
+        services,
+        slots,
+        packages,
+        plans: membershipPlans,
+      }),
+    [
+      membershipPlans,
+      packages,
+      productCategories,
+      schedulingCategories,
+      services,
+      slots,
+    ],
+  )
+
+  const rentalCategoriesOnPage = useMemo(
+    () =>
+      categories.filter((category) =>
+        rentalProducts.some((product) => product.categoryId === category.id),
+      ),
+    [categories, rentalProducts],
+  )
+
+  const breadcrumbItems = useMemo(
+    () =>
+      buildSchedulingMenuBrowseCrumbsFromPageOrder([
+        ...schedulingProductMenuRailsCrumbs(schedulingSections),
+        ...rentalCategoriesOnPage.map((category) => ({
+          id: category.id,
+          label: category.name,
+          href: `#${category.slug}`,
+        })),
+      ]),
+    [rentalCategoriesOnPage, schedulingSections],
+  )
+
+  const showSchedulingRails = hasConsumerSchedulingOnProductMenu(
+    'rentals',
+    schedulingCategories,
+    productCategories,
   )
 
   useEffect(() => {
@@ -105,7 +170,14 @@ function RentalsLandingPageContent() {
       <main className="space-y-8 pb-10">
         <RentalLandingHero />
         <div className="mx-auto max-w-7xl space-y-8 px-4 sm:px-6 lg:px-8">
-          <RentalCategoryGrid categories={categories} products={rentalProducts} />
+          {showSchedulingRails ? (
+            <SchedulingProductMenuRails productType="rentals" />
+          ) : null}
+          <RentalCategoryGrid
+            breadcrumbItems={breadcrumbItems}
+            categories={categories}
+            products={rentalProducts}
+          />
         </div>
       </main>
       <CustomerFooter />

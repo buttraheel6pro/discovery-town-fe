@@ -1,6 +1,25 @@
 /** Shared visibility helpers for scheduling services across admin and customer routes. */
+import {
+  buildProductRootIdsBySlug,
+  schedulingCategoryAppearsOnCustomerProductMenu,
+  schedulingCategoryAppearsOnCustomerSchedulingMenu,
+  type SchedulingCategoryPlacementFields,
+} from '@/lib/catalog-placement'
+import type { SchedulingCatalogSlug } from '@/lib/catalog-slugs'
+import {
+  isConsumerAlignedCategoryId,
+  isLegacySchedulingCategoryId,
+} from '@/lib/scheduling-consumer-categories'
+import { isPackageOnlyCatalogService } from '@/lib/event-catalog-display'
 import { isOpenPlayPassCatalogService } from '@/lib/open-play-pass-catalog'
-import type { SchedulingCategory, SchedulingService, SchedulingSlot } from '@/lib/types'
+import { isPackageServiceOffering } from '@/lib/scheduling-listing-kind'
+import type {
+  EventPackage,
+  ProductCategory,
+  SchedulingCategory,
+  SchedulingService,
+  SchedulingSlot,
+} from '@/lib/types'
 
 const LEGACY_SERVICE_ID_PREFIXES = [
   'svc-play-',
@@ -23,9 +42,20 @@ const LEGACY_SERVICE_IDS = new Set([
 
 const EVENT_CATALOG_CATEGORY_PREFIX = 'cat-event-'
 
+type SchedulingCategoryConsumerVisibilityFields = Pick<
+  SchedulingCategory,
+  'id' | 'isActive'
+>
+
 export function isConsumerVisibleSchedulingCategory(
-  category: Pick<SchedulingCategory, 'isActive'>,
+  category: Pick<SchedulingCategory, 'id' | 'isActive'>,
 ): boolean {
+  if (isLegacySchedulingCategoryId(category.id)) {
+    return false
+  }
+  if (!isConsumerAlignedCategoryId(category.id)) {
+    return false
+  }
   return category.isActive !== false
 }
 
@@ -37,7 +67,7 @@ export function buildSchedulingCategoryById(
 
 export function isSchedulingCategoryActiveForConsumer(
   categoryId: string,
-  categoryById: ReadonlyMap<string, Pick<SchedulingCategory, 'isActive'>>,
+  categoryById: ReadonlyMap<string, SchedulingCategoryConsumerVisibilityFields>,
 ): boolean {
   const category = categoryById.get(categoryId)
   if (!category) {
@@ -48,7 +78,7 @@ export function isSchedulingCategoryActiveForConsumer(
 
 export function isConsumerVisibleSchedulingService(
   service: Pick<SchedulingService, 'id' | 'isActive' | 'categoryId'>,
-  categoryById: ReadonlyMap<string, Pick<SchedulingCategory, 'isActive'>>,
+  categoryById: ReadonlyMap<string, SchedulingCategoryConsumerVisibilityFields>,
   options?: { readonly requireCurrentCatalog?: boolean },
 ): boolean {
   if (!service.isActive) {
@@ -62,7 +92,7 @@ export function isConsumerVisibleSchedulingService(
 
 export function isConsumerListedSchedulingService(
   service: SchedulingService,
-  categoryById: ReadonlyMap<string, Pick<SchedulingCategory, 'isActive'>>,
+  categoryById: ReadonlyMap<string, SchedulingCategoryConsumerVisibilityFields>,
   slots: readonly SchedulingSlot[],
   options?: { readonly requireCurrentCatalog?: boolean },
 ): boolean {
@@ -72,13 +102,97 @@ export function isConsumerListedSchedulingService(
   )
 }
 
+/** Listed on customer menus — slots, or active packages for package-only offerings. */
+export function isConsumerListableSchedulingService(
+  service: SchedulingService,
+  categoryById: ReadonlyMap<string, SchedulingCategoryConsumerVisibilityFields>,
+  slots: readonly SchedulingSlot[],
+  packages: readonly EventPackage[] = [],
+  options?: { readonly requireCurrentCatalog?: boolean },
+): boolean {
+  if (!isConsumerVisibleSchedulingService(service, categoryById, options)) {
+    return false
+  }
+  if (isOpenPlayPassCatalogService(service)) {
+    return false
+  }
+  if (hasAssignedConsumerSlot(service, slots)) {
+    return true
+  }
+  if (isPackageServiceOffering(service) || isPackageOnlyCatalogService(service)) {
+    return packages.some((pkg) => pkg.isActive && pkg.serviceId === service.id)
+  }
+  return service.bookingMode !== 'SCHEDULED'
+}
+
 export function isConsumerEventCatalogService(
   service: SchedulingService,
-  categoryById: ReadonlyMap<string, Pick<SchedulingCategory, 'isActive'>>,
+  categoryById: ReadonlyMap<
+    string,
+    SchedulingCategoryPlacementFields & SchedulingCategoryConsumerVisibilityFields
+  >,
+  productRootIdsBySlug: Readonly<Record<string, string | undefined>> = {},
 ): boolean {
   return (
-    isEventCatalogService(service) &&
+    isEventCatalogService(service, categoryById, productRootIdsBySlug) &&
     isSchedulingCategoryActiveForConsumer(service.categoryId, categoryById)
+  )
+}
+
+export function filterConsumerSchedulingCategoriesForMenu(
+  menuSlug: SchedulingCatalogSlug,
+  categories: readonly SchedulingCategory[],
+  productRootIdsBySlug: Readonly<Record<string, string | undefined>> = {},
+): SchedulingCategory[] {
+  return categories
+    .filter(
+      (category) =>
+        isConsumerVisibleSchedulingCategory(category) &&
+        schedulingCategoryAppearsOnCustomerSchedulingMenu(
+          category,
+          menuSlug,
+          productRootIdsBySlug,
+        ),
+    )
+    .slice()
+    .sort((left, right) => left.displayOrder - right.displayOrder)
+}
+
+/** Scheduling sub-categories placed on a customer store menu (Gifts, Shop, Rentals, Cafe). */
+export function filterConsumerSchedulingCategoriesForProductMenu(
+  productType: string,
+  categories: readonly SchedulingCategory[],
+  productRootIdsBySlug: Readonly<Record<string, string | undefined>> = {},
+  productCategories: readonly Pick<ProductCategory, 'id' | 'parentId' | 'productType'>[] = [],
+): SchedulingCategory[] {
+  return categories
+    .filter(
+      (category) =>
+        isConsumerVisibleSchedulingCategory(category) &&
+        schedulingCategoryAppearsOnCustomerProductMenu(
+          category,
+          productType,
+          productRootIdsBySlug,
+          productCategories,
+        ),
+    )
+    .slice()
+    .sort((left, right) => left.displayOrder - right.displayOrder)
+}
+
+export function hasConsumerSchedulingOnProductMenu(
+  productType: string,
+  categories: readonly SchedulingCategory[],
+  productCategories: readonly Pick<ProductCategory, 'id' | 'parentId' | 'productType'>[],
+): boolean {
+  const productRootIdsBySlug = buildProductRootIdsBySlug(productCategories)
+  return (
+    filterConsumerSchedulingCategoriesForProductMenu(
+      productType,
+      categories,
+      productRootIdsBySlug,
+      productCategories,
+    ).length > 0
   )
 }
 
@@ -96,17 +210,41 @@ export function isEventsOnlyCatalogService(
   return service.eventsOnly === true
 }
 
-export function isEventCatalogService(service: SchedulingService): boolean {
+export function isEventCatalogService(
+  service: SchedulingService,
+  categoryById?: ReadonlyMap<
+    string,
+    SchedulingCategoryPlacementFields & SchedulingCategoryConsumerVisibilityFields
+  >,
+  productRootIdsBySlug: Readonly<Record<string, string | undefined>> = {},
+): boolean {
   if (!service.isActive || !isCurrentCatalogService(service.id)) {
     return false
   }
 
-  if (service.bookingMode !== 'SCHEDULED') {
+  if (isOpenPlayPassCatalogService(service)) {
     return false
   }
 
   if (isEventsOnlyCatalogService(service)) {
     return true
+  }
+
+  const category = categoryById?.get(service.categoryId)
+  if (
+    category &&
+    isConsumerVisibleSchedulingCategory(category) &&
+    schedulingCategoryAppearsOnCustomerSchedulingMenu(
+      category,
+      'events',
+      productRootIdsBySlug,
+    )
+  ) {
+    return true
+  }
+
+  if (service.bookingMode !== 'SCHEDULED') {
+    return false
   }
 
   return service.categoryId.startsWith(EVENT_CATALOG_CATEGORY_PREFIX)

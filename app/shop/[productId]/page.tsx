@@ -7,6 +7,7 @@ import { CustomerFooter } from "@/components/customer/footer";
 import { CustomerNavbar } from "@/components/customer/navbar";
 import { CustomerNavProductRouteGuard } from "@/components/customer/customer-nav-route-guard";
 import { RentalAvailabilityCalendar } from "@/components/customer/rental-availability-calendar";
+import { ShopProductLinkedAddOnSection } from "@/components/customer/shop-product-linked-add-on-section";
 import { ShopProductDetailClient } from "@/components/customer/shop-product-detail-client";
 import { useCafe } from "@/lib/cafe-store";
 import { mergedCafeProductsForCustomer } from "@/lib/cafe-utils";
@@ -15,7 +16,9 @@ import {
   buildProductCategoryById,
   isConsumerVisibleProduct,
   isGiftAddOnVisibleProduct,
+  isRentalAddOnVisibleProduct,
 } from "@/lib/product-visibility";
+import { resolveProductEditorSlug } from "@/lib/product-catalog";
 import { isRentalProduct } from "@/lib/rental-product";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +35,7 @@ export default function ShopProductPage({
   const [rentalToDate, setRentalToDate] = useState("");
   const [rentalSlotStartAt, setRentalSlotStartAt] = useState("");
   const [rentalSlotEndAt, setRentalSlotEndAt] = useState("");
+  const [relatedQuantities, setRelatedQuantities] = useState<Record<string, number>>({});
   const { productId } = use(params);
   const customerCafeProducts = mergedCafeProductsForCustomer(
     cafeProducts,
@@ -44,7 +48,22 @@ export default function ShopProductPage({
     setRentalToDate("");
     setRentalSlotStartAt("");
     setRentalSlotEndAt("");
+    setRelatedQuantities({});
   }, [productId]);
+
+  const updateRelatedQuantity = useCallback((linkedProductId: string, delta: number) => {
+    setRelatedQuantities((prev) => {
+      const current = prev[linkedProductId] ?? 0;
+      const next = Math.max(0, current + delta);
+      const out = { ...prev };
+      if (next === 0) {
+        delete out[linkedProductId];
+      } else {
+        out[linkedProductId] = next;
+      }
+      return out;
+    });
+  }, []);
 
   const handleDateRangeChange = useCallback((fromDate: string, toDate: string) => {
     setRentalFromDate(fromDate);
@@ -80,26 +99,37 @@ export default function ShopProductPage({
     product?.giftVoucherCouponIds
       ?.map((linkedId) => coupons.find((row) => row.id === linkedId) ?? null)
       .filter((row): row is NonNullable<typeof row> => Boolean(row)) ?? [];
-  const isGiftProduct = (category?.productType ?? "").toLowerCase() === "gifts";
+  const editorSlug =
+    product != null
+      ? resolveProductEditorSlug(product, category, productCategories)
+      : "shop";
+  const isGiftProduct =
+    product != null
+      ? editorSlug === "gifts"
+      : (category?.productType ?? "").toLowerCase() === "gifts";
+  const isRental = product != null && (editorSlug === "rentals" || isRentalProduct(product));
   const isCafeInventoryProduct =
     (category?.productType ?? "").toLowerCase() === "cafe&food";
   const related = isGiftProduct
     ? linkedAddOnProducts
         .filter((row) => row.id !== product?.id && isGiftAddOnVisibleProduct(row))
         .slice(0, 6)
-    : product
-      ? products
-          .filter(
-            (p) =>
-              p.categoryId === product.categoryId &&
-              p.id !== product.id &&
-              isConsumerVisibleProduct(p, categoryById),
-          )
-          .slice(0, 3)
-      : [];
-  const relatedTitle = isGiftProduct
-    ? "You may also like"
-    : "You might also like";
+    : isRental
+      ? linkedAddOnProducts
+          .filter((row) => row.id !== product?.id && isRentalAddOnVisibleProduct(row))
+          .slice(0, 6)
+      : product
+        ? products
+            .filter(
+              (p) =>
+                p.categoryId === product.categoryId &&
+                p.id !== product.id &&
+                isConsumerVisibleProduct(p, categoryById),
+            )
+            .slice(0, 3)
+        : [];
+  const relatedTitle =
+    isGiftProduct || isRental ? "You may also like" : "You might also like";
   const rentalBilling = (product?.rentalBillingType ?? "").toUpperCase();
   const hasSelectedRentalSchedule =
     (rentalBilling === "PER_DAY" &&
@@ -162,28 +192,47 @@ export default function ShopProductPage({
               rentalSlotStartAt={rentalSlotStartAt}
               rentalSlotEndAt={rentalSlotEndAt}
               shopAttributeGroups={product?.shopAttributeGroups ?? []}
+              deferRentalLinkedAddOnSection={isRental}
+              relatedQuantities={isRental ? relatedQuantities : undefined}
+              onRelatedQuantitiesChange={isRental ? setRelatedQuantities : undefined}
             />
           )}
-          {product && isRentalProduct(product) ? (
-            <div
-              className={cn(
-                hasSelectedRentalSchedule && "xl:pr-[460px] 2xl:pr-[480px]",
-              )}
-            >
-              <RentalAvailabilityCalendar
-                productId={product.id}
-                stockQuantity={product.stockCount}
-                rentalBillingType={product.rentalBillingType ?? null}
-                maxRentalDays={product.maxRentalDays ?? null}
-                rentalSlotIncrementMinutes={product.rentalSlotIncrementMinutes ?? null}
-                selectedFromDate={rentalFromDate}
-                selectedToDate={rentalToDate}
-                onDateRangeChange={handleDateRangeChange}
-                selectedSlotStartAt={rentalSlotStartAt}
-                selectedSlotEndAt={rentalSlotEndAt}
-                onRentalSlotChange={handleRentalSlotChange}
-              />
-            </div>
+          {product && isRental ? (
+            <>
+              <div
+                className={cn(
+                  hasSelectedRentalSchedule && "xl:pr-[460px] 2xl:pr-[480px]",
+                )}
+              >
+                <RentalAvailabilityCalendar
+                  productId={product.id}
+                  stockQuantity={product.stockCount}
+                  rentalBillingType={product.rentalBillingType ?? null}
+                  maxRentalDays={product.maxRentalDays ?? null}
+                  rentalSlotIncrementMinutes={product.rentalSlotIncrementMinutes ?? null}
+                  selectedFromDate={rentalFromDate}
+                  selectedToDate={rentalToDate}
+                  onDateRangeChange={handleDateRangeChange}
+                  selectedSlotStartAt={rentalSlotStartAt}
+                  selectedSlotEndAt={rentalSlotEndAt}
+                  onRentalSlotChange={handleRentalSlotChange}
+                />
+              </div>
+              {related.length > 0 ? (
+                <div
+                  className={cn(
+                    hasSelectedRentalSchedule && "xl:pr-[460px] 2xl:pr-[480px]",
+                  )}
+                >
+                  <ShopProductLinkedAddOnSection
+                    related={related}
+                    relatedTitle={relatedTitle}
+                    selectedQuantities={relatedQuantities}
+                    onUpdateQuantity={updateRelatedQuantity}
+                  />
+                </div>
+              ) : null}
+            </>
           ) : null}
         </div>
       </main>

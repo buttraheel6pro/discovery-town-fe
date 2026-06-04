@@ -6,9 +6,9 @@ import {
 } from '@/lib/customer-nav-labels'
 
 export const CUSTOMER_NAV_PATH_PREFIXES: Record<CustomerNavLabelKey, readonly string[]> = {
-  play: ['/play', '/we-bring-to-play'],
+  play: ['/play'],
   gym: ['/gym', '/classes', '/class-packs'],
-  events: ['/events', '/private-hire', '/we-bring-the-party'],
+  events: ['/events', '/private-hire'],
   shop: ['/store/shop', '/shop/checkout', '/shop/order-confirmation'],
   gifts: ['/store/gifts'],
   rentals: ['/rentals'],

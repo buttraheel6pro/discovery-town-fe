@@ -159,8 +159,8 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
   )
   const membersOnlyBlocked = service.category.membersOnly === true && !hasActiveMembership
   const consumerBackLink = useMemo(
-    () => getSchedulingConsumerBackLink(service.categoryId),
-    [service.categoryId],
+    () => getSchedulingConsumerBackLink(service.categoryId, service.category),
+    [service.category, service.categoryId],
   )
   const facilityCartCheckoutKind = getFacilityCartCheckoutKind(service)
   const childAgeRules = useMemo(() => resolveServiceChildAgeRules(service), [service])

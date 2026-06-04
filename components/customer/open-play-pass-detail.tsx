@@ -25,6 +25,7 @@ import { Label } from '@/components/ui/label'
 import { useClients } from '@/lib/client-store'
 import { buildMembershipCatalog, resolveCheckoutPlanForBilling } from '@/lib/membership-helpers'
 import { getSchedulingConsumerBackLink } from '@/lib/scheduling-consumer-categories'
+import { useScheduling } from '@/lib/scheduling-store'
 import {
   filterMembershipPlansForPassKind,
   getOpenPlayPassCatalogKind,
@@ -42,6 +43,7 @@ function passKindLabel(kind: OpenPlayPassCatalogKind): string {
 
 export function OpenPlayPassDetail({ service }: Readonly<OpenPlayPassDetailProps>) {
   const router = useRouter()
+  const { categories } = useScheduling()
   const { contacts, membershipPlans } = useClients()
   const passKind = getOpenPlayPassCatalogKind(service)
   const [billingAnnual, setBillingAnnual] = useState(false)
@@ -131,7 +133,10 @@ export function OpenPlayPassDetail({ service }: Readonly<OpenPlayPassDetailProps
     return null
   }
 
-  const consumerBackLink = getSchedulingConsumerBackLink(service.categoryId)
+  const consumerBackLink = getSchedulingConsumerBackLink(
+    service.categoryId,
+    categories.find((entry) => entry.id === service.categoryId) ?? null,
+  )
 
   return (
     <>

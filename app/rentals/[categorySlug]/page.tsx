@@ -2,6 +2,7 @@
 import { notFound } from 'next/navigation'
 
 import { RentalProductList } from '@/components/customer/rental-product-list'
+import { findProductCategoryBySlugOnCustomerMenu } from '@/lib/catalog-placement'
 import { productCategories } from '@/lib/mock-data'
 
 interface RentalCategoryPageProps {
@@ -12,8 +13,10 @@ interface RentalCategoryPageProps {
 
 export default async function RentalCategoryPage({ params }: Readonly<RentalCategoryPageProps>) {
   const { categorySlug } = await params
-  const category = productCategories.find(
-    (entry) => entry.productType === 'rentals' && entry.slug === categorySlug,
+  const category = findProductCategoryBySlugOnCustomerMenu(
+    productCategories,
+    categorySlug,
+    'rentals',
   )
 
   if (!category) {

@@ -116,6 +116,29 @@ import {
 } from "@/lib/cafe-utils";
 import { useInventory } from "@/lib/inventory-store";
 import {
+  CATALOG_MENU_ORDER,
+  catalogSlugFromProductType,
+  catalogSlugFromSchedulingCategoryId,
+  catalogSlugToSchedulingTopLevel,
+  getCatalogMenuLabel,
+  isProductCatalogSlug,
+  isSchedulingCatalogSlug,
+  normalizeCatalogSlug,
+  type CatalogSlug,
+  type SchedulingCatalogSlug,
+} from "@/lib/catalog-slugs";
+import {
+  effectiveProductCategoryCatalogSlug,
+  effectiveProductPlacementSlug,
+  getSchedulingTopLevelIdFromCategory,
+  patchProductSubCategoryPlacement,
+  patchSchedulingCategoryPlacement,
+  getProductSubCategoryMenuBucket,
+  productSubCategoryAppearsUnderMenuSlug,
+  resolveCatalogMenuTarget,
+  schedulingCategoryAppearsUnderMenuSlug,
+} from "@/lib/catalog-placement";
+import {
   SCHEDULING_TOP_LEVEL_ORDER,
   getSchedulingTopLevelId,
   getSchedulingTopLevelLabel,
@@ -130,6 +153,12 @@ import {
 } from "@/lib/package-placement";
 import { serviceSupportsAdminSlotCreation } from "@/lib/admin-scheduling-slot-actions";
 import { isCurrentCatalogService } from "@/lib/scheduling-visibility";
+import {
+  isWeBringPlayCatalogServiceId,
+  isWeBringPlaySchedulingCategoryId,
+  WE_BRING_PLAY_CATEGORY_ID,
+} from "@/lib/we-bring-play-offerings";
+import { WE_BRING_PLAY_RENTAL_CATEGORY_ID } from "@/lib/we-bring-play-rental-products";
 import {
   eventBookingScheduleDraftFromService,
   eventBookingSchedulePatchFromDraft,
@@ -216,6 +245,7 @@ type CreateDraft = EditDraft & {
 };
 
 type CategoryDraft = {
+  menuCatalogSlug: CatalogSlug;
   parentTopLevelId: SchedulingTopLevelId;
   name: string;
   icon: string;
@@ -250,27 +280,6 @@ function slugifyCategoryName(input: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
 }
-
-const EVENT_TYPE_PRODUCT_TYPE_MENU_ORDER = [
-  { productType: "cafe&food", label: "Cafe & Food" },
-  { productType: "gifts", label: "Gifts" },
-  { productType: "rentals", label: "Rentals" },
-  { productType: "shop", label: "Shop" },
-] as const;
-
-const PRODUCT_TYPE_TO_MENU_LABEL: Record<
-  (typeof EVENT_TYPE_PRODUCT_TYPE_MENU_ORDER)[number]["productType"],
-  string
-> = EVENT_TYPE_PRODUCT_TYPE_MENU_ORDER.reduce(
-  (acc, item) => {
-    acc[item.productType] = item.label;
-    return acc;
-  },
-  {} as Record<
-    (typeof EVENT_TYPE_PRODUCT_TYPE_MENU_ORDER)[number]["productType"],
-    string
-  >,
-);
 
 type CatalogView = "services" | "products";
 
@@ -324,7 +333,8 @@ function AdminSchedulingServicesPageContent() {
     return withoutOpenPlayPassCatalogServices(services).filter(
       (service) =>
         isConsumerAlignedCategoryId(service.categoryId) &&
-        isCurrentCatalogService(service.id),
+        isCurrentCatalogService(service.id) &&
+        !isWeBringPlayCatalogServiceId(service.id),
     );
   }, [services]);
 
@@ -355,6 +365,11 @@ function AdminSchedulingServicesPageContent() {
   const [productSubCategoryParentId, setProductSubCategoryParentId] = useState<
     string | null
   >(null);
+  const [productSubCategoryMenuSlug, setProductSubCategoryMenuSlug] =
+    useState<CatalogSlug>("shop");
+  const [dragOverMenuSlug, setDragOverMenuSlug] = useState<CatalogSlug | null>(
+    null,
+  );
   const [editingProductSubCategoryId, setEditingProductSubCategoryId] =
     useState<string | null>(null);
   const [productSubCategoryAcknowledgmentRows, setProductSubCategoryAcknowledgmentRows] =
@@ -476,6 +491,7 @@ function AdminSchedulingServicesPageContent() {
   });
 
   const [categoryDraft, setCategoryDraft] = useState<CategoryDraft>({
+    menuCatalogSlug: "gym",
     parentTopLevelId: "GYM",
     name: "",
     icon: "",
@@ -495,12 +511,49 @@ function AdminSchedulingServicesPageContent() {
     pendingAddOnLinks: [],
   });
 
+  const isWeBringRentalAdminSelection = useMemo(
+    () =>
+      isWeBringPlaySchedulingCategoryId(serviceCategoryFilterId) ||
+      selectedProductMenuCategoryId === WE_BRING_PLAY_RENTAL_CATEGORY_ID,
+    [serviceCategoryFilterId, selectedProductMenuCategoryId],
+  );
+
+  const effectiveCatalogView: CatalogView = useMemo(
+    () => (isWeBringRentalAdminSelection ? "products" : catalogView),
+    [catalogView, isWeBringRentalAdminSelection],
+  );
+
+  const effectiveSelectedProductMenuCategoryId = useMemo(() => {
+    if (isWeBringRentalAdminSelection) {
+      return WE_BRING_PLAY_RENTAL_CATEGORY_ID;
+    }
+    return selectedProductMenuCategoryId;
+  }, [isWeBringRentalAdminSelection, selectedProductMenuCategoryId]);
+
+  const playSchedulingCategoryFallbackId = useMemo(() => {
+    return (
+      sortedCategories.find(
+        (category) =>
+          getSchedulingTopLevelId(category.id) === "PLAY" &&
+          !isWeBringPlaySchedulingCategoryId(category.id),
+      )?.id ?? sortedCategories[0]?.id ?? ""
+    );
+  }, [sortedCategories]);
+
   const contextualReturnTo = useMemo(() => {
-    const params = new URLSearchParams({
-      catalogView,
-      categoryId,
-      serviceCategoryFilterId,
-    });
+    const params = new URLSearchParams();
+    if (isWeBringRentalAdminSelection) {
+      params.set("catalogView", "products");
+      params.set("productCategoryId", WE_BRING_PLAY_RENTAL_CATEGORY_ID);
+      if (playSchedulingCategoryFallbackId) {
+        params.set("categoryId", playSchedulingCategoryFallbackId);
+        params.set("serviceCategoryFilterId", playSchedulingCategoryFallbackId);
+      }
+      return `/admin/scheduling/services?${params.toString()}`;
+    }
+    params.set("catalogView", catalogView);
+    params.set("categoryId", categoryId);
+    params.set("serviceCategoryFilterId", serviceCategoryFilterId);
     if (selectedProductMenuCategoryId) {
       params.set("productCategoryId", selectedProductMenuCategoryId);
     }
@@ -508,8 +561,10 @@ function AdminSchedulingServicesPageContent() {
   }, [
     catalogView,
     categoryId,
-    serviceCategoryFilterId,
+    isWeBringRentalAdminSelection,
+    playSchedulingCategoryFallbackId,
     selectedProductMenuCategoryId,
+    serviceCategoryFilterId,
   ]);
 
   useEffect(() => {
@@ -544,40 +599,84 @@ function AdminSchedulingServicesPageContent() {
     if (!sortedCategories.length) return;
 
     const requestedCatalogView = searchParams.get("catalogView");
+    const requestedCategoryId = searchParams.get("categoryId");
+    const requestedFilterId = searchParams.get("serviceCategoryFilterId");
+    const requestedProductCategoryId = searchParams.get("productCategoryId");
+
+    let nextCatalogView: CatalogView = "services";
     if (
       requestedCatalogView === "services" ||
       requestedCatalogView === "products"
     ) {
-      setCatalogView(requestedCatalogView);
+      nextCatalogView = requestedCatalogView;
     }
 
-    const requestedCategoryId = searchParams.get("categoryId");
+    let nextCategoryId = sortedCategories[0]?.id ?? "";
     if (
       requestedCategoryId &&
       sortedCategories.some((category) => category.id === requestedCategoryId)
     ) {
-      setCategoryId(requestedCategoryId);
+      nextCategoryId = requestedCategoryId;
     }
 
-    const requestedFilterId = searchParams.get("serviceCategoryFilterId");
-    if (
+    let nextFilterId: string | "ALL" = sortedCategories[0]?.id ?? "ALL";
+    if (requestedFilterId === "ALL") {
+      nextFilterId = "ALL";
+    } else if (
       requestedFilterId &&
-      (requestedFilterId === "ALL" ||
-        sortedCategories.some((category) => category.id === requestedFilterId))
+      sortedCategories.some((category) => category.id === requestedFilterId)
     ) {
-      setServiceCategoryFilterId(requestedFilterId as string | "ALL");
+      nextFilterId = requestedFilterId;
     }
 
-    const requestedProductCategoryId = searchParams.get("productCategoryId");
+    let nextProductCategoryId: string | null = null;
     if (
       requestedProductCategoryId &&
       productCategories.some(
         (category) => category.id === requestedProductCategoryId,
       )
     ) {
-      setSelectedProductMenuCategoryId(requestedProductCategoryId);
+      nextProductCategoryId = requestedProductCategoryId;
     }
-  }, [productCategories, searchParams, sortedCategories]);
+
+    const weBringFromUrl =
+      isWeBringPlaySchedulingCategoryId(nextFilterId) ||
+      nextProductCategoryId === WE_BRING_PLAY_RENTAL_CATEGORY_ID;
+
+    if (weBringFromUrl) {
+      nextCatalogView = "products";
+      nextProductCategoryId = WE_BRING_PLAY_RENTAL_CATEGORY_ID;
+      if (isWeBringPlaySchedulingCategoryId(nextFilterId)) {
+        nextFilterId = playSchedulingCategoryFallbackId || nextFilterId;
+        nextCategoryId = playSchedulingCategoryFallbackId || nextCategoryId;
+      }
+    }
+
+    setCatalogView(nextCatalogView);
+    setCategoryId(nextCategoryId);
+    setServiceCategoryFilterId(nextFilterId);
+    setSelectedProductMenuCategoryId(nextProductCategoryId);
+  }, [
+    playSchedulingCategoryFallbackId,
+    productCategories,
+    searchParams,
+    sortedCategories,
+  ]);
+
+  useEffect(() => {
+    if (!isWeBringPlaySchedulingCategoryId(serviceCategoryFilterId)) {
+      return;
+    }
+    setCatalogView("products");
+    setSelectedProductMenuCategoryId(WE_BRING_PLAY_RENTAL_CATEGORY_ID);
+    if (playSchedulingCategoryFallbackId) {
+      setServiceCategoryFilterId(playSchedulingCategoryFallbackId);
+      setCategoryId(playSchedulingCategoryFallbackId);
+    }
+  }, [
+    playSchedulingCategoryFallbackId,
+    serviceCategoryFilterId,
+  ]);
 
   const filtered = useMemo(() => {
     return alignedServices.filter((service) => {
@@ -926,22 +1025,88 @@ function AdminSchedulingServicesPageContent() {
     const rootCategories = productCategories.filter(
       (c) => (c.parentId ?? null) === null,
     );
-    const byType = new Map<string, ProductCategory>();
-    for (const item of EVENT_TYPE_PRODUCT_TYPE_MENU_ORDER) {
-      const found = rootCategories
+    return CATALOG_MENU_ORDER.filter((entry) => entry.kind === "product")
+      .map((entry) => {
+        const expectedType = catalogSlugFromProductType(entry.slug);
+        return (
+          rootCategories
+            .filter(
+              (c) =>
+                catalogSlugFromProductType(c.productType ?? "shop") ===
+                expectedType,
+            )
+            .slice()
+            .sort((a, b) => a.displayOrder - b.displayOrder)[0] ?? null
+        );
+      })
+      .filter((c): c is ProductCategory => c != null);
+  }, [productCategories]);
+
+  const productRootBySlug = useMemo(() => {
+    const out: Record<string, string | undefined> = {};
+    for (const root of productRootMenuCategories) {
+      const slug = catalogSlugFromProductType(root.productType ?? "shop");
+      out[slug] = root.id;
+    }
+    return out;
+  }, [productRootMenuCategories]);
+
+  const schedulingRowsByMenuSlug = useMemo(() => {
+    const out: Partial<Record<CatalogSlug, SchedulingCategory[]>> = {};
+    for (const entry of CATALOG_MENU_ORDER) {
+      const rows = sortedCategories
         .filter(
-          (c) => (c.productType ?? "shop").toLowerCase() === item.productType,
+          (category) =>
+            !isWeBringPlaySchedulingCategoryId(category.id) &&
+            schedulingCategoryAppearsUnderMenuSlug(
+              category,
+              entry.slug,
+              productRootBySlug,
+              productCategories,
+            ),
         )
         .slice()
-        .sort((a, b) => a.displayOrder - b.displayOrder)[0];
-      if (found) {
-        byType.set(item.productType, found);
+        .sort((a, b) => a.displayOrder - b.displayOrder);
+      if (rows.length > 0) {
+        out[entry.slug] = rows;
       }
     }
-    return EVENT_TYPE_PRODUCT_TYPE_MENU_ORDER.map((item) =>
-      byType.get(item.productType),
-    ).filter((c): c is ProductCategory => Boolean(c));
-  }, [productCategories]);
+    return out;
+  }, [sortedCategories, productRootBySlug]);
+
+  const productSubRowsByMenuSlug = useMemo(() => {
+    const out: Partial<Record<CatalogSlug, ProductCategory[]>> = {};
+    for (const entry of CATALOG_MENU_ORDER) {
+      const rootId = isProductCatalogSlug(entry.slug)
+        ? productRootBySlug[entry.slug]
+        : undefined;
+      const rows = productCategories
+        .filter((category) => {
+          if ((category.parentId ?? null) === null) {
+            return false
+          }
+          const bucket = getProductSubCategoryMenuBucket(
+            category,
+            productRootBySlug,
+          )
+          if (bucket === entry.slug) {
+            return true
+          }
+          return productSubCategoryAppearsUnderMenuSlug(
+            category,
+            entry.slug,
+            rootId,
+            isSchedulingCatalogSlug(entry.slug),
+          )
+        })
+        .slice()
+        .sort((a, b) => a.displayOrder - b.displayOrder);
+      if (rows.length > 0) {
+        out[entry.slug] = rows;
+      }
+    }
+    return out;
+  }, [productCategories, productRootBySlug]);
 
   const productCategoryById = useMemo(() => {
     return new Map(productCategories.map((c) => [c.id, c]));
@@ -952,8 +1117,21 @@ function AdminSchedulingServicesPageContent() {
     return productCategoryById.get(productSubCategoryParentId) ?? null;
   }, [productCategoryById, productSubCategoryParentId]);
 
-  const isRentalProductSubCategoryModal =
-    (productSubCategoryModalParent?.productType ?? "").toLowerCase() === "rentals";
+  const isRentalProductSubCategoryModal = useMemo(() => {
+    if (editingProductSubCategoryId) {
+      const row = productCategoryById.get(editingProductSubCategoryId) ?? null;
+      return row != null && effectiveProductCategoryCatalogSlug(row) === "rentals";
+    }
+    return (
+      productSubCategoryModalParent != null &&
+      effectiveProductCategoryCatalogSlug(productSubCategoryModalParent) ===
+        "rentals"
+    );
+  }, [
+    editingProductSubCategoryId,
+    productCategoryById,
+    productSubCategoryModalParent,
+  ]);
 
   const productFormCategories = useMemo(() => {
     return productCategories
@@ -962,31 +1140,46 @@ function AdminSchedulingServicesPageContent() {
   }, [productCategories]);
 
   const selectedProductMenuCategory = useMemo(() => {
-    if (!selectedProductMenuCategoryId) return null;
-    return productCategoryById.get(selectedProductMenuCategoryId) ?? null;
-  }, [productCategoryById, selectedProductMenuCategoryId]);
+    if (!effectiveSelectedProductMenuCategoryId) return null;
+    return (
+      productCategoryById.get(effectiveSelectedProductMenuCategoryId) ?? null
+    );
+  }, [effectiveSelectedProductMenuCategoryId, productCategoryById]);
 
   const productsInSelectedMenu = useMemo(() => {
-    if (!selectedProductMenuCategoryId) return [];
-    const category = productCategoryById.get(selectedProductMenuCategoryId);
+    if (!effectiveSelectedProductMenuCategoryId) return [];
+    const category = productCategoryById.get(
+      effectiveSelectedProductMenuCategoryId,
+    );
     const isCafeMenu =
       (category?.productType ?? "").toLowerCase() === "cafe&food";
     if (isCafeMenu) {
       return listCafeFoodProductsForInventoryCategory(
         products,
-        selectedProductMenuCategoryId,
+        effectiveSelectedProductMenuCategoryId,
+        productCategories,
       );
     }
     return products.filter(
-      (p) => p.isActive && p.categoryId === selectedProductMenuCategoryId,
+      (p) =>
+        p.isActive &&
+        p.categoryId === effectiveSelectedProductMenuCategoryId,
     );
-  }, [productCategoryById, products, selectedProductMenuCategoryId]);
+  }, [
+    effectiveSelectedProductMenuCategoryId,
+    productCategoryById,
+    products,
+  ]);
 
   const productTypeProductCountsByRootId = useMemo(() => {
     const out = new Map<string, number>();
     for (const root of productRootMenuCategories) {
-      const subIds = productCategories
-        .filter((c) => (c.parentId ?? null) === root.id)
+      const menuSlug = catalogSlugFromProductType(root.productType ?? "shop");
+      const subIds = (productSubRowsByMenuSlug[menuSlug] ?? [])
+        .filter((sub) => {
+          const nativeParent = sub.parentId ?? null;
+          return nativeParent === root.id || sub.placementParentId === root.id;
+        })
         .map((c) => c.id);
       const isCafeRoot =
         (root.productType ?? "").toLowerCase() === "cafe&food";
@@ -1003,21 +1196,28 @@ function AdminSchedulingServicesPageContent() {
       out.set(root.id, count);
     }
     return out;
-  }, [productCategories, productRootMenuCategories, products]);
+  }, [
+    productCategories,
+    productRootMenuCategories,
+    productSubRowsByMenuSlug,
+    products,
+  ]);
 
   const productMenuTitle = selectedProductMenuCategory?.name ?? "Products";
   const productMenuCountLabel = selectedProductMenuCategory
     ? `${productsInSelectedMenu.length} products`
     : `${products.filter((p) => p.isActive).length} products`;
-  const isSelectedProductMenuGifts =
-    (selectedProductMenuCategory?.productType ?? "").toLowerCase() === "gifts";
+  const selectedProductMenuCanonicalSlug = useMemo(() => {
+    if (!selectedProductMenuCategory) return null;
+    return effectiveProductCategoryCatalogSlug(selectedProductMenuCategory);
+  }, [selectedProductMenuCategory]);
+
+  const isSelectedProductMenuGifts = selectedProductMenuCanonicalSlug === "gifts";
   const isSelectedProductMenuCafeAndFood =
-    (selectedProductMenuCategory?.productType ?? "").toLowerCase() ===
-    "cafe&food";
+    selectedProductMenuCanonicalSlug === "cafe-food";
   const isSelectedProductMenuRentals =
-    (selectedProductMenuCategory?.productType ?? "").toLowerCase() === "rentals";
-  const isSelectedProductMenuShop =
-    (selectedProductMenuCategory?.productType ?? "").toLowerCase() === "shop";
+    selectedProductMenuCanonicalSlug === "rentals";
+  const isSelectedProductMenuShop = selectedProductMenuCanonicalSlug === "shop";
 
   const catalogTitle = useMemo(() => {
     if (serviceCategoryFilterId === "ALL") {
@@ -1436,9 +1636,13 @@ function AdminSchedulingServicesPageContent() {
   }
 
   function openEditCategory(category: SchedulingCategory) {
+    const menuSlug =
+      normalizeCatalogSlug(category.placementCatalogSlug ?? null) ??
+      catalogSlugFromSchedulingCategoryId(category.id);
     setEditingCategoryId(category.id);
     setCategoryDraft({
-      parentTopLevelId: getSchedulingTopLevelId(category.id),
+      menuCatalogSlug: menuSlug,
+      parentTopLevelId: getSchedulingTopLevelIdFromCategory(category),
       name: category.name,
       icon: category.icon ?? "",
       displayOrder: String(category.displayOrder),
@@ -1469,12 +1673,12 @@ function AdminSchedulingServicesPageContent() {
   }
 
   function reorderCategoriesByDrag(
-    topLevelId: SchedulingTopLevelId,
+    menuSlug: CatalogSlug,
     sourceCategoryId: string,
     targetCategoryId: string,
   ) {
     if (sourceCategoryId === targetCategoryId) return;
-    const siblings = categoriesByTopLevel[topLevelId];
+    const siblings = schedulingRowsByMenuSlug[menuSlug] ?? [];
     const sourceIndex = siblings.findIndex(
       (category) => category.id === sourceCategoryId,
     );
@@ -1501,17 +1705,134 @@ function AdminSchedulingServicesPageContent() {
     });
   }
 
+  function applySchedulingCategoryBucketMove(
+    categoryId: string,
+    menuSlug: SchedulingCatalogSlug,
+    normalizedPatch: Partial<SchedulingCategory>,
+    linkedAddOns: SchedulingCategory["linkedAddOns"],
+  ) {
+    const categoryPrefixByTopLevel: Record<SchedulingTopLevelId, string> = {
+      GYM: "cat-gym-",
+      PLAY: "cat-play-",
+      EVENT: "cat-event-",
+    };
+    const targetTopLevel = catalogSlugToSchedulingTopLevel(menuSlug);
+    const existing = sortedCategories.find((row) => row.id === categoryId);
+    const categorySlug =
+      slugifyCategoryName(existing?.name ?? categoryId) ||
+      newAdminEntityId("cat").slice(4);
+    const idBase = `${categoryPrefixByTopLevel[targetTopLevel]}${categorySlug}`;
+    const nextCategoryId = categories.some(
+      (category) => category.id !== categoryId && category.id === idBase,
+    )
+      ? `${idBase}-${newAdminEntityId("cat").slice(4)}`
+      : idBase;
+
+    addCategory({
+      id: nextCategoryId,
+      name: existing?.name ?? categoryId,
+      icon: existing?.icon ?? null,
+      displayOrder: existing?.displayOrder ?? 1,
+      isActive: existing?.isActive ?? true,
+      description: existing?.description,
+      requiresAttendee: existing?.requiresAttendee,
+      membersOnly: existing?.membersOnly,
+      freeInfantMonths: existing?.freeInfantMonths,
+      depositPercent: existing?.depositPercent,
+      specialInstructionsEnabled: existing?.specialInstructionsEnabled,
+      waitlistEnabled: existing?.waitlistEnabled,
+      allowFamilyMember: existing?.allowFamilyMember,
+      requireCheckInBeforeRebook: existing?.requireCheckInBeforeRebook,
+      catalogSlug: menuSlug,
+      placementCatalogSlug: undefined,
+      placementParentId: null,
+      linkedAddOns: (linkedAddOns ?? []).map((link) => ({
+        ...link,
+        categoryId: nextCategoryId,
+      })),
+      ...normalizedPatch,
+    });
+
+    services
+      .filter((service) => service.categoryId === categoryId)
+      .forEach((service) => {
+        updateService(service.id, { categoryId: nextCategoryId });
+      });
+
+    removeCategory(categoryId);
+
+    setCategoryId((current) =>
+      current === categoryId ? nextCategoryId : current,
+    );
+    setServiceCategoryFilterId((current) =>
+      current === categoryId ? nextCategoryId : current,
+    );
+    setCreateDraft((draft) =>
+      draft.categoryId === categoryId
+        ? { ...draft, categoryId: nextCategoryId }
+        : draft,
+    );
+  }
+
+  function moveSchedulingSubCategoryToMenu(
+    categoryId: string,
+    menuSlug: CatalogSlug,
+  ) {
+    const existing = sortedCategories.find((row) => row.id === categoryId);
+    if (!existing) return;
+    const productRootId = isProductCatalogSlug(menuSlug)
+      ? (productRootBySlug[menuSlug] ?? null)
+      : null;
+    const target = resolveCatalogMenuTarget({
+      catalogSlug: menuSlug,
+      productRootId,
+    });
+
+    if (isProductCatalogSlug(menuSlug)) {
+      updateCategory(
+        categoryId,
+        patchSchedulingCategoryPlacement(existing, target),
+      );
+      return;
+    }
+
+    updateCategory(
+      categoryId,
+      patchSchedulingCategoryPlacement(
+        existing,
+        resolveCatalogMenuTarget({
+          catalogSlug: menuSlug,
+          productRootId: null,
+        }),
+      ),
+    );
+  }
+
+  function moveProductSubCategoryToMenu(categoryId: string, menuSlug: CatalogSlug) {
+    const existing = productCategoryById.get(categoryId);
+    if (!existing || (existing.parentId ?? null) === null) return;
+    const productRootId = isProductCatalogSlug(menuSlug)
+      ? (productRootBySlug[menuSlug] ?? null)
+      : null;
+    const target = resolveCatalogMenuTarget({
+      catalogSlug: menuSlug,
+      productRootId,
+    });
+    const nativeParentId = existing.parentId ?? null;
+    updateProductCategory(
+      categoryId,
+      patchProductSubCategoryPlacement(existing, target, nativeParentId),
+    );
+  }
+
   function reorderProductSubCategoriesByDrag(
-    parentId: string,
+    menuSlug: CatalogSlug,
     sourceId: string,
     targetId: string,
   ) {
     if (sourceId === targetId) return;
 
-    const siblings = productCategories
-      .filter((entry) => (entry.parentId ?? null) === parentId)
-      .slice()
-      .sort((a, b) => a.displayOrder - b.displayOrder);
+    const siblings = (productSubRowsByMenuSlug[menuSlug] ?? []).slice();
 
     const sourceIndex = siblings.findIndex((entry) => entry.id === sourceId);
     const targetIndex = siblings.findIndex((entry) => entry.id === targetId);
@@ -1564,8 +1885,11 @@ function AdminSchedulingServicesPageContent() {
 
   function openProductSubCategoryCreate(parentId: string) {
     const parentRow = productCategoryById.get(parentId) ?? null;
-    const isRentals =
-      (parentRow?.productType ?? "").toLowerCase() === "rentals";
+    const menuSlug = parentRow
+      ? catalogSlugFromProductType(parentRow.productType ?? "shop")
+      : "shop";
+    const isRentals = menuSlug === "rentals";
+    setProductSubCategoryMenuSlug(menuSlug);
     setProductSubCategoryParentId(parentId);
     setProductSubCategoryName("");
     setProductSubCategoryIsActive(true);
@@ -1579,11 +1903,14 @@ function AdminSchedulingServicesPageContent() {
   function openProductSubCategoryEdit(categoryId: string) {
     const category = productCategoryById.get(categoryId) ?? null;
     if (!category) return;
-    const isRentals =
-      (category.productType ?? "").toLowerCase() === "rentals";
-    setProductSubCategoryParentId(category.parentId ?? null);
+    const menuSlug = effectiveProductPlacementSlug(category);
+    const isRentals = effectiveProductCategoryCatalogSlug(category) === "rentals";
+    setProductSubCategoryMenuSlug(menuSlug);
+    setProductSubCategoryParentId(
+      category.placementParentId ?? category.parentId ?? null,
+    );
     setProductSubCategoryName(category.name);
-    setProductSubCategoryIsActive(category.isActive);
+    setProductSubCategoryIsActive(category.isActive ?? true);
     setEditingProductSubCategoryId(category.id);
     setProductSubCategoryAcknowledgmentRows(
       isRentals ? rentalAcknowledgmentsToFormRows(category.rentalAcknowledgments) : [],
@@ -1592,24 +1919,49 @@ function AdminSchedulingServicesPageContent() {
   }
 
   function persistProductSubCategory() {
-    if (!productSubCategoryParentId) return;
     const trimmedName = productSubCategoryName.trim();
     if (!trimmedName) return;
 
-    const parent = productCategoryById.get(productSubCategoryParentId) ?? null;
-    if (!parent) return;
+    const menuSlug = productSubCategoryMenuSlug;
+    const nativeRootId = isProductCatalogSlug(menuSlug)
+      ? (productRootBySlug[menuSlug] ?? productSubCategoryParentId)
+      : null;
+    const nativeParent = nativeRootId
+      ? (productCategoryById.get(nativeRootId) ?? null)
+      : null;
+    if (!nativeParent && !editingProductSubCategoryId) return;
 
     const isRentalSubCategory =
-      (parent.productType ?? "").toLowerCase() === "rentals";
+      (editingProductSubCategoryId
+        ? effectiveProductCategoryCatalogSlug(
+            productCategoryById.get(editingProductSubCategoryId) ?? {
+              productType: "shop",
+            },
+          )
+        : effectiveProductCategoryCatalogSlug(nativeParent ?? { productType: "shop" })) ===
+      "rentals";
     const normalizedAcks = isRentalSubCategory
       ? normalizeRentalAcknowledgmentFormRows(productSubCategoryAcknowledgmentRows)
       : [];
 
+    const target = resolveCatalogMenuTarget({
+      catalogSlug: menuSlug,
+      productRootId: nativeRootId,
+    });
+
     if (editingProductSubCategoryId) {
+      const existing =
+        productCategoryById.get(editingProductSubCategoryId) ?? null;
+      if (!existing) return;
       updateProductCategory(editingProductSubCategoryId, {
         name: trimmedName,
         isActive: productSubCategoryIsActive,
         ...(isRentalSubCategory ? { rentalAcknowledgments: normalizedAcks } : {}),
+        ...patchProductSubCategoryPlacement(
+          existing,
+          target,
+          existing.parentId ?? null,
+        ),
       });
       setProductSubCategoryFormOpen(false);
       setProductSubCategoryName("");
@@ -1620,13 +1972,19 @@ function AdminSchedulingServicesPageContent() {
       return;
     }
 
+    if (!nativeRootId) return;
+
     const created = addProductCategory({
       name: trimmedName,
-      productType: parent.productType ?? "shop",
-      parentId: productSubCategoryParentId,
+      productType: nativeParent?.productType ?? "shop",
+      parentId: nativeRootId,
       isActive: productSubCategoryIsActive,
       ...(isRentalSubCategory ? { rentalAcknowledgments: normalizedAcks } : {}),
     });
+    updateProductCategory(
+      created.id,
+      patchProductSubCategoryPlacement(created, target, nativeRootId),
+    );
 
     setProductSubCategoryFormOpen(false);
     setProductSubCategoryName("");
@@ -1710,9 +2068,9 @@ function AdminSchedulingServicesPageContent() {
     };
 
     if (editingCategoryId) {
-      const existingTopLevel = getSchedulingTopLevelId(editingCategoryId);
-      const isMovingTopLevel =
-        existingTopLevel !== categoryDraft.parentTopLevelId;
+      const existing =
+        sortedCategories.find((row) => row.id === editingCategoryId) ?? null;
+      const menuSlug = categoryDraft.menuCatalogSlug;
       const normalizedPatch = {
         name: categoryDraft.name.trim(),
         icon: categoryDraft.icon.trim() || null,
@@ -1732,81 +2090,62 @@ function AdminSchedulingServicesPageContent() {
         allowFamilyMember: categoryDraft.allowFamilyMember,
         requireCheckInBeforeRebook: categoryDraft.requireCheckInBeforeRebook,
       };
+      const linkedAddOns = categoryDraft.pendingAddOnLinks.map((l) => ({
+        id: newAdminEntityId("cao"),
+        categoryId: editingCategoryId,
+        addOnId: l.addOnId,
+        addOnName: l.addOnName,
+        isOptional: true,
+        isFree: l.isFree,
+        quantity: Number.parseInt(l.quantity, 10),
+        unitPrice: Number.parseFloat(l.unitPrice),
+        chargeFrequency: l.chargeFrequency,
+      }));
 
-      if (!isMovingTopLevel) {
-        const linkedAddOns = categoryDraft.pendingAddOnLinks.map((l) => ({
-          id: newAdminEntityId("cao"),
-          categoryId: editingCategoryId,
-          addOnId: l.addOnId,
-          addOnName: l.addOnName,
-          isOptional: true,
-          isFree: l.isFree,
-          quantity: Number.parseInt(l.quantity, 10),
-          unitPrice: Number.parseFloat(l.unitPrice),
-          chargeFrequency: l.chargeFrequency,
-        }));
+      if (isProductCatalogSlug(menuSlug) && existing) {
+        const productRootId = productRootBySlug[menuSlug] ?? null;
         updateCategory(editingCategoryId, {
           ...normalizedPatch,
           linkedAddOns,
+          ...patchSchedulingCategoryPlacement(
+            existing,
+            resolveCatalogMenuTarget({
+              catalogSlug: menuSlug,
+              productRootId,
+            }),
+          ),
         });
-      } else {
-        const categorySlug =
-          slugifyCategoryName(categoryDraft.name) ||
-          newAdminEntityId("cat").slice(4);
-        const idBase = `${categoryPrefixByTopLevel[categoryDraft.parentTopLevelId]}${categorySlug}`;
-        const nextCategoryId = categories.some(
-          (category) =>
-            category.id !== editingCategoryId && category.id === idBase,
-        )
-          ? `${idBase}-${newAdminEntityId("cat").slice(4)}`
-          : idBase;
+        setCategoryOpen(false);
+        setEditingCategoryId(null);
+        return;
+      }
 
-        const movedLinkedAddOns = categoryDraft.pendingAddOnLinks.map((l) => ({
-          id: newAdminEntityId("cao"),
-          categoryId: nextCategoryId,
-          addOnId: l.addOnId,
-          addOnName: l.addOnName,
-          isOptional: true,
-          isFree: l.isFree,
-          quantity: Number.parseInt(l.quantity, 10),
-          unitPrice: Number.parseFloat(l.unitPrice),
-          chargeFrequency: l.chargeFrequency,
-        }));
-        addCategory({
-          id: nextCategoryId,
+      if (existing) {
+        updateCategory(editingCategoryId, {
           ...normalizedPatch,
-          linkedAddOns: movedLinkedAddOns,
+          linkedAddOns,
+          ...patchSchedulingCategoryPlacement(
+            existing,
+            resolveCatalogMenuTarget({
+              catalogSlug: menuSlug,
+              productRootId: null,
+            }),
+          ),
         });
-
-        services
-          .filter((service) => service.categoryId === editingCategoryId)
-          .forEach((service) => {
-            updateService(service.id, { categoryId: nextCategoryId });
-          });
-
-        removeCategory(editingCategoryId);
-
-        if (categoryId === editingCategoryId) {
-          setCategoryId(nextCategoryId);
-        }
-        if (serviceCategoryFilterId === editingCategoryId) {
-          setServiceCategoryFilterId(nextCategoryId);
-        }
-        setCreateDraft((draft) =>
-          draft.categoryId === editingCategoryId
-            ? { ...draft, categoryId: nextCategoryId }
-            : draft,
-        );
       }
       setCategoryOpen(false);
       setEditingCategoryId(null);
       return;
     }
 
+    const menuSlug = categoryDraft.menuCatalogSlug;
+    const targetTopLevel = isSchedulingCatalogSlug(menuSlug)
+      ? catalogSlugToSchedulingTopLevel(menuSlug)
+      : categoryDraft.parentTopLevelId;
     const categorySlug =
       slugifyCategoryName(categoryDraft.name) ||
       newAdminEntityId("cat").slice(4);
-    const idBase = `${categoryPrefixByTopLevel[categoryDraft.parentTopLevelId]}${categorySlug}`;
+    const idBase = `${categoryPrefixByTopLevel[targetTopLevel]}${categorySlug}`;
     const catId = categories.some((category) => category.id === idBase)
       ? `${idBase}-${newAdminEntityId("cat").slice(4)}`
       : idBase;
@@ -1821,6 +2160,9 @@ function AdminSchedulingServicesPageContent() {
       unitPrice: Number.parseFloat(l.unitPrice),
       chargeFrequency: l.chargeFrequency,
     }));
+    const productRootId = isProductCatalogSlug(menuSlug)
+      ? (productRootBySlug[menuSlug] ?? null)
+      : null;
     const created: SchedulingCategory = {
       id: catId,
       name: categoryDraft.name.trim(),
@@ -1840,6 +2182,9 @@ function AdminSchedulingServicesPageContent() {
       waitlistEnabled: categoryDraft.waitlistEnabled,
       allowFamilyMember: categoryDraft.allowFamilyMember,
       requireCheckInBeforeRebook: categoryDraft.requireCheckInBeforeRebook,
+      catalogSlug: isSchedulingCatalogSlug(menuSlug) ? menuSlug : undefined,
+      placementCatalogSlug: isProductCatalogSlug(menuSlug) ? menuSlug : undefined,
+      placementParentId: productRootId,
       linkedAddOns,
     };
     addCategory(created);
@@ -1877,13 +2222,21 @@ function AdminSchedulingServicesPageContent() {
           </CardHeader>
           <CardContent className="space-y-2">
             <Accordion type="single" collapsible className="w-full space-y-2">
-              {SCHEDULING_TOP_LEVEL_ORDER.map((topLevelId) => {
-                const rows = categoriesByTopLevel[topLevelId];
-                if (rows.length === 0) return null;
+              {CATALOG_MENU_ORDER.filter((entry) => entry.kind === "scheduling").map(
+                (menuEntry) => {
+                const menuSlug = menuEntry.slug;
+                const topLevelId = catalogSlugToSchedulingTopLevel(
+                  menuSlug as SchedulingCatalogSlug,
+                );
+                const rows = schedulingRowsByMenuSlug[menuSlug] ?? [];
+                const productSubsOnMenu = productSubRowsByMenuSlug[menuSlug] ?? [];
+                if (rows.length === 0 && productSubsOnMenu.length === 0) {
+                  return null;
+                }
                 return (
                   <AccordionItem
-                    key={topLevelId}
-                    value={topLevelId}
+                    key={menuSlug}
+                    value={menuSlug}
                     className="overflow-hidden rounded-lg border border-border bg-muted/20 px-3 last:border-b"
                   >
                     <div className="flex min-w-0 items-center gap-0 [&>h3]:flex [&>h3]:min-w-0 [&>h3]:flex-1">
@@ -1927,7 +2280,36 @@ function AdminSchedulingServicesPageContent() {
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
-                    <AccordionContent className="space-y-2 pb-3">
+                    <AccordionContent
+                      className={cn(
+                        "space-y-2 pb-3",
+                        dragOverMenuSlug === menuSlug && "rounded-md bg-accent/5",
+                      )}
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        setDragOverMenuSlug(menuSlug);
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        if (draggingCategoryId) {
+                          moveSchedulingSubCategoryToMenu(
+                            draggingCategoryId,
+                            menuSlug,
+                          );
+                        }
+                        if (draggingProductMenuCategoryId) {
+                          moveProductSubCategoryToMenu(
+                            draggingProductMenuCategoryId,
+                            menuSlug,
+                          );
+                        }
+                        setDraggingCategoryId(null);
+                        setDragOverCategoryId(null);
+                        setDraggingProductMenuCategoryId(null);
+                        setDragOverProductMenuCategoryId(null);
+                        setDragOverMenuSlug(null);
+                      }}
+                    >
                       <div className="flex justify-end">
                         <Button
                           type="button"
@@ -1965,17 +2347,11 @@ function AdminSchedulingServicesPageContent() {
                             }}
                             onDrop={(event) => {
                               event.preventDefault();
+                              event.stopPropagation();
                               if (!draggingCategoryId) return;
-                              if (
-                                getSchedulingTopLevelId(draggingCategoryId) !==
-                                  topLevelId ||
-                                getSchedulingTopLevelId(category.id) !==
-                                  topLevelId
-                              ) {
-                                return;
-                              }
+                              if (draggingCategoryId === category.id) return;
                               reorderCategoriesByDrag(
-                                topLevelId,
+                                menuSlug,
                                 draggingCategoryId,
                                 category.id,
                               );
@@ -2059,10 +2435,120 @@ function AdminSchedulingServicesPageContent() {
                           </div>
                         );
                       })}
+                      {productSubsOnMenu.map((sub) => {
+                        const isCafeSub =
+                          (sub.productType ?? "").toLowerCase() === "cafe&food";
+                        const subCount = isCafeSub
+                          ? countCafeFoodProductsForInventoryCategory(
+                              products,
+                              sub.id,
+                              productCategories,
+                            )
+                          : products.filter(
+                              (p) => p.isActive && p.categoryId === sub.id,
+                            ).length;
+                        const active =
+                          effectiveCatalogView === "products" &&
+                          effectiveSelectedProductMenuCategoryId === sub.id;
+                        return (
+                          <div
+                            key={`product-${sub.id}`}
+                            draggable
+                            onDragStart={() => {
+                              setDraggingProductMenuCategoryId(sub.id);
+                              setDragOverProductMenuCategoryId(sub.id);
+                            }}
+                            onDragEnter={(event) => {
+                              event.preventDefault();
+                              setDragOverProductMenuCategoryId(sub.id);
+                            }}
+                            onDragOver={(event) => {
+                              event.preventDefault();
+                              if (dragOverProductMenuCategoryId !== sub.id) {
+                                setDragOverProductMenuCategoryId(sub.id);
+                              }
+                            }}
+                            onDrop={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              if (!draggingProductMenuCategoryId) return;
+                              if (draggingProductMenuCategoryId === sub.id) {
+                                return;
+                              }
+                              reorderProductSubCategoriesByDrag(
+                                menuSlug,
+                                draggingProductMenuCategoryId,
+                                sub.id,
+                              );
+                              setDraggingProductMenuCategoryId(null);
+                              setDragOverProductMenuCategoryId(null);
+                            }}
+                            onDragEnd={() => {
+                              setDraggingProductMenuCategoryId(null);
+                              setDragOverProductMenuCategoryId(null);
+                            }}
+                            className={cn(
+                              "flex items-center gap-2 rounded-md px-2 py-2 text-xs transition-colors",
+                              dragOverProductMenuCategoryId === sub.id &&
+                                draggingProductMenuCategoryId !== sub.id &&
+                                "bg-accent/10",
+                              active
+                                ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                                : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+                            )}
+                          >
+                            <GripVertical className="h-3.5 w-3.5 shrink-0 cursor-grab text-muted-foreground/90" />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCatalogView("products");
+                                setSelectedProductMenuCategoryId(sub.id);
+                              }}
+                              className="min-w-0 flex-1 truncate text-left font-medium"
+                            >
+                              {sub.name}
+                            </button>
+                            <Badge variant="outline" className="h-5 text-[10px]">
+                              {subCount}
+                            </Badge>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6"
+                                  aria-label={`${sub.name} actions`}
+                                >
+                                  <MoreHorizontal className="h-3.5 w-3.5" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  onSelect={() =>
+                                    openProductSubCategoryEdit(sub.id)
+                                  }
+                                >
+                                  Edit
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  onSelect={() =>
+                                    setDeleteProductSubCategoryId(sub.id)
+                                  }
+                                >
+                                  Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        );
+                      })}
                     </AccordionContent>
                   </AccordionItem>
                 );
-              })}
+              },
+              )}
             </Accordion>
 
             <div className="my-6 h-[2px] bg-gray-400 dark:bg-gray-600" />
@@ -2072,24 +2558,26 @@ function AdminSchedulingServicesPageContent() {
               collapsible
               className="w-full space-y-2 pt-0"
             >
-              {productRootMenuCategories.map((root) => {
+              {CATALOG_MENU_ORDER.filter((entry) => entry.kind === "product").map(
+                (menuEntry) => {
+                const menuSlug = menuEntry.slug;
+                const root =
+                  productRootMenuCategories.find(
+                    (row) =>
+                      catalogSlugFromProductType(row.productType ?? "shop") ===
+                      menuSlug,
+                  ) ?? null;
+                if (!root) return null;
                 const rootCount =
                   productTypeProductCountsByRootId.get(root.id) ?? 0;
-                const rootTypeLabel =
-                  PRODUCT_TYPE_TO_MENU_LABEL[
-                    (root.productType ??
-                      "shop") as keyof typeof PRODUCT_TYPE_TO_MENU_LABEL
-                  ] ?? root.name;
-
-                const subRows = productCategories
-                  .filter((c) => (c.parentId ?? null) === root.id)
-                  .slice()
-                  .sort((a, b) => a.displayOrder - b.displayOrder);
+                const rootTypeLabel = menuEntry.label;
+                const subRows = productSubRowsByMenuSlug[menuSlug] ?? [];
+                const schedulingOnMenu = schedulingRowsByMenuSlug[menuSlug] ?? [];
 
                 return (
                   <AccordionItem
-                    key={root.id}
-                    value={root.id}
+                    key={menuSlug}
+                    value={menuSlug}
                     className="overflow-hidden rounded-lg border border-border bg-muted/20 px-3 last:border-b"
                   >
                     <div className="flex min-w-0 items-center gap-0 [&>h3]:flex [&>h3]:min-w-0 [&>h3]:flex-1">
@@ -2134,7 +2622,89 @@ function AdminSchedulingServicesPageContent() {
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
-                    <AccordionContent className="space-y-2 pb-3">
+                    <AccordionContent
+                      className={cn(
+                        "space-y-2 pb-3",
+                        dragOverMenuSlug === menuSlug && "rounded-md bg-accent/5",
+                      )}
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        setDragOverMenuSlug(menuSlug);
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        if (draggingCategoryId) {
+                          moveSchedulingSubCategoryToMenu(
+                            draggingCategoryId,
+                            menuSlug,
+                          );
+                        }
+                        if (draggingProductMenuCategoryId) {
+                          moveProductSubCategoryToMenu(
+                            draggingProductMenuCategoryId,
+                            menuSlug,
+                          );
+                        }
+                        setDraggingCategoryId(null);
+                        setDragOverCategoryId(null);
+                        setDraggingProductMenuCategoryId(null);
+                        setDragOverProductMenuCategoryId(null);
+                        setDragOverMenuSlug(null);
+                      }}
+                    >
+                      {schedulingOnMenu.map((category) => {
+                        const serviceCount =
+                          countByCategory.get(category.id) ?? 0;
+                        const isActiveCategory =
+                          category.id === serviceCategoryFilterId;
+                        return (
+                          <div
+                            key={`sched-${category.id}`}
+                            className={cn(
+                              "mb-1 flex items-center gap-2 rounded-md px-2 py-1.5 text-xs",
+                              isActiveCategory
+                                ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                                : "text-muted-foreground",
+                            )}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCatalogView("services");
+                                setSelectedProductMenuCategoryId(null);
+                                setCategoryId(category.id);
+                                setServiceCategoryFilterId(category.id);
+                              }}
+                              className="min-w-0 flex-1 truncate text-left"
+                            >
+                              {category.name}
+                            </button>
+                            <Badge variant="outline" className="h-5 text-[10px]">
+                              {serviceCount}
+                            </Badge>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6"
+                                  aria-label={`${category.name} actions`}
+                                >
+                                  <MoreHorizontal className="h-3.5 w-3.5" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  onSelect={() => openEditCategory(category)}
+                                >
+                                  Edit
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        );
+                      })}
                       <div className="rounded-md border border-border bg-card p-2 shadow-sm">
                         <div className="flex justify-end px-2">
                           <Button
@@ -2164,14 +2734,15 @@ function AdminSchedulingServicesPageContent() {
                               ? countCafeFoodProductsForInventoryCategory(
                                   products,
                                   sub.id,
+                                  productCategories,
                                 )
                               : products.filter(
                                   (p) =>
                                     p.isActive && p.categoryId === sub.id,
                                 ).length;
                             const active =
-                              catalogView === "products" &&
-                              selectedProductMenuCategoryId === sub.id;
+                              effectiveCatalogView === "products" &&
+                              effectiveSelectedProductMenuCategoryId === sub.id;
 
                             return (
                               <div
@@ -2195,19 +2766,13 @@ function AdminSchedulingServicesPageContent() {
                                 }}
                                 onDrop={(event) => {
                                   event.preventDefault();
+                                  event.stopPropagation();
                                   if (!draggingProductMenuCategoryId) return;
-
-                                  const draggingEntry = productCategoryById.get(
-                                    draggingProductMenuCategoryId,
-                                  );
-                                  if (
-                                    (draggingEntry?.parentId ?? null) !==
-                                    root.id
-                                  )
+                                  if (draggingProductMenuCategoryId === sub.id) {
                                     return;
-
+                                  }
                                   reorderProductSubCategoriesByDrag(
-                                    root.id,
+                                    menuSlug,
                                     draggingProductMenuCategoryId,
                                     sub.id,
                                   );
@@ -2238,7 +2803,6 @@ function AdminSchedulingServicesPageContent() {
                                     onClick={() => {
                                       setCatalogView("products");
                                       setSelectedProductMenuCategoryId(sub.id);
-                                      setServiceCategoryFilterId(categoryId);
                                     }}
                                     className="min-w-0 flex-1 text-left"
                                   >
@@ -2298,7 +2862,8 @@ function AdminSchedulingServicesPageContent() {
                     </AccordionContent>
                   </AccordionItem>
                 );
-              })}
+              },
+              )}
             </Accordion>
           </CardContent>
         </Card>
@@ -2308,16 +2873,18 @@ function AdminSchedulingServicesPageContent() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <CardTitle className="text-base">
-                  {catalogView === "services" ? catalogTitle : productMenuTitle}
+                  {effectiveCatalogView === "services"
+                    ? catalogTitle
+                    : productMenuTitle}
                 </CardTitle>
                 <CardDescription>
-                  {catalogView === "services"
+                  {effectiveCatalogView === "services"
                     ? catalogCountLabel
                     : productMenuCountLabel}
                 </CardDescription>
               </div>
               <div className="flex items-center gap-2">
-                {catalogView === "services" ? (
+                {effectiveCatalogView === "services" ? (
                   <>
                     {catalogSupportsSlotCreation ? (
                       <Button asChild variant="secondary">
@@ -2365,7 +2932,7 @@ function AdminSchedulingServicesPageContent() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            {catalogView === "services" ? (
+            {effectiveCatalogView === "services" ? (
               <>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   {filtered.map((service) => (
@@ -2467,10 +3034,9 @@ function AdminSchedulingServicesPageContent() {
                   const productTypeKey = (
                     category?.productType ?? "shop"
                   ).toLowerCase();
-                  const productTypeLabel =
-                    PRODUCT_TYPE_TO_MENU_LABEL[
-                      productTypeKey as keyof typeof PRODUCT_TYPE_TO_MENU_LABEL
-                    ] ?? productTypeKey;
+                  const productTypeLabel = getCatalogMenuLabel(
+                    catalogSlugFromProductType(category?.productType ?? "shop"),
+                  );
                   const isGiftCardProduct = productTypeKey === "gifts";
                   const isCafeAndFoodCardProduct = productTypeKey === "cafe&food";
                   const isRentalCardProduct = productTypeKey === "rentals";
@@ -2478,7 +3044,7 @@ function AdminSchedulingServicesPageContent() {
                     ? `/admin/inventory/products/${product.id}/edit?returnTo=${encodeURIComponent(contextualReturnTo)}`
                     : `/admin/inventory/products/${product.id}/edit?returnTo=${encodeURIComponent(contextualReturnTo)}`;
                   const displayCategoryName = parent
-                    ? `${parent.name} › ${category?.name ?? "—"}`
+                    ? `${parent.name} > ${category?.name ?? "—"}`
                     : (category?.name ?? "—");
 
                   return (
@@ -2649,10 +3215,7 @@ function AdminSchedulingServicesPageContent() {
             <Button
               type="button"
               onClick={persistProductSubCategory}
-              disabled={
-                productSubCategoryParentId === null ||
-                productSubCategoryName.trim().length === 0
-              }
+              disabled={productSubCategoryName.trim().length === 0}
             >
               {editingProductSubCategoryId ? "Save" : "Create"}
             </Button>
@@ -2660,15 +3223,35 @@ function AdminSchedulingServicesPageContent() {
         }
       >
         <div className="space-y-3">
-          <p className="text-xs text-muted-foreground">
-            Parent:{" "}
-            <span className="font-semibold text-foreground">
-              {productSubCategoryParentId
-                ? (productCategoryById.get(productSubCategoryParentId)?.name ??
-                  "—")
-                : "—"}
-            </span>
-          </p>
+          <div className="space-y-2">
+            <Label htmlFor="product-subcategory-menu">Menu placement</Label>
+            <Select
+              value={productSubCategoryMenuSlug}
+              onValueChange={(value) => {
+                const slug = value as CatalogSlug;
+                setProductSubCategoryMenuSlug(slug);
+                if (isProductCatalogSlug(slug)) {
+                  const rootId = productRootBySlug[slug] ?? null;
+                  if (rootId) setProductSubCategoryParentId(rootId);
+                }
+              }}
+            >
+              <SelectTrigger id="product-subcategory-menu">
+                <SelectValue placeholder="Select menu" />
+              </SelectTrigger>
+              <SelectContent>
+                {CATALOG_MENU_ORDER.map((entry) => (
+                  <SelectItem key={entry.slug} value={entry.slug}>
+                    {entry.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Move this sub-category between menus without changing product type
+              (rental, gift, shop, etc.).
+            </p>
+          </div>
           <div className="space-y-2">
             <Label htmlFor="product-subcategory-name">Name</Label>
             <Input
@@ -2924,30 +3507,34 @@ function AdminSchedulingServicesPageContent() {
       >
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="cat-parent-top">Parent category</Label>
+            <Label htmlFor="cat-parent-menu">Menu placement</Label>
             <Select
-              value={categoryDraft.parentTopLevelId}
-              onValueChange={(value) =>
+              value={categoryDraft.menuCatalogSlug}
+              onValueChange={(value) => {
+                const slug = value as CatalogSlug;
                 setCategoryDraft((draft) => ({
                   ...draft,
-                  parentTopLevelId: value as SchedulingTopLevelId,
-                }))
-              }
+                  menuCatalogSlug: slug,
+                  parentTopLevelId: isSchedulingCatalogSlug(slug)
+                    ? catalogSlugToSchedulingTopLevel(slug)
+                    : draft.parentTopLevelId,
+                }));
+              }}
             >
-              <SelectTrigger id="cat-parent-top">
-                <SelectValue placeholder="Select parent category" />
+              <SelectTrigger id="cat-parent-menu">
+                <SelectValue placeholder="Select menu" />
               </SelectTrigger>
               <SelectContent>
-                {SCHEDULING_TOP_LEVEL_ORDER.map((topLevelId) => (
-                  <SelectItem key={topLevelId} value={topLevelId}>
-                    {getSchedulingTopLevelLabel(topLevelId)}
+                {CATALOG_MENU_ORDER.map((entry) => (
+                  <SelectItem key={entry.slug} value={entry.slug}>
+                    {entry.label}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              Choose Gym, Play, or Event. Changing this while editing moves the
-              sub-category.
+              Choose which catalog menu shows this sub-category. Product menus
+              only change placement; Gym, Play, and Events keep the same id.
             </p>
           </div>
           <div className="space-y-2">
