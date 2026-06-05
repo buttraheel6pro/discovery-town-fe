@@ -5,17 +5,19 @@ import { useEffect, useRef } from 'react'
 
 import { useCafe } from '@/lib/cafe-store'
 import { useAppDispatch } from '@/lib/redux/hooks'
+import { useInventoryHydrated } from '@/lib/redux/provider'
 import { syncCafeCatalogProducts } from '@/lib/redux/slices/inventory-slice'
 import { useInventory } from '@/lib/inventory-store'
 
 export function CafeInventorySyncBridge() {
   const dispatch = useAppDispatch()
+  const inventoryHydrated = useInventoryHydrated()
   const { cafeProducts } = useCafe()
   const { products, productCategories } = useInventory()
   const lastSignatureRef = useRef<string>('')
 
   useEffect(() => {
-    if (cafeProducts.length === 0) {
+    if (!inventoryHydrated || cafeProducts.length === 0) {
       return
     }
 
@@ -45,7 +47,7 @@ export function CafeInventorySyncBridge() {
         tenantId,
       }),
     )
-  }, [cafeProducts, dispatch, productCategories, products])
+  }, [cafeProducts, dispatch, inventoryHydrated, productCategories, products])
 
   return null
 }

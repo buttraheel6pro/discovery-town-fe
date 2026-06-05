@@ -1,14 +1,21 @@
 /** Global Redux provider for client-side app state. */
 'use client'
 
-import { useEffect, useState, type ReactNode } from 'react'
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from 'react'
 import { Provider } from 'react-redux'
 
-import { useAppDispatch, useAppSelector } from '@/lib/redux/hooks'
 import {
+  getLocalStorageJson,
   inventoryStateForLocalStorage,
   setLocalStorageJson,
 } from '@/lib/browser-local-storage-json'
+import { useAppDispatch, useAppSelector } from '@/lib/redux/hooks'
 import {
   hydrateInventoryState,
   INVENTORY_STORAGE_KEY,
@@ -22,6 +29,13 @@ import {
   type SchedulingState,
 } from '@/lib/redux/slices/scheduling-slice'
 import { store } from '@/lib/redux/store'
+
+const InventoryHydrationContext = createContext(false)
+
+/** True after inventory state has been loaded from localStorage (or confirmed absent). */
+export function useInventoryHydrated(): boolean {
+  return useContext(InventoryHydrationContext)
+}
 
 interface AppStoreProviderProps {
   readonly children: ReactNode
@@ -37,20 +51,11 @@ function SchedulingPersistenceBridge() {
       return
     }
 
-    const raw = window.localStorage.getItem(SCHEDULING_STORAGE_KEY)
-    if (!raw) {
-      setHydrated(true)
-      return
-    }
-
-    try {
-      const parsed = JSON.parse(raw) as SchedulingState
+    const parsed = getLocalStorageJson<SchedulingState>(SCHEDULING_STORAGE_KEY)
+    if (parsed) {
       dispatch(hydrateSchedulingState(parsed))
-    } catch {
-      // ignore malformed persisted payload and keep default state
-    } finally {
-      setHydrated(true)
     }
+    setHydrated(true)
   }, [dispatch])
 
   useEffect(() => {
@@ -64,7 +69,7 @@ function SchedulingPersistenceBridge() {
   return null
 }
 
-function InventoryPersistenceBridge() {
+function InventoryHydrationProvider({ children }: Readonly<{ children: ReactNode }>) {
   const dispatch = useAppDispatch()
   const inventory = useAppSelector(selectInventoryState)
   const [hydrated, setHydrated] = useState(false)
@@ -74,20 +79,11 @@ function InventoryPersistenceBridge() {
       return
     }
 
-    const raw = window.localStorage.getItem(INVENTORY_STORAGE_KEY)
-    if (!raw) {
-      setHydrated(true)
-      return
-    }
-
-    try {
-      const parsed = JSON.parse(raw) as InventoryState
+    const parsed = getLocalStorageJson<InventoryState>(INVENTORY_STORAGE_KEY)
+    if (parsed) {
       dispatch(hydrateInventoryState(parsed))
-    } catch {
-      // ignore malformed persisted payload and keep default state
-    } finally {
-      setHydrated(true)
     }
+    setHydrated(true)
   }, [dispatch])
 
   useEffect(() => {
@@ -102,15 +98,20 @@ function InventoryPersistenceBridge() {
     setLocalStorageJson(INVENTORY_STORAGE_KEY, inventoryStateForLocalStorage(inventory))
   }, [hydrated, inventory])
 
-  return null
+  return (
+    <InventoryHydrationContext.Provider value={hydrated}>
+      {children}
+    </InventoryHydrationContext.Provider>
+  )
 }
 
 export function AppStoreProvider({ children }: AppStoreProviderProps) {
   return (
     <Provider store={store}>
-      <InventoryPersistenceBridge />
-      <SchedulingPersistenceBridge />
-      {children}
+      <InventoryHydrationProvider>
+        <SchedulingPersistenceBridge />
+        {children}
+      </InventoryHydrationProvider>
     </Provider>
   )
 }

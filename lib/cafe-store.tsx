@@ -11,7 +11,7 @@ import {
   type ReactNode,
 } from 'react'
 
-import { setLocalStorageJson } from '@/lib/browser-local-storage-json'
+import { getLocalStorageJson, setLocalStorageJson } from '@/lib/browser-local-storage-json'
 import {
   CLASSIC_COFFEE_CATALOG_IDS,
   SALADS_CATALOG_IDS,
@@ -64,10 +64,9 @@ const SEED_ATTRIBUTE_GROUPS = attributeGroupSchema.array().parse(MOCK_ATTRIBUTE_
 const SEED_ROTATION_GROUPS = rotationGroupSchema.array().parse(MOCK_ROTATION_GROUPS)
 
 /**
- * Merges persisted cafe catalog with mock seed — seed wins on id collision so the UI
- * always reflects `lib/mock-data.ts`; persisted rows are kept only when not in seed.
+ * Merges mock seed with persisted admin catalog — persisted wins on id collision.
  */
-function mergeCatalogBySeedId<T extends { id: string }>(
+function mergeCatalogPersistedWithSeed<T extends { id: string }>(
   persisted: readonly T[],
   seed: readonly T[],
   parseItem: (item: T) => T,
@@ -77,9 +76,7 @@ function mergeCatalogBySeedId<T extends { id: string }>(
     byId.set(item.id, parseItem(item))
   }
   for (const item of persisted) {
-    if (!byId.has(item.id)) {
-      byId.set(item.id, parseItem(item))
-    }
+    byId.set(item.id, parseItem(item))
   }
   return Array.from(byId.values())
 }
@@ -112,7 +109,7 @@ function mergeProductModifierGroupIds(seed: string[], persisted: string[]): stri
 
 function mergeSeedCafeProductWithPersisted(seed: CafeProduct, persisted: CafeProduct): CafeProduct {
   return cafeProductSchema.parse({
-    ...seed,
+    ...persisted,
     attributeGroups: mergeProductAttributeGroups(seed.attributeGroups, persisted.attributeGroups),
     modifierGroupIds: mergeProductModifierGroupIds(
       seed.modifierGroupIds,
@@ -147,9 +144,15 @@ function mergeCafeProductCatalog(
   return Array.from(byId.values())
 }
 
-/** Hides stale rows that no longer belong on a curated menu (e.g. old Cold Drinks extras). */
-function reconcileCuratedMenuProducts(products: CafeProduct[]): CafeProduct[] {
+/** Hides stale seed-only rows that no longer belong on a curated menu. */
+function reconcileCuratedMenuProducts(
+  products: CafeProduct[],
+  persistedProductIds: ReadonlySet<string>,
+): CafeProduct[] {
   return products.map((product) => {
+    if (persistedProductIds.has(product.id)) {
+      return product
+    }
     if (product.category === 'Coffee' && !CLASSIC_COFFEE_CATALOG_IDS.has(product.id)) {
       return { ...product, isActive: false }
     }
@@ -205,21 +208,23 @@ function hydrateCafeCatalogFromMock(
   CafePersistedShape,
   'cafeProducts' | 'modifierGroups' | 'attributeGroups' | 'rotationGroups'
 > {
+  const persistedProductIds = new Set(persistedProducts.map((product) => product.id))
   return {
     cafeProducts: reconcileCuratedMenuProducts(
       mergeCafeProductCatalog(persistedProducts, SEED_CAFE_PRODUCTS),
+      persistedProductIds,
     ),
-    modifierGroups: mergeCatalogBySeedId(
+    modifierGroups: mergeCatalogPersistedWithSeed(
       persistedModifiers,
       SEED_MODIFIER_GROUPS,
       (group) => modifierGroupSchema.parse(group),
     ),
-    attributeGroups: mergeCatalogBySeedId(
+    attributeGroups: mergeCatalogPersistedWithSeed(
       persistedAttributes,
       SEED_ATTRIBUTE_GROUPS,
       (group) => attributeGroupSchema.parse(group),
     ),
-    rotationGroups: mergeCatalogBySeedId(
+    rotationGroups: mergeCatalogPersistedWithSeed(
       persistedRotations,
       SEED_ROTATION_GROUPS,
       (group) => rotationGroupSchema.parse(group),
@@ -235,11 +240,9 @@ function safeParseInitial(): CafePersistedShape {
   }
   if (typeof window === 'undefined') return base
   try {
-    const raw = window.localStorage.getItem(CAFE_STORAGE_KEY)
-    if (!raw) return base
-    const parsed = JSON.parse(raw) as unknown
-    if (typeof parsed !== 'object' || parsed === null) return base
-    const o = parsed as Partial<CafePersistedShape>
+    const parsed = getLocalStorageJson<Partial<CafePersistedShape>>(CAFE_STORAGE_KEY)
+    if (!parsed || typeof parsed !== 'object') return base
+    const o = parsed
     const persistedCafeProducts =
       o.cafeProducts != null ? cafeProductSchema.array().parse(o.cafeProducts) : []
     const persistedModifiers =

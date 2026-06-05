@@ -90,7 +90,7 @@ function mergeProductsWithSeed(
     }
     return enrichProductWithCanonicalType(
       { ...product, ...seedRow, id: product.id },
-      categoryById.get(seedRow.categoryId) ?? null,
+      categoryById,
       productCategories,
     )
   })
@@ -101,7 +101,7 @@ function mergeProductsWithSeed(
       merged.push(
         enrichProductWithCanonicalType(
           seedRow,
-          categoryById.get(seedRow.categoryId) ?? null,
+          categoryById,
           productCategories,
         ),
       )
