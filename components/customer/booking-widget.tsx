@@ -8,7 +8,8 @@ import { AvailabilityBadge } from '@/components/customer/availability-badge'
 import { CouponPanel } from '@/components/customer/coupon-panel'
 import { ServiceTypeBadge } from '@/components/customer/service-type-badge'
 import { Button } from '@/components/ui/button'
-import { Calendar } from '@/components/ui/calendar'
+import { CompactAvailabilityDateStrip } from '@/components/customer/compact-availability-date-strip'
+import { getOpenBookingTodayIsoDate } from '@/components/customer/open-booking-week-ui'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -27,6 +28,7 @@ import { getBookingPrimaryGuardianId } from '@/lib/booking-household'
 import { useClients } from '@/lib/client-store'
 import { generateOpenAvailability } from '@/lib/mock-data'
 import {
+  areAvailableWindowsEqual,
   calculateOpenPrice,
   cn,
   formatDurationLabel,
@@ -50,13 +52,6 @@ export interface BookingWidgetProps {
   service: SchedulingService
   slot?: SchedulingSlot
   onBooked: (booking: SchedulingBooking) => void
-}
-
-function toDateString(date: Date): string {
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  const d = String(date.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
 }
 
 export function BookingWidget({
@@ -160,8 +155,6 @@ export function BookingWidget({
     service.requiresWaiver,
   ])
 
-  const openDate = selectedDate ? new Date(`${selectedDate}T00:00:00`) : null
-
   const availability = useMemo(() => {
     if (!selectedDate) return null
     return generateOpenAvailability(service, selectedDate)
@@ -222,7 +215,7 @@ export function BookingWidget({
       <BookingPassCountField
         label={bookingForm.guestCountLabel}
         count={bookingForm.guestCount}
-        min={1}
+        min={bookingForm.minGuestCount}
         max={passMax}
         onChange={bookingForm.setGuestCount}
         helperText={bookingForm.passCountHelperText}
@@ -320,12 +313,6 @@ export function BookingWidget({
                 />
               ) : null}
 
-              <BookingCategoryAddons
-                optional={bookingForm.categoryOptionalAddOns}
-                selectedOptionalIds={bookingForm.selectedCategoryAddOnIds}
-                onOptionalToggle={bookingForm.setCategoryAddOnSelected}
-              />
-
               {!bookingForm.needsHouseholdChildren ? (
                 <BookingFamilyMemberFields
                   service={service}
@@ -341,6 +328,12 @@ export function BookingWidget({
                   idPrefix="widget"
                 />
               ) : null}
+
+              <BookingCategoryAddons
+                optional={bookingForm.categoryOptionalAddOns}
+                selectedOptionalIds={bookingForm.selectedCategoryAddOnIds}
+                onOptionalToggle={bookingForm.setCategoryAddOnSelected}
+              />
 
               {service.requiresWaiver ? (
                 requiredWaiverDocs.length === 0 ? (
@@ -451,20 +444,15 @@ export function BookingWidget({
 
           {step === 'date' && (
             <>
-              <div className="space-y-2">
-                <Label>Select a date</Label>
-                <Calendar
-                  mode="single"
-                  selected={openDate ?? undefined}
-                  onSelect={(d) => {
-                    if (!d) return
-                    setSelectedDate(toDateString(d))
-                    setSelectedWindow(null)
-                    setStep('time')
-                  }}
-                  disabled={isPastDisabled}
-                />
-              </div>
+              <CompactAvailabilityDateStrip
+                selectedDate={selectedDate ?? getOpenBookingTodayIsoDate()}
+                isDateDisabled={(dateStr) => isPastDisabled(new Date(`${dateStr}T12:00:00`))}
+                onDayClick={(dateStr) => {
+                  setSelectedDate(dateStr)
+                  setSelectedWindow(null)
+                  setStep('time')
+                }}
+              />
               <p className="text-xs text-muted-foreground">
                 You can book up to {maxAdvanceHours} hours in advance.
               </p>
@@ -491,9 +479,7 @@ export function BookingWidget({
                   {availability.windows.map((w) => {
                     const disabled = w.spotsRemaining <= 0
                     const limited = w.spotsRemaining === 1
-                    const selected =
-                      selectedWindow?.startAt === w.startAt &&
-                      selectedWindow?.endAt === w.endAt
+                    const selected = areAvailableWindowsEqual(selectedWindow, w)
 
                     return (
                       <button
@@ -615,12 +601,6 @@ export function BookingWidget({
                 />
               ) : null}
 
-              <BookingCategoryAddons
-                optional={bookingForm.categoryOptionalAddOns}
-                selectedOptionalIds={bookingForm.selectedCategoryAddOnIds}
-                onOptionalToggle={bookingForm.setCategoryAddOnSelected}
-              />
-
               {!bookingForm.needsHouseholdChildren ? (
                 <BookingFamilyMemberFields
                   service={service}
@@ -636,6 +616,12 @@ export function BookingWidget({
                   idPrefix="widget-open"
                 />
               ) : null}
+
+              <BookingCategoryAddons
+                optional={bookingForm.categoryOptionalAddOns}
+                selectedOptionalIds={bookingForm.selectedCategoryAddOnIds}
+                onOptionalToggle={bookingForm.setCategoryAddOnSelected}
+              />
 
               {service.bookingOfferingKind !== 'PASS' ? (
                 <div className="space-y-2">

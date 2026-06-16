@@ -13,6 +13,8 @@ import { Button } from '@/components/ui/button'
 function AdminSchedulingRecurringNewPageInner() {
   const searchParams = useSearchParams()
   const initialServiceId = searchParams.get('serviceId')?.trim() ?? ''
+  const initialRangeStart = searchParams.get('rangeStart')?.trim() ?? ''
+  const initialRangeEnd = searchParams.get('rangeEnd')?.trim() ?? ''
   const rawReturnTo = searchParams.get('returnTo')?.trim() ?? '/admin/scheduling'
   const returnTo = rawReturnTo.startsWith('/admin/') ? rawReturnTo : '/admin/scheduling'
 
@@ -30,7 +32,12 @@ function AdminSchedulingRecurringNewPageInner() {
           Create multiple sessions from a single recurrence rule.
         </p>
       </div>
-      <SlotRecurringForm initialServiceId={initialServiceId} returnTo={returnTo} />
+      <SlotRecurringForm
+        initialServiceId={initialServiceId}
+        initialRangeStart={initialRangeStart}
+        initialRangeEnd={initialRangeEnd}
+        returnTo={returnTo}
+      />
     </div>
   )
 }

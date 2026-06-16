@@ -91,15 +91,28 @@ function buildOccurrenceDates(
   return out
 }
 
+function parseInitialRangeDate(value: string | undefined): Date | undefined {
+  const trimmed = (value ?? '').trim()
+  if (!trimmed) {
+    return undefined
+  }
+  const parsed = new Date(`${trimmed}T00:00:00`)
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed
+}
+
 export interface SlotRecurringFormProps {
   readonly showCancel?: boolean
   readonly initialServiceId?: string
+  readonly initialRangeStart?: string
+  readonly initialRangeEnd?: string
   readonly returnTo?: string
 }
 
 export function SlotRecurringForm({
   showCancel = true,
   initialServiceId = '',
+  initialRangeStart = '',
+  initialRangeEnd = '',
   returnTo = '/admin/scheduling',
 }: SlotRecurringFormProps) {
   const router = useRouter()
@@ -109,11 +122,17 @@ export function SlotRecurringForm({
   const [serviceId, setServiceId] = useState<string>('')
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('WEEKLY')
   const [daysOfWeek, setDaysOfWeek] = useState<number[]>([1, 2, 3, 4, 5])
-  const [rangeStart, setRangeStart] = useState<Date | undefined>(() => new Date())
+  const [rangeStart, setRangeStart] = useState<Date | undefined>(() => {
+    return parseInitialRangeDate(initialRangeStart) ?? new Date()
+  })
   const [rangeEnd, setRangeEnd] = useState<Date | undefined>(() => {
-    const d = new Date()
-    d.setDate(d.getDate() + 28)
-    return d
+    const fromProps = parseInitialRangeDate(initialRangeEnd)
+    if (fromProps) {
+      return fromProps
+    }
+    const defaultEnd = new Date()
+    defaultEnd.setDate(defaultEnd.getDate() + 28)
+    return defaultEnd
   })
   const [startTime, setStartTime] = useState('09:00')
   const [endTime, setEndTime] = useState('10:30')

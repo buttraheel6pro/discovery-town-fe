@@ -16,6 +16,7 @@ import {
   Tag,
 } from 'lucide-react'
 import { BookingAdditionalAdultField } from '@/components/customer/booking-additional-adult-field'
+import { BookingPassCountField } from '@/components/customer/booking-pass-count-field'
 import { BookingAmenitiesSection } from '@/components/customer/booking-amenities-section'
 import { BookingCategoryAddons } from '@/components/customer/booking-category-addons'
 import { BookingFamilyMemberFields } from '@/components/customer/booking-family-member-fields'
@@ -73,11 +74,15 @@ import {
   buildSlotDrivenEventDisplayMeta,
   findUpcomingSlotForService,
   isCampPlayCatalogService,
+  isSpecialPlayEventCatalogService,
   usesEventTicketBookingSidebar,
   usesPlayEventCheckoutLayout,
 } from '@/lib/scheduling-slot-availability'
 import {
+  isEventBookingScheduleReadyForBookingForm,
+  resolveEventBookingScheduleMode,
   shouldShowCustomerEventBookingSchedule,
+  shouldShowEventDayRangePicker,
 } from '@/lib/event-booking-schedule'
 import {
   findSchedulingSlotContainingWindow,
@@ -182,6 +187,7 @@ function EventDetailContent({
 
   const usesTicketBookingSidebar = usesEventTicketBookingSidebar(service)
   const isCampPlayService = isCampPlayCatalogService(service)
+  const isSpecialPlayEvent = isSpecialPlayEventCatalogService(service)
   const usePlayEventCheckoutLayoutFlag = usesPlayEventCheckoutLayout(service)
   const showEventDetailMetaGrid = !usePlayEventCheckoutLayoutFlag
 
@@ -227,6 +233,32 @@ function EventDetailContent({
     isPartyPackageFlow && searchParams.get('privateEvent') === '1'
   const showCustomerEventSchedule =
     shouldShowCustomerEventBookingSchedule(service) && !isPrivateEventJourney
+  const eventScheduleMode = useMemo(
+    () => resolveEventBookingScheduleMode(service),
+    [service],
+  )
+  const eventShowDayRangePicker = useMemo(
+    () => shouldShowEventDayRangePicker(eventScheduleMode, slots, service),
+    [eventScheduleMode, service, slots],
+  )
+  const showBookingDetailsForm = useMemo(() => {
+    if (!showCustomerEventSchedule) {
+      return true
+    }
+    return isEventBookingScheduleReadyForBookingForm(eventScheduleMode, {
+      selectedDate: scheduleDate,
+      selectedToDate: scheduleToDate,
+      selectedWindow: scheduleWindow,
+      showDayRangePicker: eventShowDayRangePicker,
+    })
+  }, [
+    eventScheduleMode,
+    eventShowDayRangePicker,
+    scheduleDate,
+    scheduleToDate,
+    scheduleWindow,
+    showCustomerEventSchedule,
+  ])
   const packageFromUrl =
     searchParams.get('package') ?? searchParams.get('packageId')
   const [privateSelectedPackageId, setPrivateSelectedPackageId] = useState<string | null>(
@@ -349,8 +381,10 @@ function EventDetailContent({
     usesTicketBookingSidebar,
   ])
 
-  const max = eventSlot?.effectiveCapacity ?? service.maxAttendees ?? service.capacity
-  const regCount = eventSlot?.bookedCount ?? service.registeredCount ?? 0
+  const listingSlot =
+    showCustomerEventSchedule && scheduleSlot != null ? scheduleSlot : eventSlot
+  const max = listingSlot?.effectiveCapacity ?? service.maxAttendees ?? service.capacity
+  const regCount = listingSlot?.bookedCount ?? service.registeredCount ?? 0
   const spotsLeft = Math.max(0, max - regCount)
   const fillPct = max > 0 ? Math.round((regCount / max) * 100) : 0
   const status = service.eventStatus ?? 'DRAFT'
@@ -424,7 +458,7 @@ function EventDetailContent({
   }, [bookingForm.additionalAdultCount, bookingForm.additionalAdultUnitPrice])
 
   function handleRegister() {
-    if (showCustomerEventSchedule && !useCampCheckoutLayout) {
+    if (showCustomerEventSchedule) {
       if (!scheduleWindow) {
         return
       }
@@ -591,6 +625,18 @@ function EventDetailContent({
           {showCustomerEventSchedule ? (
             <>
               <Separator />
+              {isSpecialPlayEvent ? (
+                <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <Clock className="w-4 h-4 text-accent" /> {service.durationMinutes} min
+                  </span>
+                  {service.location ? (
+                    <span className="flex items-center gap-1.5">
+                      <MapPin className="w-4 h-4 text-accent" /> {service.location}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
               <EventBookingScheduleSection
                 service={service}
                 slots={slots}
@@ -884,6 +930,7 @@ function EventDetailContent({
                           type="button"
                           className="w-full bg-accent text-accent-foreground hover:bg-accent/90 font-bold h-11"
                           disabled={
+                            !showBookingDetailsForm ||
                             spotsLeft === 0 ||
                             !published ||
                             !bookingForm.canSubmitDetails ||
@@ -891,7 +938,7 @@ function EventDetailContent({
                           }
                           onClick={handleRegister}
                         >
-                          {getPlayBookingConfirmCartLabel()}
+                          {isSpecialPlayEvent ? 'Add to cart' : getPlayBookingConfirmCartLabel()}
                         </Button>
                       </div>
                     )}
@@ -902,11 +949,16 @@ function EventDetailContent({
           </aside>
         ) : null}
 
-        {useCampCheckoutLayout && !registered && !addedEventToCart ? (
+        {useCampCheckoutLayout &&
+        !registered &&
+        !addedEventToCart &&
+        showBookingDetailsForm ? (
           <aside className="lg:col-span-2">
             <Card className="border-border shadow-xl">
               <CardHeader className="pb-3">
-                <CardTitle className="text-lg font-bold">Register for this Event</CardTitle>
+                <CardTitle className="text-lg font-bold">
+                  {isSpecialPlayEvent ? 'Book this event' : 'Register for this Event'}
+                </CardTitle>
               </CardHeader>
               <CardContent className="space-y-5">
                 <div className="space-y-2">
@@ -922,44 +974,47 @@ function EventDetailContent({
                   <Progress value={fillPct} className="h-2" />
                 </div>
 
-                <div>
-                  <span className="text-sm font-semibold mb-2 block">Number of tickets</span>
-                  <div className="flex items-center gap-3">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() =>
-                        bookingForm.setGuestCount(Math.max(1, bookingForm.guestCount - 1))
-                      }
-                      disabled={bookingForm.guestCount <= 1}
-                      aria-label="Decrease ticket count"
-                    >
-                      –
-                    </Button>
-                    <span className="font-bold text-base w-12 text-center">
-                      {bookingForm.guestCount}
-                    </span>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() =>
-                        bookingForm.setGuestCount(
-                          Math.min(Math.min(20, spotsLeft), bookingForm.guestCount + 1),
-                        )
-                      }
-                      disabled={
-                        bookingForm.guestCount >= Math.min(20, Math.max(0, spotsLeft))
-                      }
-                      aria-label="Increase ticket count"
-                    >
-                      +
-                    </Button>
-                  </div>
-                </div>
+                <BookingPassCountField
+                  label={bookingForm.guestCountLabel}
+                  count={bookingForm.guestCount}
+                  min={bookingForm.minGuestCount}
+                  max={Math.min(20, Math.max(0, spotsLeft))}
+                  onChange={bookingForm.setGuestCount}
+                  decreaseAriaLabel="Decrease ticket count"
+                  increaseAriaLabel="Increase ticket count"
+                />
+
+                {bookingForm.needsHouseholdChildren ? (
+                  <BookingHouseholdFields
+                    contacts={contacts}
+                    primaryGuardianId={bookingForm.primaryGuardianContactId}
+                    onPrimaryGuardianChange={bookingForm.setPrimaryGuardianContactId}
+                    secondaryGuardianId={bookingForm.secondaryGuardianContactId}
+                    onSecondaryGuardianChange={bookingForm.setSecondaryGuardianContactId}
+                    selectedChildIds={bookingForm.selectedChildIds}
+                    onToggleChild={bookingForm.toggleSelectedChild}
+                    onAddContact={addContact}
+                    onAddRelationship={addRelationship}
+                    idPrefix="event-household"
+                    maxChildSelections={bookingForm.maxChildSelections}
+                    passCount={bookingForm.guestCount}
+                    additionalSiblingCount={bookingForm.additionalSiblingCount}
+                  />
+                ) : bookingForm.showFamilyMemberFields ? (
+                  <BookingFamilyMemberFields
+                    service={service}
+                    contacts={contacts}
+                    selectedChildIds={bookingForm.selectedChildIds}
+                    onToggleChild={bookingForm.toggleSelectedChild}
+                    accompanyingAdultId={bookingForm.accompanyingAdultContactId}
+                    onAccompanyingAdultChange={bookingForm.setAccompanyingAdultContactId}
+                    participantContactId={bookingForm.participantContactId}
+                    onParticipantContactChange={bookingForm.applyParticipantContact}
+                    participantName={bookingForm.participantName}
+                    onParticipantNameChange={bookingForm.setParticipantName}
+                    idPrefix="event-camp"
+                  />
+                ) : null}
 
                 {activePackages.length > 0 ? (
                   <div className="space-y-2">
@@ -992,38 +1047,6 @@ function EventDetailContent({
                   selectedOptionalIds={bookingForm.selectedCategoryAddOnIds}
                   onOptionalToggle={bookingForm.setCategoryAddOnSelected}
                 />
-
-                {bookingForm.needsHouseholdChildren ? (
-                  <BookingHouseholdFields
-                    contacts={contacts}
-                    primaryGuardianId={bookingForm.primaryGuardianContactId}
-                    onPrimaryGuardianChange={bookingForm.setPrimaryGuardianContactId}
-                    secondaryGuardianId={bookingForm.secondaryGuardianContactId}
-                    onSecondaryGuardianChange={bookingForm.setSecondaryGuardianContactId}
-                    selectedChildIds={bookingForm.selectedChildIds}
-                    onToggleChild={bookingForm.toggleSelectedChild}
-                    onAddContact={addContact}
-                    onAddRelationship={addRelationship}
-                    idPrefix="event-household"
-                    maxChildSelections={bookingForm.maxChildSelections}
-                    passCount={bookingForm.guestCount}
-                    additionalSiblingCount={bookingForm.additionalSiblingCount}
-                  />
-                ) : !usesTicketBookingSidebar ? (
-                  <BookingFamilyMemberFields
-                    service={service}
-                    contacts={contacts}
-                    selectedChildIds={bookingForm.selectedChildIds}
-                    onToggleChild={bookingForm.toggleSelectedChild}
-                    accompanyingAdultId={bookingForm.accompanyingAdultContactId}
-                    onAccompanyingAdultChange={bookingForm.setAccompanyingAdultContactId}
-                    participantContactId={bookingForm.participantContactId}
-                    onParticipantContactChange={bookingForm.applyParticipantContact}
-                    participantName={bookingForm.participantName}
-                    onParticipantNameChange={bookingForm.setParticipantName}
-                    idPrefix="event-camp"
-                  />
-                ) : null}
 
                 {service.requiresWaiver ? (
                   showGenericWaiverCheckbox ? (
@@ -1083,7 +1106,7 @@ function EventDetailContent({
                     id="notes-camp"
                     value={bookingForm.notes}
                     onChange={(e) => bookingForm.setNotes(e.target.value)}
-                    placeholder="Dietary requirements, accessibility, etc."
+                    placeholder="Anything we should know?"
                     rows={3}
                   />
                 </div>
@@ -1133,9 +1156,10 @@ function EventDetailContent({
           </aside>
         ) : null}
 
-        {!useCampCheckoutLayout ? (
-        <aside>
-          <Card className="sticky top-24 shadow-xl">
+        {!useCampCheckoutLayout &&
+        (showBookingDetailsForm || registered || addedEventToCart) ? (
+        <aside className="min-w-0">
+          <Card className="sticky top-24 min-w-0 shadow-xl">
             <CardHeader className="pb-3">
               <CardTitle className="text-lg font-bold">
                 {isPrivateEventJourney ? 'Plan your private event' : 'Register for this Event'}
@@ -1207,44 +1231,47 @@ function EventDetailContent({
 
                   <Separator />
 
-                  <div>
-                    <span className="text-sm font-semibold mb-2 block">Number of tickets</span>
-                    <div className="flex items-center gap-3">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() =>
-                          bookingForm.setGuestCount(Math.max(1, bookingForm.guestCount - 1))
-                        }
-                        disabled={bookingForm.guestCount <= 1}
-                        aria-label="Decrease ticket count"
-                      >
-                        –
-                      </Button>
-                      <span className="font-bold text-base w-12 text-center">
-                        {bookingForm.guestCount}
-                      </span>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() =>
-                          bookingForm.setGuestCount(
-                            Math.min(Math.min(20, spotsLeft), bookingForm.guestCount + 1),
-                          )
-                        }
-                        disabled={
-                          bookingForm.guestCount >= Math.min(20, Math.max(0, spotsLeft))
-                        }
-                        aria-label="Increase ticket count"
-                      >
-                        +
-                      </Button>
-                    </div>
-                  </div>
+                  <BookingPassCountField
+                    label={bookingForm.guestCountLabel}
+                    count={bookingForm.guestCount}
+                    min={bookingForm.minGuestCount}
+                    max={Math.min(20, Math.max(0, spotsLeft))}
+                    onChange={bookingForm.setGuestCount}
+                    decreaseAriaLabel="Decrease ticket count"
+                    increaseAriaLabel="Increase ticket count"
+                  />
+
+                  {bookingForm.needsHouseholdChildren ? (
+                    <BookingHouseholdFields
+                      contacts={contacts}
+                      primaryGuardianId={bookingForm.primaryGuardianContactId}
+                      onPrimaryGuardianChange={bookingForm.setPrimaryGuardianContactId}
+                      secondaryGuardianId={bookingForm.secondaryGuardianContactId}
+                      onSecondaryGuardianChange={bookingForm.setSecondaryGuardianContactId}
+                      selectedChildIds={bookingForm.selectedChildIds}
+                      onToggleChild={bookingForm.toggleSelectedChild}
+                      onAddContact={addContact}
+                      onAddRelationship={addRelationship}
+                      idPrefix="event-household"
+                      maxChildSelections={bookingForm.maxChildSelections}
+                      passCount={bookingForm.guestCount}
+                      additionalSiblingCount={bookingForm.additionalSiblingCount}
+                    />
+                  ) : bookingForm.showFamilyMemberFields ? (
+                    <BookingFamilyMemberFields
+                      service={service}
+                      contacts={contacts}
+                      selectedChildIds={bookingForm.selectedChildIds}
+                      onToggleChild={bookingForm.toggleSelectedChild}
+                      accompanyingAdultId={bookingForm.accompanyingAdultContactId}
+                      onAccompanyingAdultChange={bookingForm.setAccompanyingAdultContactId}
+                      participantContactId={bookingForm.participantContactId}
+                      onParticipantContactChange={bookingForm.applyParticipantContact}
+                      participantName={bookingForm.participantName}
+                      onParticipantNameChange={bookingForm.setParticipantName}
+                      idPrefix="event"
+                    />
+                  ) : null}
 
                   {activePackages.length > 0 ? (
                     <div className="space-y-2">
@@ -1277,38 +1304,6 @@ function EventDetailContent({
                     selectedOptionalIds={bookingForm.selectedCategoryAddOnIds}
                     onOptionalToggle={bookingForm.setCategoryAddOnSelected}
                   />
-
-                  {bookingForm.needsHouseholdChildren ? (
-                    <BookingHouseholdFields
-                      contacts={contacts}
-                      primaryGuardianId={bookingForm.primaryGuardianContactId}
-                      onPrimaryGuardianChange={bookingForm.setPrimaryGuardianContactId}
-                      secondaryGuardianId={bookingForm.secondaryGuardianContactId}
-                      onSecondaryGuardianChange={bookingForm.setSecondaryGuardianContactId}
-                      selectedChildIds={bookingForm.selectedChildIds}
-                      onToggleChild={bookingForm.toggleSelectedChild}
-                      onAddContact={addContact}
-                      onAddRelationship={addRelationship}
-                      idPrefix="event-household"
-                      maxChildSelections={bookingForm.maxChildSelections}
-                      passCount={bookingForm.guestCount}
-                      additionalSiblingCount={bookingForm.additionalSiblingCount}
-                    />
-                  ) : !usesTicketBookingSidebar ? (
-                    <BookingFamilyMemberFields
-                      service={service}
-                      contacts={contacts}
-                      selectedChildIds={bookingForm.selectedChildIds}
-                      onToggleChild={bookingForm.toggleSelectedChild}
-                      accompanyingAdultId={bookingForm.accompanyingAdultContactId}
-                      onAccompanyingAdultChange={bookingForm.setAccompanyingAdultContactId}
-                      participantContactId={bookingForm.participantContactId}
-                      onParticipantContactChange={bookingForm.applyParticipantContact}
-                      participantName={bookingForm.participantName}
-                      onParticipantNameChange={bookingForm.setParticipantName}
-                      idPrefix="event"
-                    />
-                  ) : null}
 
                   {service.requiresWaiver ? (
                     showGenericWaiverCheckbox ? (
@@ -1370,7 +1365,7 @@ function EventDetailContent({
                       id="notes-e"
                       value={bookingForm.notes}
                       onChange={(e) => bookingForm.setNotes(e.target.value)}
-                      placeholder="Dietary requirements, accessibility, etc."
+                      placeholder="Anything we should know?"
                       rows={3}
                     />
                   </div>
@@ -1436,7 +1431,7 @@ function EventDetailContent({
                     <Button
                       className="w-full bg-accent text-accent-foreground hover:bg-accent/90 font-bold h-11"
                       disabled={
-                        (showCustomerEventSchedule && !scheduleWindow) ||
+                        !showBookingDetailsForm ||
                         spotsLeft === 0 ||
                         !published ||
                         !bookingForm.canSubmitDetails ||

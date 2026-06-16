@@ -106,7 +106,11 @@ export function formatSlotTime(isoString: string): string {
   return format(parseISO(isoString), 'h:mm a')
 }
 
-/** Compact start label for availability grids (9 AM, 9:30 AM, 10 AM, …). */
+/**
+ * PER_HOUR slot button label — start time with AM/PM.
+ * Hourly increment: 9 AM, 10 AM, 11 AM, 12 PM, 1 PM, …
+ * Half-hourly increment: 9 AM, 9:30 AM, 10 AM, 10:30 AM, …
+ */
 export function formatAvailabilitySlotStartLabel(
   isoString: string,
   incrementMinutes: number | null,
@@ -114,14 +118,21 @@ export function formatAvailabilitySlotStartLabel(
   const date = parseISO(isoString)
   const minutes = date.getMinutes()
 
-  if (incrementMinutes === 30 || minutes === 30) {
+  if (incrementMinutes === 30) {
     if (minutes === 0) {
       return format(date, 'h a')
     }
     return format(date, 'h:mm a')
   }
 
-  return format(date, 'h a')
+  if (incrementMinutes === 60) {
+    return format(date, 'h a')
+  }
+
+  if (minutes === 0) {
+    return format(date, 'h a')
+  }
+  return format(date, 'h:mm a')
 }
 
 /** Customer availability slot label — full session range when increment is none. */
@@ -137,6 +148,20 @@ export function formatAvailabilityWindowLabel(
 
 export function formatSlotTimeRange(startAt: string, endAt: string): string {
   return `${formatSlotTime(startAt)} – ${formatSlotTime(endAt)}`
+}
+
+/** Compare booking windows by instant — avoids ISO string formatting mismatches. */
+export function areAvailableWindowsEqual(
+  left: Pick<AvailableWindow, 'startAt' | 'endAt'> | null | undefined,
+  right: Pick<AvailableWindow, 'startAt' | 'endAt'> | null | undefined,
+): boolean {
+  if (left == null || right == null) {
+    return false
+  }
+  return (
+    new Date(left.startAt).getTime() === new Date(right.startAt).getTime() &&
+    new Date(left.endAt).getTime() === new Date(right.endAt).getTime()
+  )
 }
 
 export function formatDuration(startAt: string, endAt: string): string {
@@ -183,6 +208,10 @@ export function calculateOpenPrice(
   endAt: string,
   guestCount: number,
 ): number {
+  if (guestCount <= 0) {
+    return 0
+  }
+
   const durationHours =
     (parseISO(endAt).getTime() - parseISO(startAt).getTime()) / 3_600_000
 
@@ -192,7 +221,7 @@ export function calculateOpenPrice(
     case 'per_person':
       return Math.round(basePrice * guestCount * 100) / 100
     default:
-      return basePrice
+      return Math.round(basePrice * guestCount * 100) / 100
   }
 }
 
@@ -302,6 +331,10 @@ export function computeSchedulingBaseTotal(
   window: AvailableWindow | null | undefined,
   durationMinutes: number | undefined,
 ): number {
+  if (guestCount <= 0) {
+    return 0
+  }
+
   if (slot) {
     const perHead =
       service.pricingModel === 'per_person'

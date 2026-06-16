@@ -22,11 +22,10 @@ import {
   isPlayClassCartCheckoutService,
   usesBuyNowListingCta,
 } from '@/lib/play-cart'
-import {
-  isPrivatePlayService,
-  shouldUsePrivatePlayDetailLayout,
-  usesPlayPackageBookingLayout,
-} from '@/lib/private-play-packages'
+import { getCustomerEventScheduleDetailHref } from '@/lib/event-booking-schedule'
+import { isLearnSchedulingService } from '@/lib/learn-catalog'
+import { shouldUsePrivatePlayDetailLayout } from '@/lib/private-play-packages'
+import { isPassOffering } from '@/lib/scheduling-listing-kind'
 import { usesEventTicketBookingSidebar } from '@/lib/scheduling-slot-availability'
 import type { EventPackage, SchedulingService } from '@/lib/types'
 
@@ -38,6 +37,9 @@ function getServiceHref(
   service: SchedulingService,
   packages: readonly EventPackage[],
 ): string {
+  if (isPassOffering(service)) {
+    return `/facilities/${service.id}`
+  }
   if (shouldUsePrivatePlayDetailLayout(service, packages)) {
     return `/facilities/${service.id}`
   }
@@ -48,12 +50,25 @@ function getServiceHref(
     return '/play#product-menu-pcat-we-bring-party'
   }
 
+  const eventScheduleHref = getCustomerEventScheduleDetailHref(service)
+  if (
+    eventScheduleHref &&
+    !isPassOffering(service) &&
+    !shouldUsePrivatePlayDetailLayout(service, packages)
+  ) {
+    return eventScheduleHref
+  }
+
   if (
     service.serviceType === 'OPEN_PLAY' ||
     service.serviceType === 'COURT_BOOKING' ||
     service.serviceType === 'PRIVATE_HIRE'
   ) {
     return `/facilities/${service.id}`
+  }
+
+  if (isLearnSchedulingService(service)) {
+    return `/learn/${service.id}`
   }
 
   if (
@@ -73,7 +88,7 @@ function getCtaLabel(
   packages: readonly EventPackage[],
   categoryById: ReadonlyMap<string, SchedulingCategoryPlacementFields>,
 ): string {
-  if (isPrivatePlayService(service) || usesPlayPackageBookingLayout(service, packages)) {
+  if (shouldUsePrivatePlayDetailLayout(service, packages)) {
     return 'Buy now'
   }
   if (usesBuyNowListingCta(service)) {
@@ -86,6 +101,9 @@ function getCtaLabel(
     return 'Plan booking'
   }
   if (service.bookingMode === 'SCHEDULED') {
+    if (isLearnSchedulingService(service)) {
+      return 'Enroll now'
+    }
     const category = categoryById.get(service.categoryId) ?? null
     const addsToCartFromDetail =
       isPlayClassCartCheckoutService(service, category) ||

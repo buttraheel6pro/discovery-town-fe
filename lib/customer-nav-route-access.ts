@@ -8,6 +8,7 @@ import {
 export const CUSTOMER_NAV_PATH_PREFIXES: Record<CustomerNavLabelKey, readonly string[]> = {
   play: ['/play'],
   gym: ['/gym', '/classes', '/class-packs'],
+  learn: ['/learn'],
   events: ['/events', '/private-hire'],
   shop: ['/store/shop', '/shop/checkout', '/shop/order-confirmation'],
   gifts: ['/store/gifts'],

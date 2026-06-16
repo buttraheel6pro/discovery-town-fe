@@ -1,5 +1,6 @@
 /** Package resolution for Private Play customer listings. */
 import { isPackageOnlyCatalogService } from '@/lib/event-catalog-display'
+import { isPackageServiceOffering } from '@/lib/scheduling-listing-kind'
 import {
   FIELD_TRIP_PRESCHOOL_SCHOOL_SERVICE_ID,
   PRIVATE_PLAY_FULL_VENUE_SERVICE_ID,
@@ -40,10 +41,17 @@ export function usesPlayPackageBookingLayout(
   return resolvePrivatePlayListingPackages(service, packages).length > 0
 }
 
+/** Package-only detail shell — tier tabs + guided booking (not regular Service listings). */
 export function shouldUsePrivatePlayDetailLayout(
   service: SchedulingService,
   packages: readonly EventPackage[],
 ): boolean {
+  if (!isPackageServiceOffering(service)) {
+    return false
+  }
+  if (resolvePrivatePlayListingPackages(service, packages).length === 0) {
+    return false
+  }
   return isPrivatePlayService(service) || usesPlayPackageBookingLayout(service, packages)
 }
 

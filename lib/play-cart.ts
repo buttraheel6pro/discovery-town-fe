@@ -6,6 +6,7 @@ import {
   getCustomerSchedulingMenuSlug,
   type SchedulingCategoryPlacementFields,
 } from '@/lib/catalog-placement'
+import { isLearnSchedulingService } from '@/lib/learn-catalog'
 import { getSchedulingTopLevelId } from '@/lib/scheduling-consumer-categories'
 import { isEventCatalogService } from '@/lib/scheduling-visibility'
 import { formatPrice, formatSlotDate, formatSlotTimeRange } from '@/lib/utils'
@@ -25,6 +26,7 @@ export function getPlayBookingConfirmCartLabel(): string {
   return PLAY_BOOKING_CONFIRM_CART_LABEL
 }
 export const GYM_CART_BOOKING_META_KEY = 'gymCartBooking' as const
+export const LEARN_CART_BOOKING_META_KEY = 'learnCartBooking' as const
 export const EVENT_CART_BOOKING_META_KEY = 'eventCartBooking' as const
 
 export interface PlayCartDescriptionExtras {
@@ -49,6 +51,11 @@ export function isGymClassCartCheckoutService(service: SchedulingService): boole
   return service.categoryId.startsWith('cat-gym-')
 }
 
+/** Learn page programs (`cat-learn-*`) use cart checkout on the learn detail page. */
+export function isLearnCartCheckoutService(service: SchedulingService): boolean {
+  return isLearnSchedulingService(service)
+}
+
 function serviceOnPlayMenu(
   service: SchedulingService,
   category?: SchedulingCategoryPlacementFields | null,
@@ -66,6 +73,7 @@ export function isPlayClassCartCheckoutService(
   category?: SchedulingCategoryPlacementFields | null,
 ): boolean {
   if (isGymClassCartCheckoutService(service)) return false
+  if (isLearnCartCheckoutService(service)) return false
   if (isEventSlotCartCheckoutService(service, category ? new Map([[category.id, category]]) : undefined)) {
     return false
   }
@@ -78,6 +86,61 @@ export function isPlayClassCartCheckoutService(
   return serviceOnPlayMenu(service, category ?? null)
 }
 
+/**
+ * Play menu Service listing (not pass/package) with admin-configured availability calendar.
+ * e.g. custom Play subcategory services routed to the class detail page.
+ */
+export function isPlayMenuServiceEventScheduleListing(
+  service: SchedulingService,
+  category: SchedulingCategoryPlacementFields | null | undefined,
+  showEventBookingSchedule: boolean,
+): boolean {
+  if (!showEventBookingSchedule) {
+    return false
+  }
+  if (service.bookingOfferingKind === 'PASS') {
+    return false
+  }
+  if (service.isPackageService === true) {
+    return false
+  }
+  if (!serviceOnPlayMenu(service, category ?? null)) {
+    return false
+  }
+  return !isPlayClassCartCheckoutService(service, category ?? null)
+}
+
+/**
+ * Class detail split layout — availability left, Add to cart right, booking form below.
+ * Gym listings always; Play service listings when admin date/time selection is enabled.
+ */
+export function usesClassDetailSplitCartCheckoutLayout(
+  service: SchedulingService,
+  category: SchedulingCategoryPlacementFields | null | undefined,
+  showEventBookingSchedule: boolean,
+): boolean {
+  if (service.isPackageService === true) {
+    return false
+  }
+  if (isGymClassCartCheckoutService(service)) {
+    return true
+  }
+  if (isLearnCartCheckoutService(service)) {
+    return true
+  }
+  if (
+    isPlayClassCartCheckoutService(service, category ?? null) &&
+    showEventBookingSchedule
+  ) {
+    return true
+  }
+  return isPlayMenuServiceEventScheduleListing(
+    service,
+    category,
+    showEventBookingSchedule,
+  )
+}
+
 export function isPlayCartBookingMetadata(
   metadata: Record<string, unknown> | undefined,
 ): boolean {
@@ -88,6 +151,12 @@ export function isGymCartBookingMetadata(
   metadata: Record<string, unknown> | undefined,
 ): boolean {
   return metadata?.[GYM_CART_BOOKING_META_KEY] === true
+}
+
+export function isLearnCartBookingMetadata(
+  metadata: Record<string, unknown> | undefined,
+): boolean {
+  return metadata?.[LEARN_CART_BOOKING_META_KEY] === true
 }
 
 export function isEventCartBookingMetadata(
@@ -166,6 +235,59 @@ export function buildGymCartBookingDescription(
   extras?: PlayCartDescriptionExtras,
 ): string {
   return buildPlayCartBookingDescription(booking, extras)
+}
+
+/** Learn program enrollment cart lines. */
+export function buildLearnCartBookingDescription(
+  booking: SchedulingBooking,
+  extras?: PlayCartDescriptionExtras,
+): string {
+  const lines: string[] = []
+  if (extras?.packageName?.trim()) {
+    lines.push(`Package: ${extras.packageName.trim()}`)
+  }
+  if (booking.startAt && booking.endAt) {
+    const startLabel = formatSlotDate(booking.startAt)
+    const endLabel = formatSlotDate(booking.endAt)
+    lines.push(
+      startLabel === endLabel
+        ? `${startLabel} · ${formatSlotTimeRange(booking.startAt, booking.endAt)}`
+        : `Full program: ${startLabel} – ${endLabel}`,
+    )
+    if (startLabel !== endLabel) {
+      lines.push('Includes all scheduled sessions in this program.')
+    }
+  }
+  lines.push(`Students: ${booking.guestCount}`)
+  if (booking.participantName?.trim()) {
+    lines.push(`Student: ${booking.participantName.trim()}`)
+  }
+  if (booking.primaryGuardianName?.trim()) {
+    lines.push(`Primary guardian: ${booking.primaryGuardianName.trim()}`)
+  }
+  if (booking.secondaryGuardianName?.trim()) {
+    lines.push(`Secondary guardian: ${booking.secondaryGuardianName.trim()}`)
+  }
+  if (booking.participantChildIds != null && booking.participantChildIds.length > 0) {
+    lines.push(`Children (${booking.participantChildIds.length}): household selection`)
+  }
+  if (booking.notes?.trim()) {
+    lines.push(`Notes: ${booking.notes.trim()}`)
+  }
+  if (booking.specialInstructions?.trim()) {
+    lines.push(`Instructions: ${booking.specialInstructions.trim()}`)
+  }
+  if (booking.addOns.length > 0) {
+    for (const line of booking.addOns) {
+      if (line.totalPrice > 0 || line.quantity > 0) {
+        lines.push(`${line.name} ×${line.quantity} (${formatPrice(line.totalPrice)})`)
+      }
+    }
+  }
+  if (booking.couponCode) {
+    lines.push(`Coupon: ${booking.couponCode}`)
+  }
+  return lines.join('\n')
 }
 
 export function buildEventCartBookingDescription(

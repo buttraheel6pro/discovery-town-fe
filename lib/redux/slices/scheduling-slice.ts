@@ -13,6 +13,8 @@ import {
   schedulingSlots,
   schedulingWaitlistEntries,
 } from '@/lib/mock-data'
+import { isLearnSchedulingService } from '@/lib/learn-catalog'
+import { resolveLearnProgramDatesFromSlots } from '@/lib/learn-enrollment'
 import { normalizeOpenPlaySchedulingCatalog } from '@/lib/open-play-consumer-section'
 import { withoutOpenPlayPassCatalogServices } from '@/lib/open-play-pass-catalog'
 import { SPECIAL_PLAY_SERVICE_ORDER } from '@/lib/special-play-service-order'
@@ -22,17 +24,18 @@ import {
 } from '@/lib/we-bring-play-offerings'
 import { enrichSchedulingCategories } from '@/lib/catalog-placement'
 import type { RootState } from '@/lib/redux/store'
-import type {
-  CategoryAddOn,
-  CategoryAddOnChargeFrequency,
-  EventPackage,
-  SchedulingBooking,
-  SchedulingCategory,
-  SchedulingOccasion,
-  SchedulingService,
-  SchedulingSlot,
-  SchedulingWaitlistEntry,
-  WaitlistStatus,
+import {
+  EventBookingScheduleModeEnum,
+  type CategoryAddOn,
+  type CategoryAddOnChargeFrequency,
+  type EventPackage,
+  type SchedulingBooking,
+  type SchedulingCategory,
+  type SchedulingOccasion,
+  type SchedulingService,
+  type SchedulingSlot,
+  type SchedulingWaitlistEntry,
+  type WaitlistStatus,
 } from '@/lib/types'
 
 export type SchedulingAddOnParent = 'category' | 'service'
@@ -78,6 +81,10 @@ function isSummerCampPlayDefaultSlotId(slotId: string): boolean {
   return SUMMER_CAMP_SLOT_ID_PREFIXES.some(
     (prefix) => slotId === prefix || slotId.startsWith(`${prefix}-`),
   )
+}
+
+function isLearnDefaultSlotId(slotId: string): boolean {
+  return slotId.startsWith('slot-learn-')
 }
 
 const SUMMER_CAMP_WEEK_SERVICE_ID_SET = new Set<string>(SUMMER_CAMP_WEEK_SERVICE_IDS)
@@ -217,6 +224,42 @@ interface UpdateOccasionPayload {
   patch: Partial<SchedulingOccasion>
 }
 
+/** Keep learn program start/end dates aligned with the first and last generated session. */
+function syncLearnProgramDatesOnState(
+  state: SchedulingState,
+  serviceIds: ReadonlySet<string> | null = null,
+): void {
+  const serviceById = new Map(state.services.map((service) => [service.id, { ...service }]))
+
+  for (const service of state.services) {
+    if (!isLearnSchedulingService(service)) {
+      continue
+    }
+    if (serviceIds != null && !serviceIds.has(service.id)) {
+      continue
+    }
+
+    const dates = resolveLearnProgramDatesFromSlots(service, state.slots)
+    if (!dates) {
+      continue
+    }
+
+    serviceById.set(service.id, {
+      ...service,
+      programStartDate: dates.programStartDate,
+      programEndDate: dates.programEndDate,
+    })
+  }
+
+  state.services = state.services.map(
+    (service) => serviceById.get(service.id) ?? service,
+  )
+  state.slots = state.slots.map((slot) => {
+    const service = serviceById.get(slot.serviceId)
+    return service ? { ...slot, service } : slot
+  })
+}
+
 /** Adds mock catalog rows missing from persisted scheduling state (e.g. new play passes). */
 function mergeSchedulingWithCatalogDefaults(persisted: SchedulingState): SchedulingState {
   const defaults = cloneInitialState()
@@ -334,11 +377,26 @@ function mergeSchedulingWithCatalogDefaults(persisted: SchedulingState): Schedul
       continue
     }
 
+    if (isLearnSchedulingService(catalogService)) {
+      serviceById.set(service.id, {
+        ...existing,
+        ...listingPatch,
+        eventBookingScheduleMode:
+          catalogService.eventBookingScheduleMode ??
+          existing.eventBookingScheduleMode ??
+          EventBookingScheduleModeEnum.PER_EVENT,
+      })
+      continue
+    }
+
     serviceById.set(service.id, listingPatch)
   }
 
   const slotById = new Map<string, SchedulingSlot>()
   for (const slot of persisted.slots) {
+    if (isLearnDefaultSlotId(slot.id)) {
+      continue
+    }
     if (
       CAMP_PLAY_SERVICE_IDS.has(slot.serviceId) &&
       !isCampPlayDefaultSlotId(slot.id) &&
@@ -349,6 +407,10 @@ function mergeSchedulingWithCatalogDefaults(persisted: SchedulingState): Schedul
     slotById.set(slot.id, slot)
   }
   for (const slot of defaults.slots) {
+    if (isLearnDefaultSlotId(slot.id)) {
+      slotById.set(slot.id, slot)
+      continue
+    }
     if (isSummerCampPlayDefaultSlotId(slot.id)) {
       slotById.set(slot.id, slot)
       continue
@@ -406,11 +468,13 @@ function mergeSchedulingWithCatalogDefaults(persisted: SchedulingState): Schedul
     services: merged.services,
   })
 
-  return {
+  const result: SchedulingState = {
     ...merged,
     categories: normalized.categories,
     services: normalized.services,
   }
+  syncLearnProgramDatesOnState(result)
+  return result
 }
 
 function cloneInitialState(): SchedulingState {
@@ -431,7 +495,7 @@ function cloneInitialState(): SchedulingState {
     services: baseServices,
   })
 
-  return withoutRetiredSchedulingCatalog({
+  const initial = withoutRetiredSchedulingCatalog({
     categories: normalized.categories,
     services: normalized.services,
     slots: schedulingSlots.map((slot) => ({
@@ -455,6 +519,8 @@ function cloneInitialState(): SchedulingState {
     })),
     occasions: schedulingOccasions.map((occasion) => ({ ...occasion })),
   })
+  syncLearnProgramDatesOnState(initial)
+  return initial
 }
 
 const schedulingSlice = createSlice({
@@ -612,6 +678,7 @@ const schedulingSlice = createSlice({
         isActive: slot.isActive ?? true,
         checkInCount: slot.checkInCount ?? 0,
       })
+      syncLearnProgramDatesOnState(state, new Set([slot.serviceId]))
     },
     addSlots(state, action: PayloadAction<SchedulingSlot[]>) {
       const slots = action.payload.map((slot) => ({
@@ -620,6 +687,7 @@ const schedulingSlice = createSlice({
         checkInCount: slot.checkInCount ?? 0,
       }))
       state.slots = [...slots, ...state.slots]
+      syncLearnProgramDatesOnState(state, new Set(slots.map((slot) => slot.serviceId)))
     },
     linkSchedulingAddOn(state, action: PayloadAction<LinkSchedulingAddOnPayload>) {
       const { parent, parentId, addOnId, addOnName, isFree, quantity, unitPrice, chargeFrequency, linkId } =

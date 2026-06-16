@@ -8,7 +8,7 @@ import {
 import { filterConsumerSchedulingCategoriesForMenu } from '@/lib/scheduling-visibility'
 import type { MembershipPlan, SchedulingCategory } from '@/lib/types'
 
-export type MembershipDisplayPage = 'gym' | 'play' | 'events' | 'membership'
+export type MembershipDisplayPage = 'gym' | 'play' | 'events' | 'learn' | 'membership'
 
 export const MEMBERSHIP_DISPLAY_PAGE_OPTIONS: readonly {
   readonly value: MembershipDisplayPage
@@ -18,6 +18,7 @@ export const MEMBERSHIP_DISPLAY_PAGE_OPTIONS: readonly {
   { value: 'gym', label: 'Gym (/gym)' },
   { value: 'play', label: 'Play (/play)' },
   { value: 'events', label: 'Events (/events)' },
+  { value: 'learn', label: 'Learn (/learn)' },
 ] as const
 
 function membershipPageFromMenuSlug(
@@ -44,6 +45,9 @@ export function resolveSchedulingCategoryPage(
   }
   if (categoryId.startsWith('cat-play') || categoryId === 'cat-open-play') {
     return 'play'
+  }
+  if (categoryId.startsWith('cat-learn-')) {
+    return 'learn'
   }
   return 'events'
 }
@@ -147,6 +151,7 @@ export function groupSchedulingCategoriesByPage(
     gym: [],
     play: [],
     events: [],
+    learn: [],
     membership: [],
   }
 

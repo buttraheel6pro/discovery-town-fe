@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { ListingCard } from '@/components/customer/listing-card'
+import { isPassOffering } from '@/lib/scheduling-listing-kind'
 import type { Class, SchedulingService, SchedulingSlot } from '@/lib/types'
 
 interface ClassCardProps {
@@ -33,7 +34,11 @@ export function ClassCard({ service, nextSlot }: ClassCardProps) {
 
   return (
     <ListingCard
-      href={`/classes/${service.id}`}
+      href={
+        isPassOffering(service)
+          ? `/facilities/${service.id}`
+          : `/classes/${service.id}`
+      }
       title={service.name}
       description={service.description ?? ''}
       imageUrl={service.imageUrl ?? undefined}

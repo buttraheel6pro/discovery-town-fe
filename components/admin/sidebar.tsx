@@ -7,6 +7,7 @@ import { useMemo } from "react";
 import {
   Activity,
   BarChart2,
+  BookOpen,
   Building2,
   Calendar,
   CalendarDays,
@@ -14,6 +15,7 @@ import {
   CreditCard,
   ChefHat,
   FileText,
+  GraduationCap,
   LayoutDashboard,
   Monitor,
   Package,
@@ -64,6 +66,17 @@ const topLevelItems = [
 ];
 
 const sidebarGroups = [
+  {
+    label: "Learn",
+    icon: BookOpen,
+    items: [
+      {
+        label: "Overview",
+        href: "/admin/learn",
+        icon: GraduationCap,
+      },
+    ],
+  },
   {
     label: "Operations",
     icon: Calendar,
@@ -242,6 +255,7 @@ const sidebarGroups = [
 
 const SECTION_ROOTS = [
   "/admin/inventory",
+  "/admin/learn",
   "/admin/scheduling",
   "/admin/calendar",
   "/admin/clients",

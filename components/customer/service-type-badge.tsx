@@ -15,6 +15,9 @@ const serviceTypeStyles: Record<SchedulingServiceType, string> = {
   PRIVATE_HIRE: 'bg-red-100 text-red-700',
   WORKSHOP: 'bg-slate-100 text-slate-700',
   FITNESS_ASSESSMENT: 'bg-indigo-100 text-indigo-700',
+  TUTORING_SESSION: 'bg-emerald-100 text-emerald-700',
+  TEST_PREP: 'bg-violet-100 text-violet-700',
+  ENRICHMENT_CLASS: 'bg-teal-100 text-teal-700',
 }
 
 const serviceTypeLabels: Record<SchedulingServiceType, string> = {
@@ -28,6 +31,9 @@ const serviceTypeLabels: Record<SchedulingServiceType, string> = {
   PRIVATE_HIRE: 'Private Hire',
   WORKSHOP: 'Workshop',
   FITNESS_ASSESSMENT: 'Assessment',
+  TUTORING_SESSION: 'Tutoring',
+  TEST_PREP: 'Test Prep',
+  ENRICHMENT_CLASS: 'Enrichment',
 }
 
 export function ServiceTypeBadge({

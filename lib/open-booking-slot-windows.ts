@@ -37,6 +37,14 @@ export function resolveSlotIncrementMinutes(
   return raw
 }
 
+/** PER_HOUR — split admin sessions into bookable steps (hourly or half-hourly). */
+export function shouldSplitSessionBySlotIncrement(
+  service: Pick<SchedulingService, 'slotIncrementMinutes'>,
+): boolean {
+  const increment = resolveSlotIncrementMinutes(service)
+  return increment === 30 || increment === 60
+}
+
 export function resolveOpenBookingDurationMinutes(
   service: SchedulingService,
   selectedDurationMinutes?: number,
@@ -68,6 +76,8 @@ function expandTimeRangeToWindows(
   options?: {
     readonly durationMinutes?: number
     readonly now?: number
+    /** One bookable window per admin session — ignores slot increment. */
+    readonly exactSessionOnly?: boolean
   },
 ): AvailableWindow[] {
   const nowMs = options?.now ?? Date.now()
@@ -75,7 +85,9 @@ function expandTimeRangeToWindows(
     service,
     options?.durationMinutes,
   )
-  const incrementMinutes = resolveSlotIncrementMinutes(service)
+  const incrementMinutes = options?.exactSessionOnly
+    ? null
+    : resolveSlotIncrementMinutes(service)
 
   if (incrementMinutes == null) {
     if (spotsRemaining <= 0 || sessionStartMs >= sessionEndMs) {
@@ -121,6 +133,7 @@ export function expandSchedulingSlotToWindows(
   options?: {
     readonly durationMinutes?: number
     readonly now?: number
+    readonly exactSessionOnly?: boolean
   },
 ): AvailableWindow[] {
   const sessionStartMs = new Date(slot.startAt).getTime()

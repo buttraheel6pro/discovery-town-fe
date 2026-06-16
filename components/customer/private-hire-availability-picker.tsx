@@ -41,7 +41,6 @@ export function PrivateHireAvailabilityPicker({
   const [serviceId, setServiceId] = useState<string>(
     initialServiceId ?? hireServices[0]?.id ?? '',
   )
-  const [weekOffset, setWeekOffset] = useState(0)
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0])
   const [selectedWindow, setSelectedWindow] = useState<AvailableWindow | null>(null)
   const [durationMinutes, setDurationMinutes] = useState<number>(60)
@@ -145,8 +144,6 @@ export function PrivateHireAvailabilityPicker({
 
       <OpenBookingAvailabilitySection
         service={service}
-        weekOffset={weekOffset}
-        onWeekOffsetChange={setWeekOffset}
         selectedDate={selectedDate}
         onSelectedDateChange={setSelectedDate}
         selectedWindow={selectedWindow}

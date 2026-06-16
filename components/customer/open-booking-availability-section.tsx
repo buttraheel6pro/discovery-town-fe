@@ -1,15 +1,20 @@
 /** Open booking, private hire, rental, and event-schedule availability — shared entry. */
 'use client'
 
-import { useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import { LearnProgramEnrollmentSummaryCard } from '@/components/customer/learn-program-enrollment-summary-card'
 import {
   RentalPerDayCalendarSection,
   type RentalPerDayCalendarSectionProps,
 } from '@/components/customer/rental-per-day-calendar-section'
 import { RentalWeekSlotPicker } from '@/components/customer/rental-week-slot-picker'
+import {
+  CompactAvailabilityDateStrip,
+  type CompactAvailabilityDateStripDensity,
+} from '@/components/customer/compact-availability-date-strip'
 import {
   OpenBookingAvailabilitySlotLegend,
   OpenBookingTimeWindowGrid,
@@ -17,23 +22,37 @@ import {
 import {
   formatOpenBookingDateDisplay,
   getOpenBookingTodayIsoDate,
-  getOpenBookingWeekDatesFromOffset,
-  OpenBookingWeekDayButtonGrid,
-  OpenBookingWeekToolbar,
-  type OpenBookingWeekDayVisual,
 } from '@/components/customer/open-booking-week-ui'
 import {
-  buildDayRangeBookingWindow,
+  resolveAvailabilityCalendarDayStatus,
+  type AvailabilityCalendarDayStatus,
+} from '@/lib/availability-calendar-status'
+import {
   buildEventDayAvailabilityMap,
   countEventPerDaySessionDaysInRange,
+  eventAvailabilityRequiresAdminSessions,
+  eventBookingScheduleRequiresTimeSelection,
+  findFirstBookableSlotOnEventDate,
   getDistinctSessionDatesForService,
   getFirstUpcomingSessionYmdForService,
   getEventBookingScheduleAvailabilitySubtitle,
   isEventPerDayDateSelectable,
+  isGymSchedulingClassService,
+  isLearnSchedulingClassService,
+  isScheduledAdminSessionService,
   resolveDistinctEventPerEventSessionTimes,
+  resolvePerDayBookingWindow,
   shouldShowEventDayRangePicker,
   type FixedEventScheduleDisplay,
 } from '@/lib/event-booking-schedule'
+import {
+  buildLearnProgramEnrollmentWindow,
+  resolveLearnProgramBounds,
+  resolveLearnProgramStartDayWindows,
+  usesLearnFullProgramEnrollment,
+} from '@/lib/learn-enrollment'
+import { getGymClassSessionDatesFromSchedule } from '@/lib/gym-class-schedule-availability'
+import { isSpecialPlayEventCatalogService } from '@/lib/scheduling-slot-availability'
 import {
   generateMockRentalHalfDayWindows,
   generateMockRentalHourlyWindows,
@@ -43,8 +62,7 @@ import {
   resolveSlotIncrementMinutes,
 } from '@/lib/open-booking-slot-windows'
 import { formatRentalLongDate } from '@/lib/rental-calendar-helpers'
-import { getWeekOffsetForYmd } from '@/lib/ymd-date'
-import { cn, formatAvailabilityWindowLabel, formatDurationLabel } from '@/lib/utils'
+import { cn, formatAvailabilityWindowLabel, formatDurationLabel, areAvailableWindowsEqual } from '@/lib/utils'
 import {
   EventBookingScheduleModeEnum,
   type AvailableWindow,
@@ -60,8 +78,6 @@ export type OpenBookingAvailabilityMode = 'facility' | 'private_hire'
 export interface OpenBookingServiceAvailabilitySectionProps {
   readonly title?: string
   readonly service: SchedulingService
-  readonly weekOffset: number
-  readonly onWeekOffsetChange: (offset: number) => void
   readonly selectedDate: string
   readonly onSelectedDateChange: (dateStr: string) => void
   readonly selectedWindow: AvailableWindow | null
@@ -99,8 +115,6 @@ export type OpenBookingEventScheduleVariantProps = Readonly<{
   readonly scheduleMode: EventBookingScheduleMode
   readonly service: SchedulingService
   readonly slots: readonly SchedulingSlot[]
-  readonly weekOffset: number
-  readonly onWeekOffsetChange: (offset: number) => void
   readonly selectedDate: string
   readonly onSelectedDateChange: (dateStr: string) => void
   readonly selectedToDate: string
@@ -110,6 +124,7 @@ export type OpenBookingEventScheduleVariantProps = Readonly<{
   readonly durationMinutes: number
   readonly fixedSchedule: FixedEventScheduleDisplay | null
   readonly hourlyWindows: readonly AvailableWindow[] | null
+  readonly dateStripDensity?: CompactAvailabilityDateStripDensity
 }>
 
 export type OpenBookingAvailabilitySectionProps =
@@ -122,8 +137,6 @@ function OpenBookingEventScheduleAvailabilitySection({
   scheduleMode,
   service,
   slots,
-  weekOffset,
-  onWeekOffsetChange,
   selectedDate,
   onSelectedDateChange,
   selectedToDate,
@@ -132,63 +145,180 @@ function OpenBookingEventScheduleAvailabilitySection({
   onSelectedWindowChange,
   fixedSchedule,
   hourlyWindows,
+  dateStripDensity = 'default',
 }: Readonly<OpenBookingEventScheduleVariantProps>) {
   const todayStr = getOpenBookingTodayIsoDate()
-  const weekDates = useMemo(
-    () => getOpenBookingWeekDatesFromOffset(weekOffset),
-    [weekOffset],
-  )
   const slotIncrementMinutes = resolveSlotIncrementMinutes(service)
   const isPerEvent = scheduleMode === EventBookingScheduleModeEnum.PER_EVENT
   const isPerDay = scheduleMode === EventBookingScheduleModeEnum.PER_DAY
   const isPerHour = scheduleMode === EventBookingScheduleModeEnum.PER_HOUR
-
-  const sessionDates = useMemo(
-    () => new Set(getDistinctSessionDatesForService(slots, service)),
-    [service, slots],
+  const learnFullProgramEnrollment = usesLearnFullProgramEnrollment(service)
+  const learnProgramBounds = useMemo(
+    () => (learnFullProgramEnrollment ? resolveLearnProgramBounds(service, slots) : null),
+    [learnFullProgramEnrollment, service, slots],
   )
-  const perEventWeekInitRef = useRef<string | null>(null)
+  const learnProgramStartDayWindows = useMemo(
+    () =>
+      learnFullProgramEnrollment
+        ? resolveLearnProgramStartDayWindows(service, slots)
+        : [],
+    [learnFullProgramEnrollment, service, slots],
+  )
+  const [learnStartDayWindow, setLearnStartDayWindow] = useState<AvailableWindow | null>(null)
+
+  const sessionDates = useMemo(() => {
+    if (isGymSchedulingClassService(service)) {
+      return new Set(getGymClassSessionDatesFromSchedule(service, todayStr))
+    }
+    return new Set(getDistinctSessionDatesForService(slots, service))
+  }, [service, slots, todayStr])
+  const sessionInitRef = useRef<string | null>(null)
+  const adminSessionsRequired = eventAvailabilityRequiresAdminSessions(service, scheduleMode)
   const firstUpcomingSessionDate = useMemo(
     () => getFirstUpcomingSessionYmdForService(slots, service, todayStr),
     [service, slots, todayStr],
   )
 
   useEffect(() => {
-    perEventWeekInitRef.current = null
+    sessionInitRef.current = null
+    setLearnStartDayWindow(null)
   }, [service.id])
 
   useEffect(() => {
-    if (!isPerEvent || !firstUpcomingSessionDate) {
+    if (!learnFullProgramEnrollment) {
       return
     }
-    if (perEventWeekInitRef.current === service.id) {
+    if (selectedWindow == null) {
+      setLearnStartDayWindow(null)
+    }
+  }, [learnFullProgramEnrollment, selectedWindow])
+
+  useEffect(() => {
+    if (!learnFullProgramEnrollment) {
       return
     }
-    onWeekOffsetChange(getWeekOffsetForYmd(firstUpcomingSessionDate))
-    perEventWeekInitRef.current = service.id
-  }, [firstUpcomingSessionDate, isPerEvent, onWeekOffsetChange, service.id])
+    const bounds = resolveLearnProgramBounds(service, slots)
+    if (!bounds) {
+      return
+    }
+    if (sessionInitRef.current === service.id) {
+      return
+    }
+    onSelectedDateChange(bounds.startYmd)
+    onSelectedToDateChange(bounds.endYmd)
+
+    const startDayWindows = resolveLearnProgramStartDayWindows(service, slots)
+    if (startDayWindows.length === 1) {
+      setLearnStartDayWindow(startDayWindows[0])
+      onSelectedWindowChange(buildLearnProgramEnrollmentWindow(service, slots))
+    } else {
+      onSelectedWindowChange(null)
+      setLearnStartDayWindow(null)
+    }
+    sessionInitRef.current = service.id
+  }, [
+    learnFullProgramEnrollment,
+    onSelectedDateChange,
+    onSelectedToDateChange,
+    onSelectedWindowChange,
+    service,
+    slots,
+  ])
+
+  useEffect(() => {
+    const shouldSnapToFirstSession =
+      !learnFullProgramEnrollment &&
+      (isPerHour ||
+        isPerEvent ||
+        (isPerDay && adminSessionsRequired))
+    if (!shouldSnapToFirstSession || sessionDates.size === 0 || !firstUpcomingSessionDate) {
+      return
+    }
+    if (sessionInitRef.current === service.id) {
+      return
+    }
+    if (!selectedDate || !sessionDates.has(selectedDate) || selectedDate < todayStr) {
+      onSelectedDateChange(firstUpcomingSessionDate)
+      if (isPerDay) {
+        const window = resolvePerDayBookingWindow(
+          slots,
+          service,
+          firstUpcomingSessionDate,
+          firstUpcomingSessionDate,
+        )
+        onSelectedToDateChange(firstUpcomingSessionDate)
+        onSelectedWindowChange(window)
+      } else if (isPerEvent) {
+        const slot = findFirstBookableSlotOnEventDate(slots, service, firstUpcomingSessionDate)
+        if (slot) {
+          const capacity = slot.effectiveCapacity ?? service.capacity
+          onSelectedWindowChange({
+            startAt: slot.startAt,
+            endAt: slot.endAt,
+            spotsRemaining: Math.max(0, capacity - (slot.bookedCount ?? 0)),
+          })
+        } else {
+          onSelectedWindowChange(null)
+        }
+      } else {
+        onSelectedWindowChange(null)
+      }
+    }
+    sessionInitRef.current = service.id
+  }, [
+    adminSessionsRequired,
+    firstUpcomingSessionDate,
+    isPerDay,
+    isPerEvent,
+    isPerHour,
+    learnFullProgramEnrollment,
+    onSelectedDateChange,
+    onSelectedToDateChange,
+    onSelectedWindowChange,
+    selectedDate,
+    service,
+    sessionDates,
+    slots,
+    todayStr,
+  ])
+
+  useEffect(() => {
+    if (!learnFullProgramEnrollment || learnProgramStartDayWindows.length !== 1) {
+      return
+    }
+    const onlyWindow = learnProgramStartDayWindows[0]
+    if (areAvailableWindowsEqual(learnStartDayWindow, onlyWindow)) {
+      return
+    }
+    setLearnStartDayWindow(onlyWindow)
+    onSelectedWindowChange(buildLearnProgramEnrollmentWindow(service, slots))
+  }, [
+    learnFullProgramEnrollment,
+    learnProgramStartDayWindows,
+    learnStartDayWindow,
+    onSelectedWindowChange,
+    service,
+    slots,
+  ])
+
   const availabilityMap = useMemo(
     () => buildEventDayAvailabilityMap(slots, service.id, service.capacity),
     [service.capacity, service.id, slots],
   )
-  const showDayRangePicker = shouldShowEventDayRangePicker(
-    EventBookingScheduleModeEnum.PER_DAY,
-    slots,
-    service,
-  )
-  const weekSessionDates = useMemo(
-    () => weekDates.filter((dateStr) => sessionDates.has(dateStr)),
-    [sessionDates, weekDates],
-  )
+  const showDayRangePicker = shouldShowEventDayRangePicker(scheduleMode, slots, service)
   const sessionTimeBlocks = useMemo(() => {
     if (!isPerEvent) {
       return []
     }
-    const fromSlots = resolveDistinctEventPerEventSessionTimes(service, slots)
+    const dateFilter =
+      selectedDate.trim().length > 0 && sessionDates.has(selectedDate.trim())
+        ? selectedDate.trim()
+        : undefined
+    const fromSlots = resolveDistinctEventPerEventSessionTimes(service, slots, dateFilter)
     if (fromSlots.length > 0) {
       return fromSlots
     }
-    if (fixedSchedule != null) {
+    if (!isScheduledAdminSessionService(service) && fixedSchedule != null) {
       return [
         {
           timeLabel: fixedSchedule.timeLabel,
@@ -197,7 +327,7 @@ function OpenBookingEventScheduleAvailabilitySection({
       ]
     }
     return []
-  }, [fixedSchedule, isPerEvent, service, slots])
+  }, [fixedSchedule, isPerEvent, selectedDate, service, sessionDates, slots])
 
   const from = selectedDate.trim()
   const to = selectedToDate.trim()
@@ -221,13 +351,25 @@ function OpenBookingEventScheduleAvailabilitySection({
   }
 
   function isPerHourDateDisabled(dateStr: string): boolean {
-    return dateStr < todayStr
+    if (dateStr < todayStr) {
+      return true
+    }
+    if (adminSessionsRequired) {
+      return !sessionDates.has(dateStr)
+    }
+    if (sessionDates.size > 0 && !sessionDates.has(dateStr)) {
+      return true
+    }
+    return false
   }
 
   function applyPerDaySelection(fromDate: string, toDate: string): void {
     onSelectedDateChange(fromDate)
     onSelectedToDateChange(toDate)
-    onSelectedWindowChange(buildDayRangeBookingWindow(fromDate, toDate, service.capacity))
+    const window =
+      resolvePerDayBookingWindow(slots, service, fromDate, toDate) ??
+      null
+    onSelectedWindowChange(window)
   }
 
   function onPerDayPickSingle(day: string): void {
@@ -270,7 +412,25 @@ function OpenBookingEventScheduleAvailabilitySection({
   }
 
   function handleDayClick(date: string): void {
+    if (learnFullProgramEnrollment) {
+      return
+    }
     if (isPerEvent) {
+      if (isPerEventDateWithoutSession(date)) {
+        return
+      }
+      onSelectedDateChange(date)
+      const slot = findFirstBookableSlotOnEventDate(slots, service, date)
+      if (slot) {
+        const capacity = slot.effectiveCapacity ?? service.capacity
+        onSelectedWindowChange({
+          startAt: slot.startAt,
+          endAt: slot.endAt,
+          spotsRemaining: Math.max(0, capacity - (slot.bookedCount ?? 0)),
+        })
+      } else {
+        onSelectedWindowChange(null)
+      }
       return
     }
     if (isPerDay) {
@@ -285,8 +445,9 @@ function OpenBookingEventScheduleAvailabilitySection({
     onSelectedWindowChange(null)
   }
 
+  const showTimeSelection = eventBookingScheduleRequiresTimeSelection(scheduleMode)
   const hourAvailability =
-    isPerHour && hourlyWindows != null
+    showTimeSelection && isPerHour && hourlyWindows != null
       ? {
           date: selectedDate,
           serviceId: service.id,
@@ -295,81 +456,176 @@ function OpenBookingEventScheduleAvailabilitySection({
         }
       : null
 
-  function getEventScheduleDayVisual(dateStr: string): OpenBookingWeekDayVisual | undefined {
-    if (isPerEvent) {
-      const withoutSession = isPerEventDateWithoutSession(dateStr)
-      const hasSession = sessionDates.has(dateStr) && !withoutSession
-      return {
-        className: cn(
-          'flex flex-col items-center rounded-lg border px-1 py-3 text-xs font-semibold transition-colors',
-          withoutSession &&
-            'cursor-not-allowed border-border bg-muted text-muted-foreground opacity-40',
-          hasSession &&
-            'cursor-default border-accent bg-accent/15 text-accent-foreground opacity-100',
-        ),
-        'aria-pressed': hasSession,
+  useEffect(() => {
+    if (!showTimeSelection || !isPerHour || hourAvailability == null) {
+      return
+    }
+
+    const windows = hourAvailability.windows
+    if (windows.length === 0) {
+      return
+    }
+
+    if (windows.length === 1) {
+      const onlyWindow = windows[0]
+      if (!areAvailableWindowsEqual(selectedWindow, onlyWindow)) {
+        onSelectedWindowChange(onlyWindow)
+      }
+      return
+    }
+
+    if (selectedWindow != null) {
+      const stillValid = windows.some((window) =>
+        areAvailableWindowsEqual(window, selectedWindow),
+      )
+      if (!stillValid) {
+        onSelectedWindowChange(null)
       }
     }
-    if (isPerDay && showDayRangePicker) {
-      const disabled = isPerDayDateDisabled(dateStr)
-      const hasFrom = from.length > 0
-      const hasTo = to.length > 0
-      const isEndpoint =
-        !disabled &&
-        hasFrom &&
-        ((!hasTo && dateStr === from) ||
-          (hasTo && from === to && dateStr === from) ||
-          (hasTo && from !== to && (dateStr === from || dateStr === to)))
-      const isMiddle =
-        !disabled && hasFrom && hasTo && from !== to && dateStr > from && dateStr < to
-      return {
-        className: cn(
-          'flex flex-col items-center rounded-lg border px-1 py-3 text-xs font-semibold transition-colors',
-          disabled && 'cursor-not-allowed border-border bg-muted opacity-40',
-          isEndpoint && 'border-accent bg-accent text-accent-foreground',
-          isMiddle && 'border-accent/40 bg-accent/15 text-foreground',
-          !disabled &&
-            !isEndpoint &&
-            !isMiddle &&
-            'border-border bg-card text-muted-foreground hover:bg-secondary hover:text-foreground',
-        ),
-        'aria-pressed': isEndpoint || isMiddle,
+  }, [
+    hourAvailability,
+    isPerHour,
+    onSelectedWindowChange,
+    selectedWindow,
+    showTimeSelection,
+  ])
+
+  const showSubtitle =
+    !isGymSchedulingClassService(service) &&
+    !isLearnSchedulingClassService(service) &&
+    !isSpecialPlayEventCatalogService(service)
+
+  const getCompactDateStatus = useCallback(
+    (dateStr: string): AvailabilityCalendarDayStatus => {
+      if (learnFullProgramEnrollment && learnProgramBounds) {
+        const isStartDay = dateStr === learnProgramBounds.startYmd
+        return resolveAvailabilityCalendarDayStatus(
+          dateStr,
+          todayStr,
+          isStartDay,
+          isStartDay ? service.capacity : undefined,
+        )
       }
+      const hasSession = adminSessionsRequired
+        ? sessionDates.has(dateStr) && dateStr >= todayStr
+        : sessionDates.size === 0
+          ? dateStr >= todayStr
+          : sessionDates.has(dateStr) && dateStr >= todayStr
+      const remaining = availabilityMap.get(dateStr)
+      return resolveAvailabilityCalendarDayStatus(
+        dateStr,
+        todayStr,
+        hasSession,
+        remaining,
+      )
+    },
+    [adminSessionsRequired, availabilityMap, learnFullProgramEnrollment, learnProgramBounds, service.capacity, sessionDates, todayStr],
+  )
+
+  useEffect(() => {
+    if (learnFullProgramEnrollment || showTimeSelection || !isPerEvent) {
+      return
     }
-    return undefined
+    if (sessionTimeBlocks.length !== 1) {
+      if (selectedWindow != null && sessionTimeBlocks.length > 1) {
+        const stillValid = sessionTimeBlocks.some((block) =>
+          areAvailableWindowsEqual(block.window, selectedWindow),
+        )
+        if (!stillValid) {
+          onSelectedWindowChange(null)
+        }
+      }
+      return
+    }
+    const onlyWindow = sessionTimeBlocks[0].window
+    if (!areAvailableWindowsEqual(selectedWindow, onlyWindow)) {
+      onSelectedWindowChange(onlyWindow)
+    }
+  }, [
+    isPerEvent,
+    learnFullProgramEnrollment,
+    onSelectedWindowChange,
+    selectedWindow,
+    sessionTimeBlocks,
+    showTimeSelection,
+  ])
+
+  function handleLearnStartDayWindowChange(window: AvailableWindow | null): void {
+    if (!window) {
+      setLearnStartDayWindow(null)
+      onSelectedWindowChange(null)
+      return
+    }
+    const matchedWindow =
+      learnProgramStartDayWindows.find((entry) => areAvailableWindowsEqual(entry, window)) ??
+      window
+    setLearnStartDayWindow(matchedWindow)
+    const programWindow = buildLearnProgramEnrollmentWindow(service, slots)
+    onSelectedWindowChange(programWindow)
   }
 
-  const eventScheduleSelectedDate = ((): string | null => {
-    if (isPerEvent) {
-      return null
+  function isLearnDateDisabled(dateStr: string): boolean {
+    if (!learnProgramBounds) {
+      return true
     }
-    if (isPerDay && showDayRangePicker) {
-      return null
-    }
-    return selectedDate
-  })()
-
-  const usesCustomDayVisual = isPerEvent || (isPerDay && showDayRangePicker)
+    return dateStr !== learnProgramBounds.startYmd
+  }
 
   return (
     <section>
-      <h2 className="mb-4 text-xl font-bold">{AVAILABILITY_TITLE}</h2>
-      <p className="mb-4 text-sm text-muted-foreground">{subtitle}</p>
-
-      <OpenBookingWeekToolbar
-        weekOffset={weekOffset}
-        onWeekOffsetChange={onWeekOffsetChange}
-        weekDates={weekDates}
-        disablePrevPastCurrentWeek={isPerEvent ? false : undefined}
-      />
-
-      <OpenBookingWeekDayButtonGrid
-        weekDates={weekDates}
+      {learnFullProgramEnrollment ? (
+        learnProgramBounds ? (
+        <>
+          <LearnProgramEnrollmentSummaryCard service={service} slots={slots} />
+          <CompactAvailabilityDateStrip
+            title={AVAILABILITY_TITLE}
+            selectedDate={learnProgramBounds.startYmd}
+            isDateDisabled={isLearnDateDisabled}
+            onDayClick={() => undefined}
+            getDateStatus={getCompactDateStatus}
+            density={dateStripDensity}
+          />
+          {learnProgramStartDayWindows.length > 0 ? (
+            <OpenBookingTimeWindowGrid
+              headline={`Select a time on ${formatOpenBookingDateDisplay(learnProgramBounds.startYmd)}`}
+              windows={learnProgramStartDayWindows}
+              selectedWindow={learnStartDayWindow}
+              onSelectedWindowChange={handleLearnStartDayWindowChange}
+              isWindowSelected={(window) => areAvailableWindowsEqual(learnStartDayWindow, window)}
+              formatWindowLabel={(window) =>
+                formatAvailabilityWindowLabel(window, slotIncrementMinutes)
+              }
+              slotGridClassName={
+                slotIncrementMinutes == null
+                  ? 'grid grid-cols-1 gap-2 sm:grid-cols-2'
+                  : undefined
+              }
+            />
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No sessions on the program start date. Contact reception for assistance.
+            </p>
+          )}
+        </>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            No upcoming sessions are scheduled for this program yet.
+          </p>
+        )
+      ) : (
+        <>
+      {showSubtitle ? (
+        <p className="mb-2 text-sm text-muted-foreground">{subtitle}</p>
+      ) : null}
+      <CompactAvailabilityDateStrip
+        title={AVAILABILITY_TITLE}
+        selectedDate={selectedDate}
+        selectedToDate={selectedToDate}
+        selectionMode={showDayRangePicker ? 'range' : 'single'}
         isDateDisabled={dayGridIsDateDisabled}
         onDayClick={handleDayClick}
-        interactionDisabled={isPerEvent}
-        selectedDate={eventScheduleSelectedDate}
-        getDayVisual={usesCustomDayVisual ? getEventScheduleDayVisual : undefined}
+        getDateStatus={getCompactDateStatus}
+        density={dateStripDensity}
       />
 
       {isPerDay && showDayRangePicker && rangeComplete ? (
@@ -387,13 +643,22 @@ function OpenBookingEventScheduleAvailabilitySection({
         </p>
       ) : null}
 
-      {isPerHour && hourAvailability ? (
+      {showTimeSelection && isPerHour && hourAvailability ? (
         hourAvailability.windows.length > 0 ? (
           <OpenBookingTimeWindowGrid
             headline={`Available times for ${formatOpenBookingDateDisplay(selectedDate)}`}
             windows={hourAvailability.windows}
             selectedWindow={selectedWindow}
-            onSelectedWindowChange={onSelectedWindowChange}
+            onSelectedWindowChange={(window) => {
+              if (!window) {
+                onSelectedWindowChange(null)
+                return
+              }
+              const matched =
+                hourAvailability.windows.find((entry) => areAvailableWindowsEqual(entry, window)) ??
+                window
+              onSelectedWindowChange(matched)
+            }}
             formatWindowLabel={(window) =>
               formatAvailabilityWindowLabel(window, slotIncrementMinutes)
             }
@@ -405,45 +670,37 @@ function OpenBookingEventScheduleAvailabilitySection({
           />
         ) : (
           <p className="text-sm text-muted-foreground">
-            No times available on this day. Choose another date in the week above.
+            No times available on this day. Choose another date above.
           </p>
         )
       ) : null}
 
-      {isPerEvent && sessionTimeBlocks.length > 0 ? (
-        <div>
-          <p className="mb-3 text-sm font-semibold text-muted-foreground">Session time</p>
-          <div
-            className={cn(
-              'grid gap-2',
-              sessionTimeBlocks.length === 1
-                ? 'max-w-xs grid-cols-1'
-                : 'grid-cols-1 sm:grid-cols-2',
-            )}
-          >
-            {sessionTimeBlocks.map((block) => (
-              <button
-                key={block.timeLabel}
-                type="button"
-                disabled
-                className="cursor-not-allowed rounded-lg border border-accent/40 bg-accent/10 py-2.5 text-sm font-semibold text-foreground opacity-100"
-                aria-label={`Session time: ${block.timeLabel}`}
-              >
-                {block.timeLabel}
-              </button>
-            ))}
-          </div>
-          <OpenBookingAvailabilitySlotLegend interactionDisabled />
-        </div>
+      {!showTimeSelection && isPerEvent && sessionTimeBlocks.length > 0 ? (
+        <OpenBookingTimeWindowGrid
+          headline="Session time"
+          windows={sessionTimeBlocks.map((block) => block.window)}
+          selectedWindow={selectedWindow}
+          onSelectedWindowChange={onSelectedWindowChange}
+          formatWindowLabel={(window) => {
+            const block = sessionTimeBlocks.find((entry) =>
+              areAvailableWindowsEqual(entry.window, window),
+            )
+            return block?.timeLabel ?? formatAvailabilityWindowLabel(window, slotIncrementMinutes)
+          }}
+          slotGridClassName={cn(
+            'grid grid-cols-1 gap-2',
+            sessionTimeBlocks.length > 1 && 'sm:grid-cols-2',
+          )}
+        />
       ) : null}
 
-      {isPerEvent && weekSessionDates.length === 0 ? (
+      {isPerEvent && sessionDates.size === 0 ? (
         <p className="text-sm text-muted-foreground">
-          {sessionDates.size > 0
-            ? 'No camp days in this week. Use the arrows to browse other weeks.'
-            : 'No scheduled sessions this week. Use the arrows to view other weeks.'}
+          No scheduled sessions available. Open the calendar to browse other dates.
         </p>
       ) : null}
+        </>
+      )}
     </section>
   )
 }
@@ -451,8 +708,6 @@ function OpenBookingEventScheduleAvailabilitySection({
 function OpenBookingServiceAvailabilitySection({
   title = AVAILABILITY_TITLE,
   service,
-  weekOffset,
-  onWeekOffsetChange,
   selectedDate,
   onSelectedDateChange,
   selectedWindow,
@@ -468,7 +723,6 @@ function OpenBookingServiceAvailabilitySection({
   availabilityWindows,
 }: Readonly<OpenBookingServiceAvailabilitySectionProps>) {
   const todayStr = getOpenBookingTodayIsoDate()
-  const weekDates = getOpenBookingWeekDatesFromOffset(weekOffset)
   const slotIncrementMinutes = resolveSlotIncrementMinutes(service)
 
   const availability = (() => {
@@ -500,10 +754,14 @@ function OpenBookingServiceAvailabilitySection({
     return false
   }
 
+  const getCompactDateStatus = useCallback(
+    (dateStr: string): AvailabilityCalendarDayStatus =>
+      resolveAvailabilityCalendarDayStatus(dateStr, todayStr, !isDateOutOfRange(dateStr), undefined),
+    [maxAdvanceDate, todayStr],
+  )
+
   return (
     <section>
-      <h2 className="mb-4 text-xl font-bold">{title}</h2>
-
       {mode === 'private_hire' && durationOptions.length > 0 ? (
         <div className="mb-6 space-y-2">
           <Label>Duration</Label>
@@ -530,16 +788,11 @@ function OpenBookingServiceAvailabilitySection({
         </div>
       ) : null}
 
-      <OpenBookingWeekToolbar
-        weekOffset={weekOffset}
-        onWeekOffsetChange={onWeekOffsetChange}
-        weekDates={weekDates}
-      />
-
-      <OpenBookingWeekDayButtonGrid
-        weekDates={weekDates}
-        isDateDisabled={isDateOutOfRange}
+      <CompactAvailabilityDateStrip
+        title={title}
         selectedDate={selectedDate}
+        isDateDisabled={isDateOutOfRange}
+        getDateStatus={getCompactDateStatus}
         onDayClick={(date) => {
           onSelectedDateChange(date)
           onSelectedWindowChange(null)
@@ -594,7 +847,7 @@ function OpenBookingServiceAvailabilitySection({
           />
         ) : (
           <p className="mt-4 text-sm text-muted-foreground">
-            No times available on this day. Choose another date in the week above.
+            No times available on this day. Choose another date above.
           </p>
         )
       ) : null}

@@ -6,9 +6,21 @@ import {
 } from '@/lib/catalog-placement'
 import type { SchedulingCatalogSlug } from '@/lib/catalog-slugs'
 
-export const SCHEDULING_TOP_LEVEL_ORDER = ['GYM', 'PLAY', 'EVENT'] as const
+export const SCHEDULING_TOP_LEVEL_ORDER = ['GYM', 'PLAY', 'EVENT', 'LEARN'] as const
 
 export type SchedulingTopLevelId = (typeof SCHEDULING_TOP_LEVEL_ORDER)[number]
+
+const LEARN_CATEGORY_IDS = new Set<string>([
+  'cat-learn-elementary',
+  'cat-learn-middle',
+  'cat-learn-high-school',
+  'cat-learn-test-prep-college',
+  'cat-learn-test-prep-private-school',
+  'cat-learn-test-prep-adult',
+  'cat-learn-enrichment-technology',
+  'cat-learn-enrichment-life-skills',
+  'cat-learn-enrichment-arts',
+])
 
 const PLAY_CATEGORY_IDS = new Set<string>([
   'cat-open-play',
@@ -54,8 +66,19 @@ export const CONSUMER_ALIGNED_CATEGORY_IDS = new Set<string>([
   'cat-gym-family',
   'cat-gym-prenatal',
   'cat-gym-special-needs',
+  'cat-gym-parents',
+  'cat-gym-after-school',
   'cat-event-private-party-room-open-play',
   'cat-event-whole-place-private-party-open-play',
+  'cat-learn-elementary',
+  'cat-learn-middle',
+  'cat-learn-high-school',
+  'cat-learn-test-prep-college',
+  'cat-learn-test-prep-private-school',
+  'cat-learn-test-prep-adult',
+  'cat-learn-enrichment-technology',
+  'cat-learn-enrichment-life-skills',
+  'cat-learn-enrichment-arts',
 ])
 
 export function isConsumerAlignedCategoryId(categoryId: string): boolean {
@@ -65,7 +88,8 @@ export function isConsumerAlignedCategoryId(categoryId: string): boolean {
   return (
     categoryId.startsWith('cat-gym-') ||
     categoryId.startsWith('cat-play-') ||
-    categoryId.startsWith('cat-event-')
+    categoryId.startsWith('cat-event-') ||
+    categoryId.startsWith('cat-learn-')
   )
 }
 
@@ -79,6 +103,9 @@ export function getSchedulingTopLevelId(categoryId: string): SchedulingTopLevelI
   if (PLAY_CATEGORY_IDS.has(categoryId) || categoryId.startsWith('cat-play-')) {
     return 'PLAY'
   }
+  if (LEARN_CATEGORY_IDS.has(categoryId) || categoryId.startsWith('cat-learn-')) {
+    return 'LEARN'
+  }
   return 'EVENT'
 }
 
@@ -90,6 +117,8 @@ export function getSchedulingTopLevelLabel(topLevelId: SchedulingTopLevelId): st
       return 'Play'
     case 'EVENT':
       return 'Event'
+    case 'LEARN':
+      return 'Learn'
     default:
       return 'Event'
   }
@@ -110,11 +139,13 @@ function consumerBackLinkForMenuSlug(
     case 'gym':
       return { href: `/gym#${categoryId}`, label: 'Back to Gym' }
     case 'events':
-    default:
       return {
         href: `/events#events-section-${categoryId}`,
         label: 'Back to Events',
       }
+    case 'learn':
+    default:
+      return { href: `/learn#${categoryId}`, label: 'Back to Learn' }
   }
 }
 
@@ -135,6 +166,8 @@ export function getSchedulingConsumerBackLink(
       return { href: `/play#${categoryId}`, label: 'Back to Play' }
     case 'GYM':
       return { href: `/gym#${categoryId}`, label: 'Back to Gym' }
+    case 'LEARN':
+      return { href: `/learn#${categoryId}`, label: 'Back to Learn' }
     case 'EVENT':
     default:
       return {

@@ -1,0 +1,243 @@
+/** Compact horizontal date strip — date row with full availability calendar dialog. */
+'use client'
+
+import { useMemo, useState } from 'react'
+import { CalendarDays, ChevronRight } from 'lucide-react'
+
+import {
+  AvailabilityCalendarDialog,
+  type AvailabilityCalendarSelectionMode,
+} from '@/components/customer/availability-calendar-dialog'
+import { Button } from '@/components/ui/button'
+import { getOpenBookingTodayIsoDate } from '@/components/customer/open-booking-week-ui'
+import type { AvailabilityCalendarDayStatus } from '@/lib/availability-calendar-status'
+import { getDateRangeVisualRole } from '@/lib/availability-date-range'
+import { addDaysToYmd } from '@/lib/ymd-date'
+import { cn } from '@/lib/utils'
+
+const DAYS_PER_PAGE_DEFAULT = 5
+const DAYS_PER_PAGE_COMPACT = 3
+
+export type CompactAvailabilityDateStripDensity = 'default' | 'compact'
+
+export interface CompactAvailabilityDateStripProps {
+  readonly selectedDate: string
+  readonly isDateDisabled: (dateStr: string) => boolean
+  readonly onDayClick: (dateStr: string) => void
+  readonly getDateStatus?: (dateStr: string) => AvailabilityCalendarDayStatus
+  readonly title?: string
+  readonly selectionMode?: AvailabilityCalendarSelectionMode
+  readonly selectedToDate?: string
+  /** Narrow layouts (e.g. embedded party booking sidebar). */
+  readonly density?: CompactAvailabilityDateStripDensity
+}
+
+function formatMonthYearLabel(dateStr: string): string {
+  return new Date(`${dateStr}T12:00:00`)
+    .toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
+    .toUpperCase()
+}
+
+function ymdToDate(ymd: string): Date {
+  return new Date(`${ymd}T12:00:00`)
+}
+
+function resolveDaysPerPage(density: CompactAvailabilityDateStripDensity): number {
+  return density === 'compact' ? DAYS_PER_PAGE_COMPACT : DAYS_PER_PAGE_DEFAULT
+}
+
+function buildDefaultStrip(todayStr: string, daysPerPage: number): string[] {
+  const dates = [todayStr]
+  for (let index = 1; index <= daysPerPage; index += 1) {
+    dates.push(addDaysToYmd(todayStr, index))
+  }
+  return dates
+}
+
+function buildVisibleDates(
+  todayStr: string,
+  selectedDate: string,
+  daysPerPage: number,
+): string[] {
+  const defaultStrip = buildDefaultStrip(todayStr, daysPerPage)
+  if (!selectedDate || defaultStrip.includes(selectedDate)) {
+    return defaultStrip
+  }
+  if (selectedDate < todayStr) {
+    return defaultStrip
+  }
+  const dates: string[] = []
+  for (let index = 0; index <= daysPerPage; index += 1) {
+    dates.push(addDaysToYmd(selectedDate, index))
+  }
+  return dates
+}
+
+export function CompactAvailabilityDateStrip({
+  selectedDate,
+  isDateDisabled,
+  onDayClick,
+  getDateStatus,
+  title = 'Select a date',
+  selectionMode = 'single',
+  selectedToDate = '',
+  density = 'default',
+}: Readonly<CompactAvailabilityDateStripProps>) {
+  const todayStr = getOpenBookingTodayIsoDate()
+  const [calendarOpen, setCalendarOpen] = useState(false)
+  const daysPerPage = resolveDaysPerPage(density)
+  const isCompact = density === 'compact'
+
+  const visibleDates = useMemo(
+    () => buildVisibleDates(todayStr, selectedDate, daysPerPage),
+    [daysPerPage, selectedDate, todayStr],
+  )
+
+  const monthLabel = formatMonthYearLabel(selectedDate || visibleDates[0] || todayStr)
+
+  function handleSelectDate(dateStr: string): void {
+    if (isDateDisabled(dateStr)) {
+      return
+    }
+    onDayClick(dateStr)
+  }
+
+  function openCalendar(): void {
+    setCalendarOpen(true)
+  }
+
+  return (
+    <div className={cn('space-y-3', isCompact ? 'mb-4' : 'mb-6')}>
+      <div className="flex items-center justify-between gap-2">
+        <h3
+          className={cn(
+            'min-w-0 font-bold text-foreground',
+            isCompact ? 'text-base' : 'text-lg',
+          )}
+        >
+          {title}
+        </h3>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className={cn(
+            'shrink-0 border-accent/40 bg-card text-accent shadow-sm hover:bg-accent/10',
+            isCompact ? 'h-9 w-9' : 'h-10 w-10',
+          )}
+          onClick={openCalendar}
+          aria-label="Open calendar"
+        >
+          <CalendarDays
+            className={cn('shrink-0', isCompact ? 'h-4 w-4' : 'h-5 w-5')}
+            aria-hidden
+          />
+        </Button>
+      </div>
+
+      <p className="text-xs font-bold tracking-wide text-muted-foreground">{monthLabel}</p>
+
+      <div className="flex min-w-0 items-stretch gap-1.5">
+        <div
+          className={cn(
+            'flex min-w-0 flex-1 items-stretch gap-1.5',
+            isCompact && 'overflow-x-auto overscroll-x-contain',
+          )}
+        >
+          {visibleDates.map((dateStr) => {
+            const disabled = isDateDisabled(dateStr)
+            const rangeRole =
+              selectionMode === 'range'
+                ? getDateRangeVisualRole(dateStr, selectedDate, selectedToDate || selectedDate)
+                : 'none'
+            const isRangeEndpoint = rangeRole === 'endpoint'
+            const isRangeMiddle = rangeRole === 'middle'
+            const isSelected =
+              selectionMode === 'single'
+                ? selectedDate === dateStr && !disabled
+                : isRangeEndpoint && !disabled
+            const isToday = dateStr === todayStr
+            const date = ymdToDate(dateStr)
+
+            return (
+              <button
+                key={dateStr}
+                type="button"
+                disabled={disabled}
+                onClick={() => handleSelectDate(dateStr)}
+                className={cn(
+                  'flex flex-col items-center justify-center rounded-lg border text-center transition-colors',
+                  isCompact
+                    ? 'min-w-[3rem] shrink-0 px-1.5 py-2'
+                    : 'min-w-[4.25rem] flex-1 px-2 py-3',
+                  disabled &&
+                    'cursor-not-allowed border-border bg-muted text-muted-foreground line-through decoration-muted-foreground/70 opacity-70',
+                  !disabled &&
+                    isSelected &&
+                    'border-accent bg-accent text-accent-foreground ring-2 ring-accent',
+                  !disabled &&
+                    isRangeMiddle &&
+                    'border-accent/40 bg-accent/15 text-foreground',
+                  !disabled &&
+                    !isSelected &&
+                    !isRangeMiddle &&
+                    isToday &&
+                    'border-foreground bg-card text-foreground ring-1 ring-foreground',
+                  !disabled &&
+                    !isSelected &&
+                    !isRangeMiddle &&
+                    !isToday &&
+                    'border-border bg-card text-foreground hover:bg-secondary',
+                )}
+                aria-pressed={isSelected || isRangeMiddle}
+              >
+                <span
+                  className={cn(
+                    'text-[10px] font-semibold uppercase tracking-wide',
+                    isSelected ? 'text-accent-foreground/90' : 'text-muted-foreground',
+                  )}
+                >
+                  {date.toLocaleDateString('en-GB', { weekday: 'short' })}
+                </span>
+                <span
+                  className={cn(
+                    'mt-0.5 font-bold leading-none',
+                    isCompact ? 'text-base' : 'text-lg',
+                  )}
+                >
+                  {date.getDate()}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className={cn(
+            'h-auto shrink-0 border-border bg-card text-foreground shadow-sm',
+            isCompact ? 'min-h-[3.25rem] w-8' : 'min-h-[4.5rem] w-10',
+          )}
+          onClick={openCalendar}
+          aria-label="Choose another date"
+        >
+          <ChevronRight className={cn(isCompact ? 'h-4 w-4' : 'h-5 w-5')} aria-hidden />
+        </Button>
+      </div>
+
+      <AvailabilityCalendarDialog
+        open={calendarOpen}
+        onOpenChange={setCalendarOpen}
+        selectedDate={selectedDate}
+        onSelectDate={handleSelectDate}
+        isDateDisabled={isDateDisabled}
+        getDateStatus={getDateStatus}
+        initialMonth={selectedDate || todayStr}
+        selectionMode={selectionMode}
+        selectedToDate={selectedToDate}
+      />
+    </div>
+  )
+}

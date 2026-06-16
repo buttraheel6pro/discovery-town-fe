@@ -3,6 +3,7 @@
 
 import {
   expandOperatingHoursToWindows,
+  resolveSlotIncrementMinutes,
 } from "@/lib/open-booking-slot-windows";
 import {
   EVENT_MODULE_ADDON_ATTRIBUTE_GROUPS,
@@ -81,6 +82,12 @@ import type {
   SchedulingOccasion,
 } from "./types";
 import { SchedulingServiceTypeEnum } from "./types";
+import {
+  LEARN_MOCK_PROGRAM_END_DATE,
+  LEARN_MOCK_PROGRAM_START_DATE,
+  learnSchedulingCategories,
+  learnSectionServices,
+} from "@/lib/learn-mock-data";
 import { buildWeBringPlaySchedulingServices } from "@/lib/we-bring-play-offerings";
 import { buildWeBringPlayRentalProducts } from "@/lib/we-bring-play-rental-products";
 import { TAKE_OUT_PARTY_CAFE_PRODUCTS } from "@/lib/take-out-party-catalog";
@@ -7129,6 +7136,29 @@ export const schedulingCategories: SchedulingCategory[] = [
     specialInstructionsEnabled: true,
     waitlistEnabled: true,
   },
+  {
+    id: "cat-gym-parents",
+    name: "Parents",
+    icon: "UserRound",
+    displayOrder: 25,
+    isActive: true,
+    requiresAttendee: false,
+    membersOnly: false,
+    specialInstructionsEnabled: true,
+    waitlistEnabled: true,
+  },
+  {
+    id: "cat-gym-after-school",
+    name: "After School",
+    icon: "Backpack",
+    displayOrder: 26,
+    isActive: true,
+    requiresAttendee: true,
+    membersOnly: false,
+    specialInstructionsEnabled: true,
+    waitlistEnabled: true,
+  },
+  ...learnSchedulingCategories,
 ];
 
 export const sampleFacilityAddOns: SchedulingServiceAddOn[] = [
@@ -8931,6 +8961,65 @@ const playSectionServices: SchedulingService[] = [
   }),
 ];
 
+const adultGymClassSchedule: {
+  dayOfWeek: string;
+  startTime: string;
+  endTime: string;
+}[] = [
+  {
+    dayOfWeek: "Monday – Thursday",
+    startTime: "5:30 AM",
+    endTime: "6:30 AM",
+  },
+  {
+    dayOfWeek: "Monday – Thursday",
+    startTime: "12:00 PM",
+    endTime: "12:45 PM",
+  },
+  {
+    dayOfWeek: "Monday – Thursday",
+    startTime: "4:45 PM",
+    endTime: "5:45 PM",
+  },
+  {
+    dayOfWeek: "Monday – Thursday",
+    startTime: "6:00 PM",
+    endTime: "7:00 PM",
+  },
+  { dayOfWeek: "Saturday", startTime: "8:30 AM", endTime: "9:30 AM" },
+  { dayOfWeek: "Saturday", startTime: "10:00 AM", endTime: "11:30 AM" },
+];
+
+const toddlerGymClassSchedule: {
+  dayOfWeek: string;
+  startTime: string;
+  endTime: string;
+}[] = [
+  {
+    dayOfWeek: "Monday – Friday",
+    startTime: "9:00 AM",
+    endTime: "10:00 AM",
+  },
+  { dayOfWeek: "Saturday", startTime: "9:30 AM", endTime: "10:15 AM" },
+];
+
+const teenGymClassSchedule: {
+  dayOfWeek: string;
+  startTime: string;
+  endTime: string;
+}[] = [
+  {
+    dayOfWeek: "Monday – Thursday",
+    startTime: "4:45 PM",
+    endTime: "5:45 PM",
+  },
+  {
+    dayOfWeek: "Monday – Thursday",
+    startTime: "6:00 PM",
+    endTime: "7:00 PM",
+  },
+];
+
 const gymSectionServices: SchedulingService[] = [
   {
     id: "svc-gym-little-movers",
@@ -8985,7 +9074,7 @@ const gymSectionServices: SchedulingService[] = [
     name: "Parent & Tot Tumble (18mo – 3 yrs)",
     description:
       "Guided bonding time involving assisted rolls, balancing on low beams, and parachute play. Introduces listening skills and turn-taking. Typical daily window: 9:00 AM – 11:30 AM.",
-    durationMinutes: 45,
+    durationMinutes: 60,
     capacity: 16,
     basePrice: 18,
     subscriptionPrice: null,
@@ -9005,14 +9094,7 @@ const gymSectionServices: SchedulingService[] = [
     tags: ["gym", "toddlers", "parent-child"],
     sport: "GYMNASTICS",
     addOns: sampleClassAddOns,
-    schedule: [
-      {
-        dayOfWeek: "Monday – Thursday",
-        startTime: "10:00 AM",
-        endTime: "10:45 AM",
-      },
-      { dayOfWeek: "Saturday", startTime: "10:15 AM", endTime: "11:00 AM" },
-    ],
+    schedule: toddlerGymClassSchedule.map((entry) => ({ ...entry })),
   },
   {
     id: "svc-gym-tiny-titans",
@@ -9046,13 +9128,7 @@ const gymSectionServices: SchedulingService[] = [
     tags: ["gym", "toddlers", "tumbling"],
     sport: "GYMNASTICS",
     addOns: sampleClassAddOns,
-    schedule: [
-      {
-        dayOfWeek: "Monday – Thursday",
-        startTime: "9:00 AM",
-        endTime: "10:00 AM",
-      },
-    ],
+    schedule: toddlerGymClassSchedule.map((entry) => ({ ...entry })),
   },
   {
     id: "svc-gym-kindergym",
@@ -9222,7 +9298,7 @@ const gymSectionServices: SchedulingService[] = [
     name: "Bronze Gymnastics (Beginner)",
     description:
       "Mastering the cartwheel, handstand, bridge, and pullover on bars. Focus on form and safety.",
-    durationMinutes: 60,
+    durationMinutes: 90,
     capacity: 20,
     basePrice: 22,
     subscriptionPrice: null,
@@ -9243,11 +9319,7 @@ const gymSectionServices: SchedulingService[] = [
     sport: "GYMNASTICS",
     addOns: sampleClassAddOns,
     schedule: [
-      {
-        dayOfWeek: "Tuesday & Thursday",
-        startTime: "4:00 PM",
-        endTime: "5:00 PM",
-      },
+      { dayOfWeek: "Saturday", startTime: "10:00 AM", endTime: "11:30 AM" },
     ],
   },
   {
@@ -9262,7 +9334,7 @@ const gymSectionServices: SchedulingService[] = [
     name: "Silver Gymnastics (Intermediate)",
     description:
       "For students who have mastered basics. Introduces round-offs, back walkovers, and high-beam confidence.",
-    durationMinutes: 60,
+    durationMinutes: 90,
     capacity: 18,
     basePrice: 24,
     subscriptionPrice: null,
@@ -9283,11 +9355,7 @@ const gymSectionServices: SchedulingService[] = [
     sport: "GYMNASTICS",
     addOns: sampleClassAddOns,
     schedule: [
-      {
-        dayOfWeek: "Monday & Wednesday",
-        startTime: "5:00 PM",
-        endTime: "6:00 PM",
-      },
+      { dayOfWeek: "Saturday", startTime: "10:00 AM", endTime: "11:30 AM" },
     ],
   },
   {
@@ -9302,7 +9370,7 @@ const gymSectionServices: SchedulingService[] = [
     name: "Tumbling for Cheer",
     description:
       "Specifically focuses on floor skills—jumps, round-offs, and back handsprings—ideal for aspiring cheerleaders.",
-    durationMinutes: 60,
+    durationMinutes: 90,
     capacity: 18,
     basePrice: 23,
     subscriptionPrice: null,
@@ -9323,7 +9391,7 @@ const gymSectionServices: SchedulingService[] = [
     sport: "GYMNASTICS",
     addOns: sampleClassAddOns,
     schedule: [
-      { dayOfWeek: "Friday", startTime: "3:45 PM", endTime: "4:45 PM" },
+      { dayOfWeek: "Saturday", startTime: "10:00 AM", endTime: "11:30 AM" },
     ],
   },
   {
@@ -9338,7 +9406,7 @@ const gymSectionServices: SchedulingService[] = [
     name: "Warrior Zone",
     description:
       "Parkour-style training. Wall runs, vaulting, and grip-strength challenges. Timed obstacle courses to track personal improvement. Peak after-school window for school-age classes: 3:30–5:30 PM weekdays.",
-    durationMinutes: 45,
+    durationMinutes: 90,
     capacity: 22,
     basePrice: 22,
     subscriptionPrice: null,
@@ -9359,11 +9427,7 @@ const gymSectionServices: SchedulingService[] = [
     sport: "FITNESS",
     addOns: sampleClassAddOns,
     schedule: [
-      {
-        dayOfWeek: "Monday – Thursday",
-        startTime: "3:45 PM",
-        endTime: "4:30 PM",
-      },
+      { dayOfWeek: "Saturday", startTime: "10:00 AM", endTime: "11:30 AM" },
     ],
   },
   {
@@ -9378,7 +9442,7 @@ const gymSectionServices: SchedulingService[] = [
     name: "Youth Conditioning",
     description:
       "Bodyweight strength training (pushups, squats, lunges) mixed with fun relay races. Teaches the importance of warm-ups and cool-downs.",
-    durationMinutes: 60,
+    durationMinutes: 90,
     capacity: 22,
     basePrice: 22,
     subscriptionPrice: null,
@@ -9399,11 +9463,7 @@ const gymSectionServices: SchedulingService[] = [
     sport: "FITNESS",
     addOns: sampleClassAddOns,
     schedule: [
-      {
-        dayOfWeek: "Monday – Thursday",
-        startTime: "4:45 PM",
-        endTime: "5:45 PM",
-      },
+      { dayOfWeek: "Saturday", startTime: "10:00 AM", endTime: "11:30 AM" },
     ],
   },
   {
@@ -9418,7 +9478,7 @@ const gymSectionServices: SchedulingService[] = [
     name: "Speed & Agility Clinic",
     description:
       "Drills focused on footwork, ladder drills, and sprint mechanics. Beneficial for kids playing soccer, football, or basketball.",
-    durationMinutes: 45,
+    durationMinutes: 90,
     capacity: 20,
     basePrice: 21,
     subscriptionPrice: null,
@@ -9439,11 +9499,7 @@ const gymSectionServices: SchedulingService[] = [
     sport: "FITNESS",
     addOns: sampleClassAddOns,
     schedule: [
-      {
-        dayOfWeek: "Wednesday & Friday",
-        startTime: "3:45 PM",
-        endTime: "4:30 PM",
-      },
+      { dayOfWeek: "Saturday", startTime: "10:00 AM", endTime: "11:30 AM" },
     ],
   },
   {
@@ -9458,7 +9514,7 @@ const gymSectionServices: SchedulingService[] = [
     name: "Court Sports Skills",
     description:
       "Focused drills on specific sports mechanics (shooting form, dribbling, passing) rather than full-game scrimmages.",
-    durationMinutes: 45,
+    durationMinutes: 90,
     capacity: 20,
     basePrice: 21,
     subscriptionPrice: null,
@@ -9479,11 +9535,7 @@ const gymSectionServices: SchedulingService[] = [
     sport: "FITNESS",
     addOns: sampleClassAddOns,
     schedule: [
-      {
-        dayOfWeek: "Monday & Wednesday",
-        startTime: "4:45 PM",
-        endTime: "5:30 PM",
-      },
+      { dayOfWeek: "Saturday", startTime: "10:00 AM", endTime: "11:30 AM" },
     ],
   },
   {
@@ -9498,7 +9550,7 @@ const gymSectionServices: SchedulingService[] = [
     name: "Exer-Gaming",
     description:
       "Using technology (interactive climbing walls and light-reaction floors) to gamify fitness. Kids chase lights on a wall or jump on specific tiles to score points. High cardio disguised as a video game.",
-    durationMinutes: 60,
+    durationMinutes: 90,
     capacity: 18,
     basePrice: 24,
     subscriptionPrice: null,
@@ -9519,7 +9571,7 @@ const gymSectionServices: SchedulingService[] = [
     sport: "FITNESS",
     addOns: sampleClassAddOns,
     schedule: [
-      { dayOfWeek: "Saturday", startTime: "12:00 PM", endTime: "1:00 PM" },
+      { dayOfWeek: "Saturday", startTime: "10:00 AM", endTime: "11:30 AM" },
     ],
   },
   {
@@ -9554,13 +9606,7 @@ const gymSectionServices: SchedulingService[] = [
     tags: ["gym", "teens", "hiit"],
     sport: "FITNESS",
     addOns: sampleClassAddOns,
-    schedule: [
-      {
-        dayOfWeek: "Monday – Thursday",
-        startTime: "4:45 PM",
-        endTime: "5:45 PM",
-      },
-    ],
+    schedule: teenGymClassSchedule.map((entry) => ({ ...entry })),
   },
   {
     id: "svc-gym-advanced-tumbling",
@@ -9594,13 +9640,7 @@ const gymSectionServices: SchedulingService[] = [
     tags: ["gym", "teens", "tumbling"],
     sport: "GYMNASTICS",
     addOns: sampleClassAddOns,
-    schedule: [
-      {
-        dayOfWeek: "Tuesday & Thursday",
-        startTime: "6:00 PM",
-        endTime: "7:00 PM",
-      },
-    ],
+    schedule: teenGymClassSchedule.map((entry) => ({ ...entry })),
   },
   {
     id: "svc-gym-teen-ninja-warrior",
@@ -9634,10 +9674,7 @@ const gymSectionServices: SchedulingService[] = [
     tags: ["gym", "teens", "ninja"],
     sport: "FITNESS",
     addOns: sampleClassAddOns,
-    schedule: [
-      { dayOfWeek: "Wednesday", startTime: "4:30 PM", endTime: "5:30 PM" },
-      { dayOfWeek: "Friday", startTime: "4:00 PM", endTime: "5:00 PM" },
-    ],
+    schedule: teenGymClassSchedule.map((entry) => ({ ...entry })),
   },
   {
     id: "svc-gym-varsity-prep",
@@ -9671,13 +9708,7 @@ const gymSectionServices: SchedulingService[] = [
     tags: ["gym", "teens", "athletics"],
     sport: "FITNESS",
     addOns: sampleClassAddOns,
-    schedule: [
-      {
-        dayOfWeek: "Monday & Wednesday",
-        startTime: "6:00 PM",
-        endTime: "7:00 PM",
-      },
-    ],
+    schedule: teenGymClassSchedule.map((entry) => ({ ...entry })),
   },
   {
     id: "svc-gym-burn-firm-hiit",
@@ -9711,18 +9742,7 @@ const gymSectionServices: SchedulingService[] = [
     tags: ["gym", "adults", "hiit"],
     sport: "FITNESS",
     addOns: sampleClassAddOns,
-    schedule: [
-      {
-        dayOfWeek: "Monday – Friday",
-        startTime: "5:30 AM",
-        endTime: "6:15 AM",
-      },
-      {
-        dayOfWeek: "Tuesday & Thursday",
-        startTime: "6:30 PM",
-        endTime: "7:15 PM",
-      },
-    ],
+    schedule: adultGymClassSchedule.map((entry) => ({ ...entry })),
   },
   {
     id: "svc-gym-cardio-kickboxing",
@@ -9756,13 +9776,7 @@ const gymSectionServices: SchedulingService[] = [
     tags: ["gym", "adults", "cardio"],
     sport: "FITNESS",
     addOns: sampleClassAddOns,
-    schedule: [
-      {
-        dayOfWeek: "Monday, Wednesday & Friday",
-        startTime: "6:00 PM",
-        endTime: "6:45 PM",
-      },
-    ],
+    schedule: adultGymClassSchedule.map((entry) => ({ ...entry })),
   },
   {
     id: "svc-gym-spin-cycle",
@@ -9795,14 +9809,7 @@ const gymSectionServices: SchedulingService[] = [
     tags: ["gym", "adults", "spin"],
     sport: "FITNESS",
     addOns: sampleClassAddOns,
-    schedule: [
-      {
-        dayOfWeek: "Tuesday & Thursday",
-        startTime: "6:00 AM",
-        endTime: "7:00 AM",
-      },
-      { dayOfWeek: "Saturday", startTime: "8:30 AM", endTime: "9:30 AM" },
-    ],
+    schedule: adultGymClassSchedule.map((entry) => ({ ...entry })),
   },
   {
     id: "svc-gym-power-yoga",
@@ -9836,9 +9843,7 @@ const gymSectionServices: SchedulingService[] = [
     tags: ["gym", "adults", "yoga"],
     sport: "FITNESS",
     addOns: sampleClassAddOns,
-    schedule: [
-      { dayOfWeek: "Saturday", startTime: "10:00 AM", endTime: "11:00 AM" },
-    ],
+    schedule: adultGymClassSchedule.map((entry) => ({ ...entry })),
   },
   {
     id: "svc-gym-barre-sculpt",
@@ -9872,13 +9877,7 @@ const gymSectionServices: SchedulingService[] = [
     tags: ["gym", "adults", "barre"],
     sport: "FITNESS",
     addOns: sampleClassAddOns,
-    schedule: [
-      {
-        dayOfWeek: "Tuesday & Thursday",
-        startTime: "12:00 PM",
-        endTime: "12:45 PM",
-      },
-    ],
+    schedule: adultGymClassSchedule.map((entry) => ({ ...entry })),
   },
   {
     id: "svc-gym-adult-gymnastics",
@@ -9912,9 +9911,7 @@ const gymSectionServices: SchedulingService[] = [
     tags: ["gym", "adults", "gymnastics"],
     sport: "GYMNASTICS",
     addOns: sampleClassAddOns,
-    schedule: [
-      { dayOfWeek: "Saturday", startTime: "11:30 AM", endTime: "12:30 PM" },
-    ],
+    schedule: adultGymClassSchedule.map((entry) => ({ ...entry })),
   },
   {
     id: "svc-gym-functional-strength",
@@ -9948,13 +9945,7 @@ const gymSectionServices: SchedulingService[] = [
     tags: ["gym", "adults", "strength"],
     sport: "FITNESS",
     addOns: sampleClassAddOns,
-    schedule: [
-      {
-        dayOfWeek: "Monday, Wednesday & Friday",
-        startTime: "12:15 PM",
-        endTime: "1:00 PM",
-      },
-    ],
+    schedule: adultGymClassSchedule.map((entry) => ({ ...entry })),
   },
   {
     id: "svc-gym-golden-gains",
@@ -9990,7 +9981,7 @@ const gymSectionServices: SchedulingService[] = [
     addOns: sampleClassAddOns,
     schedule: [
       {
-        dayOfWeek: "Monday – Thursday",
+        dayOfWeek: "Monday – Friday",
         startTime: "9:00 AM",
         endTime: "10:00 AM",
       },
@@ -10107,6 +10098,122 @@ const gymSectionServices: SchedulingService[] = [
       { dayOfWeek: "Saturday", startTime: "8:00 AM", endTime: "9:00 AM" },
     ],
   },
+  {
+    id: "svc-gym-parent-power-hour",
+    locationId: "loc-1",
+    categoryId: "cat-gym-parents",
+    category: schedulingCategories.find(
+      (category) => category.id === "cat-gym-parents",
+    )!,
+    serviceType: "GYM_CLASS",
+    bookingMode: "SCHEDULED",
+    name: "Parent Power Hour",
+    description:
+      "A dedicated morning fitness block for parents—strength, mobility, and energy before the day gets busy.",
+    durationMinutes: 60,
+    capacity: 20,
+    basePrice: 22,
+    subscriptionPrice: null,
+    requiresWaiver: false,
+    ageMin: 18,
+    ageMax: null,
+    isActive: true,
+    minDurationMinutes: null,
+    maxDurationMinutes: null,
+    slotIncrementMinutes: null,
+    maxConcurrent: null,
+    minAdvanceHours: 12,
+    maxAdvanceHours: 2160,
+    pricingModel: "flat",
+    imageUrl:
+      "https://images.unsplash.com/photo-1571019614242-c5c5dee9f743?w=1200&q=80",
+    tags: ["gym", "parents", "fitness"],
+    sport: "FITNESS",
+    addOns: sampleClassAddOns,
+    schedule: [
+      {
+        dayOfWeek: "Monday – Thursday",
+        startTime: "9:00 AM",
+        endTime: "10:00 AM",
+      },
+    ],
+  },
+  {
+    id: "svc-gym-after-school-wave-1",
+    locationId: "loc-1",
+    categoryId: "cat-gym-after-school",
+    category: schedulingCategories.find(
+      (category) => category.id === "cat-gym-after-school",
+    )!,
+    serviceType: "GYM_CLASS",
+    bookingMode: "SCHEDULED",
+    name: "After School Wave 1 (Ages 5-9)",
+    description:
+      "First after-school activity block for ages 5–9—movement, games, and structured gym time before the later wave.",
+    durationMinutes: 45,
+    capacity: 22,
+    basePrice: 20,
+    subscriptionPrice: null,
+    requiresWaiver: false,
+    ageMin: 5,
+    ageMax: 9,
+    isActive: true,
+    minDurationMinutes: null,
+    maxDurationMinutes: null,
+    slotIncrementMinutes: null,
+    maxConcurrent: null,
+    minAdvanceHours: 12,
+    maxAdvanceHours: 2160,
+    pricingModel: "flat",
+    imageUrl:
+      "https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=1200&q=80",
+    tags: ["gym", "after-school", "kids"],
+    sport: "FITNESS",
+    addOns: sampleClassAddOns,
+    schedule: [
+      {
+        dayOfWeek: "Monday – Thursday",
+        startTime: "3:45 PM",
+        endTime: "4:30 PM",
+      },
+    ],
+  },
+  {
+    id: "svc-gym-after-school-open-gym-friday",
+    locationId: "loc-1",
+    categoryId: "cat-gym-after-school",
+    category: schedulingCategories.find(
+      (category) => category.id === "cat-gym-after-school",
+    )!,
+    serviceType: "GYM_CLASS",
+    bookingMode: "SCHEDULED",
+    name: "Afternoon (4:00 PM): Open Gym / Free Play for kids",
+    description:
+      "Friday afternoon open gym—supervised free play, climbing, and open movement for school-age kids.",
+    durationMinutes: 120,
+    capacity: 30,
+    basePrice: 18,
+    subscriptionPrice: null,
+    requiresWaiver: false,
+    ageMin: 5,
+    ageMax: 12,
+    isActive: true,
+    minDurationMinutes: null,
+    maxDurationMinutes: null,
+    slotIncrementMinutes: null,
+    maxConcurrent: null,
+    minAdvanceHours: 12,
+    maxAdvanceHours: 2160,
+    pricingModel: "flat",
+    imageUrl:
+      "https://images.unsplash.com/photo-1588072432836-06c1d62d6b1f?w=1200&q=80",
+    tags: ["gym", "after-school", "open-play"],
+    sport: "FITNESS",
+    addOns: sampleClassAddOns,
+    schedule: [
+      { dayOfWeek: "Friday", startTime: "4:00 PM", endTime: "6:00 PM" },
+    ],
+  },
 ];
 
 /** Unified catalog: core templates + legacy facility/class/event rows as scheduling services. */
@@ -10114,6 +10221,7 @@ export const schedulingServices: SchedulingService[] = [
   ...coreSchedulingServices,
   ...playSectionServices,
   ...gymSectionServices,
+  ...learnSectionServices,
   ...facilities.map(mapFacilityToSchedulingService),
   ...classes.map(mapClassToSchedulingService),
   ...events.map(mapEventToSchedulingService),
@@ -10901,6 +11009,125 @@ interface GymSlotSeed {
   readonly durationMinutes: number;
 }
 
+const ADULT_GYM_CLASS_SERVICE_IDS = [
+  "svc-gym-burn-firm-hiit",
+  "svc-gym-cardio-kickboxing",
+  "svc-gym-spin-cycle",
+  "svc-gym-power-yoga",
+  "svc-gym-barre-sculpt",
+  "svc-gym-adult-gymnastics",
+  "svc-gym-functional-strength",
+] as const;
+
+const TODDLER_GYM_CLASS_SERVICE_IDS = [
+  "svc-gym-parent-tot-tumble",
+  "svc-gym-tiny-titans",
+] as const;
+
+const TEEN_GYM_CLASS_SERVICE_IDS = [
+  "svc-gym-teen-cross-training",
+  "svc-gym-advanced-tumbling",
+  "svc-gym-teen-ninja-warrior",
+  "svc-gym-varsity-prep",
+] as const;
+
+function toddlerGymClassSlotSeeds(): GymSlotSeed[] {
+  const rows: GymSlotSeed[] = [];
+  for (const serviceId of TODDLER_GYM_CLASS_SERVICE_IDS) {
+    rows.push(
+      {
+        serviceId,
+        weekdays: [1, 2, 3, 4, 5],
+        hour: 9,
+        minute: 0,
+        durationMinutes: 60,
+      },
+      {
+        serviceId,
+        weekdays: [6],
+        hour: 9,
+        minute: 30,
+        durationMinutes: 45,
+      },
+    );
+  }
+  return rows;
+}
+
+function teenGymClassSlotSeeds(): GymSlotSeed[] {
+  const rows: GymSlotSeed[] = [];
+  for (const serviceId of TEEN_GYM_CLASS_SERVICE_IDS) {
+    rows.push(
+      {
+        serviceId,
+        weekdays: [1, 2, 3, 4],
+        hour: 16,
+        minute: 45,
+        durationMinutes: 60,
+      },
+      {
+        serviceId,
+        weekdays: [1, 2, 3, 4],
+        hour: 18,
+        minute: 0,
+        durationMinutes: 60,
+      },
+    );
+  }
+  return rows;
+}
+
+function adultGymClassSlotSeeds(): GymSlotSeed[] {
+  const rows: GymSlotSeed[] = [];
+  for (const serviceId of ADULT_GYM_CLASS_SERVICE_IDS) {
+    rows.push(
+      {
+        serviceId,
+        weekdays: [1, 2, 3, 4],
+        hour: 5,
+        minute: 30,
+        durationMinutes: 60,
+      },
+      {
+        serviceId,
+        weekdays: [1, 2, 3, 4],
+        hour: 12,
+        minute: 0,
+        durationMinutes: 45,
+      },
+      {
+        serviceId,
+        weekdays: [1, 2, 3, 4],
+        hour: 16,
+        minute: 45,
+        durationMinutes: 60,
+      },
+      {
+        serviceId,
+        weekdays: [1, 2, 3, 4],
+        hour: 18,
+        minute: 0,
+        durationMinutes: 60,
+      },
+      {
+        serviceId,
+        weekdays: [6],
+        hour: 8,
+        minute: 30,
+        durationMinutes: 60,
+      },
+      {
+        serviceId,
+        weekdays: [6],
+        hour: 10,
+        minute: 0,
+        durationMinutes: 90,
+      },
+    );
+  }
+  return rows;
+}
+
 function gymLocalSlot(
   daysFromNow: number,
   hour: number,
@@ -10910,6 +11137,28 @@ function gymLocalSlot(
   const start = new Date();
   start.setDate(start.getDate() + daysFromNow);
   start.setHours(hour, minute, 0, 0);
+  const end = new Date(start.getTime() + durationMinutes * 60_000);
+  return { startAt: start.toISOString(), endAt: end.toISOString() };
+}
+
+function learnMockProgramDaySpan(): number {
+  const [startYear, startMonth, startDay] = LEARN_MOCK_PROGRAM_START_DATE.split("-").map(
+    Number,
+  );
+  const [endYear, endMonth, endDay] = LEARN_MOCK_PROGRAM_END_DATE.split("-").map(Number);
+  const start = new Date(startYear, startMonth - 1, startDay, 12, 0, 0, 0);
+  const end = new Date(endYear, endMonth - 1, endDay, 12, 0, 0, 0);
+  return Math.max(0, Math.round((end.getTime() - start.getTime()) / 86_400_000));
+}
+
+function learnLocalSlot(
+  daysFromProgramStart: number,
+  hour: number,
+  minute: number,
+  durationMinutes: number,
+): { startAt: string; endAt: string } {
+  const [year, month, day] = LEARN_MOCK_PROGRAM_START_DATE.split("-").map(Number);
+  const start = new Date(year, month - 1, day + daysFromProgramStart, hour, minute, 0, 0);
   const end = new Date(start.getTime() + durationMinutes * 60_000);
   return { startAt: start.toISOString(), endAt: end.toISOString() };
 }
@@ -11004,13 +11253,7 @@ function campSessionSlotTimes(
 /** Recurring gym class slots aligned with the Discovery Town weekly gym grid (next few weeks). */
 function buildGymClassSlots(): SchedulingSlot[] {
   const seeds: GymSlotSeed[] = [
-    {
-      serviceId: "svc-gym-tiny-titans",
-      weekdays: [1, 2, 3, 4],
-      hour: 9,
-      minute: 0,
-      durationMinutes: 60,
-    },
+    ...toddlerGymClassSlotSeeds(),
     {
       serviceId: "svc-gym-little-movers",
       weekdays: [1, 2, 3, 4],
@@ -11023,25 +11266,11 @@ function buildGymClassSlots(): SchedulingSlot[] {
       weekdays: [6],
       hour: 9,
       minute: 30,
-      durationMinutes: 45,
-    },
-    {
-      serviceId: "svc-gym-parent-tot-tumble",
-      weekdays: [1, 2, 3, 4],
-      hour: 10,
-      minute: 0,
-      durationMinutes: 45,
-    },
-    {
-      serviceId: "svc-gym-parent-tot-tumble",
-      weekdays: [6],
-      hour: 10,
-      minute: 15,
       durationMinutes: 45,
     },
     {
       serviceId: "svc-gym-golden-gains",
-      weekdays: [1, 2, 3, 4],
+      weekdays: [1, 2, 3, 4, 5],
       hour: 9,
       minute: 0,
       durationMinutes: 60,
@@ -11076,157 +11305,82 @@ function buildGymClassSlots(): SchedulingSlot[] {
     },
     {
       serviceId: "svc-gym-gymnastics-bronze",
-      weekdays: [2, 4],
-      hour: 16,
+      weekdays: [6],
+      hour: 10,
       minute: 0,
-      durationMinutes: 60,
+      durationMinutes: 90,
     },
     {
       serviceId: "svc-gym-gymnastics-silver",
-      weekdays: [1, 3],
-      hour: 17,
+      weekdays: [6],
+      hour: 10,
       minute: 0,
-      durationMinutes: 60,
+      durationMinutes: 90,
     },
     {
       serviceId: "svc-gym-tumbling-cheer",
-      weekdays: [5],
-      hour: 15,
-      minute: 45,
-      durationMinutes: 60,
+      weekdays: [6],
+      hour: 10,
+      minute: 0,
+      durationMinutes: 90,
     },
     {
       serviceId: "svc-gym-warrior-zone",
-      weekdays: [1, 2, 3, 4],
-      hour: 15,
-      minute: 45,
-      durationMinutes: 45,
+      weekdays: [6],
+      hour: 10,
+      minute: 0,
+      durationMinutes: 90,
     },
     {
       serviceId: "svc-gym-youth-conditioning",
-      weekdays: [1, 2, 3, 4],
-      hour: 16,
-      minute: 45,
-      durationMinutes: 60,
+      weekdays: [6],
+      hour: 10,
+      minute: 0,
+      durationMinutes: 90,
     },
     {
       serviceId: "svc-gym-speed-agility",
-      weekdays: [3, 5],
-      hour: 15,
-      minute: 45,
-      durationMinutes: 45,
+      weekdays: [6],
+      hour: 10,
+      minute: 0,
+      durationMinutes: 90,
     },
     {
       serviceId: "svc-gym-court-sports-skills",
-      weekdays: [1, 3],
-      hour: 16,
-      minute: 45,
-      durationMinutes: 45,
+      weekdays: [6],
+      hour: 10,
+      minute: 0,
+      durationMinutes: 90,
     },
     {
       serviceId: "svc-gym-exer-gaming",
       weekdays: [6],
-      hour: 12,
+      hour: 10,
       minute: 0,
-      durationMinutes: 60,
+      durationMinutes: 90,
     },
+    ...teenGymClassSlotSeeds(),
+    ...adultGymClassSlotSeeds(),
     {
-      serviceId: "svc-gym-teen-cross-training",
+      serviceId: "svc-gym-parent-power-hour",
       weekdays: [1, 2, 3, 4],
-      hour: 16,
-      minute: 45,
-      durationMinutes: 60,
-    },
-    {
-      serviceId: "svc-gym-advanced-tumbling",
-      weekdays: [2, 4],
-      hour: 18,
+      hour: 9,
       minute: 0,
       durationMinutes: 60,
     },
     {
-      serviceId: "svc-gym-teen-ninja-warrior",
-      weekdays: [3],
-      hour: 16,
-      minute: 30,
-      durationMinutes: 60,
+      serviceId: "svc-gym-after-school-wave-1",
+      weekdays: [1, 2, 3, 4],
+      hour: 15,
+      minute: 45,
+      durationMinutes: 45,
     },
     {
-      serviceId: "svc-gym-teen-ninja-warrior",
+      serviceId: "svc-gym-after-school-open-gym-friday",
       weekdays: [5],
       hour: 16,
       minute: 0,
-      durationMinutes: 60,
-    },
-    {
-      serviceId: "svc-gym-varsity-prep",
-      weekdays: [1, 3],
-      hour: 18,
-      minute: 0,
-      durationMinutes: 60,
-    },
-    {
-      serviceId: "svc-gym-burn-firm-hiit",
-      weekdays: [1, 2, 3, 4, 5],
-      hour: 5,
-      minute: 30,
-      durationMinutes: 45,
-    },
-    {
-      serviceId: "svc-gym-burn-firm-hiit",
-      weekdays: [2, 4],
-      hour: 18,
-      minute: 30,
-      durationMinutes: 45,
-    },
-    {
-      serviceId: "svc-gym-cardio-kickboxing",
-      weekdays: [1, 3, 5],
-      hour: 18,
-      minute: 0,
-      durationMinutes: 45,
-    },
-    {
-      serviceId: "svc-gym-spin-cycle",
-      weekdays: [2, 4],
-      hour: 6,
-      minute: 0,
-      durationMinutes: 60,
-    },
-    {
-      serviceId: "svc-gym-spin-cycle",
-      weekdays: [6],
-      hour: 8,
-      minute: 30,
-      durationMinutes: 60,
-    },
-    {
-      serviceId: "svc-gym-power-yoga",
-      weekdays: [6],
-      hour: 10,
-      minute: 0,
-      durationMinutes: 60,
-    },
-    {
-      serviceId: "svc-gym-barre-sculpt",
-      weekdays: [2, 4],
-      hour: 12,
-      minute: 0,
-      durationMinutes: 45,
-    },
-    {
-      serviceId: "svc-gym-adult-gymnastics",
-      weekdays: [6],
-      hour: 11,
-      minute: 30,
-      durationMinutes: 60,
-    },
-    {
-      serviceId: "svc-gym-functional-strength",
-      weekdays: [1, 3, 5],
-      hour: 12,
-      minute: 15,
-      durationMinutes: 45,
+      durationMinutes: 120,
     },
     {
       serviceId: "svc-gym-friyay",
@@ -11282,6 +11436,231 @@ function buildGymClassSlots(): SchedulingSlot[] {
         capacityOverride: null,
         priceOverride: null,
         bookedCount: Math.min(8, Math.max(2, Math.floor(service.capacity / 3))),
+        checkInCount: 0,
+        effectiveCapacity: service.capacity,
+        effectivePrice: service.basePrice,
+        status: "SCHEDULED",
+        isActive: true,
+        isRecurring: true,
+        notes: null,
+      });
+    }
+  }
+  return slots;
+}
+
+/** Recurring learn program slots aligned with mock program schedules (next few weeks). */
+function buildLearnClassSlots(): SchedulingSlot[] {
+  const seeds: GymSlotSeed[] = [
+    {
+      serviceId: "svc-learn-early-literacy",
+      weekdays: [2, 4],
+      hour: 16,
+      minute: 0,
+      durationMinutes: 60,
+    },
+    {
+      serviceId: "svc-learn-math-foundations",
+      weekdays: [1, 3],
+      hour: 16,
+      minute: 30,
+      durationMinutes: 60,
+    },
+    {
+      serviceId: "svc-learn-handwriting",
+      weekdays: [6],
+      hour: 10,
+      minute: 0,
+      durationMinutes: 45,
+    },
+    {
+      serviceId: "svc-learn-homework-club",
+      weekdays: [1, 2, 3, 4],
+      hour: 15,
+      minute: 30,
+      durationMinutes: 90,
+    },
+    {
+      serviceId: "svc-learn-pre-algebra",
+      weekdays: [2, 4],
+      hour: 17,
+      minute: 0,
+      durationMinutes: 60,
+    },
+    {
+      serviceId: "svc-learn-essay-writing",
+      weekdays: [3],
+      hour: 16,
+      minute: 30,
+      durationMinutes: 75,
+    },
+    {
+      serviceId: "svc-learn-general-science",
+      weekdays: [1],
+      hour: 17,
+      minute: 0,
+      durationMinutes: 60,
+    },
+    {
+      serviceId: "svc-learn-executive-functioning",
+      weekdays: [2, 4],
+      hour: 16,
+      minute: 0,
+      durationMinutes: 50,
+    },
+    {
+      serviceId: "svc-learn-stem-track",
+      weekdays: [2, 4],
+      hour: 18,
+      minute: 0,
+      durationMinutes: 90,
+    },
+    {
+      serviceId: "svc-learn-humanities-track",
+      weekdays: [3],
+      hour: 18,
+      minute: 0,
+      durationMinutes: 75,
+    },
+    {
+      serviceId: "svc-learn-foreign-language",
+      weekdays: [6],
+      hour: 11,
+      minute: 0,
+      durationMinutes: 60,
+    },
+    {
+      serviceId: "svc-learn-sat-act-bootcamp",
+      weekdays: [1, 2, 3, 4],
+      hour: 9,
+      minute: 0,
+      durationMinutes: 120,
+    },
+    {
+      serviceId: "svc-learn-college-essay",
+      weekdays: [2, 4],
+      hour: 17,
+      minute: 0,
+      durationMinutes: 90,
+    },
+    {
+      serviceId: "svc-learn-isee-ssat",
+      weekdays: [6],
+      hour: 9,
+      minute: 0,
+      durationMinutes: 75,
+    },
+    {
+      serviceId: "svc-learn-hspt-coop",
+      weekdays: [6],
+      hour: 10,
+      minute: 30,
+      durationMinutes: 75,
+    },
+    {
+      serviceId: "svc-learn-gre-gmat",
+      weekdays: [3],
+      hour: 19,
+      minute: 0,
+      durationMinutes: 90,
+    },
+    {
+      serviceId: "svc-learn-ged-hiset",
+      weekdays: [2, 4],
+      hour: 18,
+      minute: 30,
+      durationMinutes: 90,
+    },
+    {
+      serviceId: "svc-learn-asvab",
+      weekdays: [6],
+      hour: 9,
+      minute: 0,
+      durationMinutes: 90,
+    },
+    {
+      serviceId: "svc-learn-coding-kids",
+      weekdays: [6],
+      hour: 13,
+      minute: 0,
+      durationMinutes: 75,
+    },
+    {
+      serviceId: "svc-learn-robotics",
+      weekdays: [5],
+      hour: 16,
+      minute: 0,
+      durationMinutes: 90,
+    },
+    {
+      serviceId: "svc-learn-chess-club",
+      weekdays: [3],
+      hour: 17,
+      minute: 30,
+      durationMinutes: 60,
+    },
+    {
+      serviceId: "svc-learn-financial-literacy",
+      weekdays: [4],
+      hour: 17,
+      minute: 0,
+      durationMinutes: 60,
+    },
+    {
+      serviceId: "svc-learn-public-speaking",
+      weekdays: [1],
+      hour: 17,
+      minute: 30,
+      durationMinutes: 75,
+    },
+    {
+      serviceId: "svc-learn-creative-writing",
+      weekdays: [2],
+      hour: 18,
+      minute: 0,
+      durationMinutes: 75,
+    },
+    {
+      serviceId: "svc-learn-digital-art",
+      weekdays: [6],
+      hour: 14,
+      minute: 0,
+      durationMinutes: 90,
+    },
+  ];
+  const slots: SchedulingSlot[] = [];
+  let seq = 0;
+  const nowMs = Date.now();
+  const programDaySpan = learnMockProgramDaySpan();
+  const [anchorYear, anchorMonth, anchorDay] = LEARN_MOCK_PROGRAM_START_DATE.split("-").map(
+    Number,
+  );
+  for (let dayOffset = 0; dayOffset <= programDaySpan; dayOffset += 1) {
+    const probe = new Date(anchorYear, anchorMonth - 1, anchorDay + dayOffset, 12, 0, 0, 0);
+    const dow = probe.getDay();
+    for (const seed of seeds) {
+      if (!seed.weekdays.includes(dow)) continue;
+      const { startAt, endAt } = learnLocalSlot(
+        dayOffset,
+        seed.hour,
+        seed.minute,
+        seed.durationMinutes,
+      );
+      if (new Date(startAt).getTime() < nowMs) continue;
+      seq += 1;
+      const service = schedulingServiceById(seed.serviceId);
+      slots.push({
+        id: `slot-learn-${String(seq).padStart(4, "0")}`,
+        serviceId: seed.serviceId,
+        service,
+        locationId: "loc-1",
+        staffId: "staff-1",
+        staffName: service.instructorName ?? "Learn Instructor",
+        startAt,
+        endAt,
+        capacityOverride: null,
+        priceOverride: null,
+        bookedCount: Math.min(6, Math.max(1, Math.floor(service.capacity / 4))),
         checkInCount: 0,
         effectiveCapacity: service.capacity,
         effectivePrice: service.basePrice,
@@ -12171,6 +12550,7 @@ export const schedulingSlots: SchedulingSlot[] = [
   },
   ...buildPreschoolPlayDateSlots(),
   ...buildGymClassSlots(),
+  ...buildLearnClassSlots(),
   ...buildPrivatePlaySlots(),
   ...buildSpecialPlayEventSlots(),
   ...buildCampPlaySlots(),
@@ -13427,8 +13807,9 @@ export function generateOpenAvailabilityForDuration(
   const now = new Date();
   const openMin = 8 * 60;
   const closeMin = 21 * 60;
-  const increment = service.slotIncrementMinutes ?? 30;
+  const increment = resolveSlotIncrementMinutes(service);
   const maxConcurrent = service.maxConcurrent ?? 1;
+  const blockStep = increment ?? durationMinutes;
 
   const windows = expandOperatingHoursToWindows(
     service,
@@ -13444,7 +13825,7 @@ export function generateOpenAvailabilityForDuration(
     const start = new Date(window.startAt);
     const m = start.getHours() * 60 + start.getMinutes();
     let isUnavailable = false;
-    for (let step = m; step < m + durationMinutes; step += increment || durationMinutes) {
+    for (let step = m; step < m + durationMinutes; step += blockStep) {
       if (step === 10 * 60 || step === 14 * 60) {
         isUnavailable = true;
         break;

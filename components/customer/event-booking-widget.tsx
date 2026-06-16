@@ -468,7 +468,7 @@ export function EventBookingWidget({
     <div
       className={
         embedded
-          ? 'w-full space-y-4'
+          ? 'w-full min-w-0 space-y-4 overflow-hidden'
           : 'mx-auto w-full max-w-6xl rounded-xl border border-border bg-card p-4 md:p-6'
       }
     >
@@ -584,6 +584,7 @@ export function EventBookingWidget({
             onSelectedToDateChange={form.setSelectedToDate}
             selectedWindow={form.selectedWindow}
             onSelectedWindowChange={form.setSelectedWindow}
+            dateStripDensity={embedded ? 'compact' : 'default'}
           />
         ) : (
           <p className="text-sm text-muted-foreground">Select a package to load availability.</p>
@@ -602,8 +603,8 @@ export function EventBookingWidget({
                   variant="outline"
                   size="icon"
                   className="h-8 w-8"
-                  onClick={() => form.setChildrenCount(Math.max(1, form.childrenCount - 1))}
-                  disabled={form.childrenCount <= 1}
+                  onClick={() => form.setChildrenCount(Math.max(0, form.childrenCount - 1))}
+                  disabled={form.childrenCount <= 0}
                 >
                   –
                 </Button>
@@ -627,8 +628,8 @@ export function EventBookingWidget({
                   variant="outline"
                   size="icon"
                   className="h-8 w-8"
-                  onClick={() => form.setAdultsCount(Math.max(1, form.adultsCount - 1))}
-                  disabled={form.adultsCount <= 1}
+                  onClick={() => form.setAdultsCount(Math.max(0, form.adultsCount - 1))}
+                  disabled={form.adultsCount <= 0}
                 >
                   –
                 </Button>

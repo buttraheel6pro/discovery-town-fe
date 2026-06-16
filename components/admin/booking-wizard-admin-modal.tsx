@@ -147,11 +147,11 @@ export function BookingWizardAdminModal({
                 <Input
                   id="admin-booking-guests"
                   type="number"
-                  min={1}
+                  min={0}
                   value={bookingForm.guestCount}
                   onChange={(event) =>
                     bookingForm.setGuestCount(
-                      Math.max(1, Number.parseInt(event.target.value || '1', 10) || 1),
+                      Math.max(0, Number.parseInt(event.target.value || '0', 10) || 0),
                     )
                   }
                 />

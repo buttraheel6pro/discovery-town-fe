@@ -1,11 +1,9 @@
-/** Household child multi-select and guardian picker driven by category booking rules. */
+/** Household child picker and guardian picker driven by category booking rules. */
 'use client'
 
 import Link from 'next/link'
+import { useEffect, useMemo } from 'react'
 
-import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -15,6 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
+  isCampPlayCategory,
   needsAgeParticipantPicker,
   needsGuardianPicker,
   needsHouseholdChildPicker,
@@ -39,6 +38,59 @@ function contactFullName(contact: CmContact): string {
   return `${contact.firstName} ${contact.lastName}`.trim()
 }
 
+interface FamilyMemberSelectFieldProps {
+  readonly id: string
+  readonly label: string
+  readonly placeholder: string
+  readonly value: string
+  readonly options: readonly CmContact[]
+  readonly onValueChange: (contactId: string) => void
+  readonly emptyMessage: string
+  readonly helperText?: string
+}
+
+function FamilyMemberSelectField({
+  id,
+  label,
+  placeholder,
+  value,
+  options,
+  onValueChange,
+  emptyMessage,
+  helperText,
+}: Readonly<FamilyMemberSelectFieldProps>) {
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>{label}</Label>
+      {options.length > 0 ? (
+        <Select value={value.length > 0 ? value : undefined} onValueChange={onValueChange}>
+          <SelectTrigger id={id}>
+            <SelectValue placeholder={placeholder} />
+          </SelectTrigger>
+          <SelectContent>
+            {options.map((contact) => (
+              <SelectItem key={contact.id} value={contact.id}>
+                {contactFullName(contact)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          {emptyMessage}{' '}
+          <Link href="/account/family" className="text-accent underline">
+            Family members
+          </Link>{' '}
+          to continue.
+        </p>
+      )}
+      {helperText ? (
+        <p className="text-xs text-muted-foreground">{helperText}</p>
+      ) : null}
+    </div>
+  )
+}
+
 export function BookingFamilyMemberFields({
   service,
   contacts,
@@ -53,6 +105,7 @@ export function BookingFamilyMemberFields({
   idPrefix = 'booking',
 }: Readonly<BookingFamilyMemberFieldsProps>) {
   const category = service.category
+  const isCampBooking = isCampPlayCategory(category)
   const showGuardian = needsGuardianPicker(category)
   const showChildren = needsHouseholdChildPicker(category)
   const showAgeParticipant = needsAgeParticipantPicker(
@@ -62,111 +115,89 @@ export function BookingFamilyMemberFields({
   )
 
   const guardianOptions = contacts.filter((c) => c.contactType === 'CUSTOMER')
-  const childOptions = contacts.filter((c) => c.contactType === 'CHILD')
+  const participatingChildOptions = useMemo(
+    () => contacts.filter((c) => c.contactType === 'CHILD'),
+    [contacts],
+  )
+
+  const participatingChildValue = showChildren
+    ? (selectedChildIds[0] ?? '')
+    : participantContactId
+
+  function handleParticipatingChildChange(childId: string): void {
+    if (showChildren) {
+      for (const existingId of selectedChildIds) {
+        if (existingId !== childId) {
+          onToggleChild(existingId, false)
+        }
+      }
+      onToggleChild(childId, true)
+      return
+    }
+    onParticipantContactChange(childId)
+    const child = contacts.find((contact) => contact.id === childId) ?? null
+    onParticipantNameChange(child ? contactFullName(child) : '')
+  }
+
+  useEffect(() => {
+    if (participatingChildValue.length === 0) {
+      return
+    }
+    const stillValid = participatingChildOptions.some(
+      (child) => child.id === participatingChildValue,
+    )
+    if (stillValid) {
+      return
+    }
+    if (showChildren) {
+      onToggleChild(participatingChildValue, false)
+      return
+    }
+    onParticipantContactChange('')
+    onParticipantNameChange('')
+  }, [
+    onParticipantContactChange,
+    onParticipantNameChange,
+    onToggleChild,
+    participatingChildOptions,
+    participatingChildValue,
+    showChildren,
+  ])
 
   if (!showGuardian && !showChildren && !showAgeParticipant) {
     return null
   }
 
+  const participatingChildLabel = isCampBooking ? 'Participating child' : 'Participant'
+  const participatingChildPlaceholder = isCampBooking
+    ? 'Select participating child'
+    : 'Select a family member'
+
   return (
     <div className="space-y-4">
       {showGuardian ? (
-        <div className="space-y-2">
-          <Label htmlFor={`${idPrefix}-guardian`}>Guardian</Label>
-          {guardianOptions.length > 0 ? (
-            <Select value={accompanyingAdultId} onValueChange={onAccompanyingAdultChange}>
-              <SelectTrigger id={`${idPrefix}-guardian`}>
-                <SelectValue placeholder="Select guardian" />
-              </SelectTrigger>
-              <SelectContent>
-                {guardianOptions.map((guardian) => (
-                  <SelectItem key={guardian.id} value={guardian.id}>
-                    {contactFullName(guardian)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : (
-            <p className="text-xs text-muted-foreground">
-              Add a guardian profile under{' '}
-              <Link href="/account/family" className="text-accent underline">
-                Family members
-              </Link>{' '}
-              to continue.
-            </p>
-          )}
-          <p className="text-xs text-muted-foreground">
-            The child being booked must attend with this responsible adult (you or another adult on
-            the booking).
-          </p>
-        </div>
+        <FamilyMemberSelectField
+          id={`${idPrefix}-guardian`}
+          label="Guardian"
+          placeholder="Select guardian"
+          value={accompanyingAdultId}
+          options={guardianOptions}
+          onValueChange={onAccompanyingAdultChange}
+          emptyMessage="Add a guardian profile under"
+          helperText="The child being booked must attend with this responsible adult (you or another adult on the booking)."
+        />
       ) : null}
 
-      {showChildren ? (
-        <div className="space-y-2">
-          <Label>Participating children (household)</Label>
-          <p className="text-xs text-muted-foreground">
-            Select every child from your household who will take part in this session.
-          </p>
-          {childOptions.length === 0 ? (
-            <div className="space-y-2 rounded-lg border border-border bg-muted/40 p-3">
-              <p className="text-sm text-foreground">
-                You need to add children to your family list first.
-              </p>
-              <Button type="button" variant="secondary" size="sm" asChild>
-                <Link href="/account/family">Add family member</Link>
-              </Button>
-            </div>
-          ) : (
-            <ul className="max-h-48 space-y-2 overflow-y-auto rounded-lg border border-border p-2">
-              {childOptions.map((child) => {
-                const checkboxId = `${idPrefix}-child-${child.id}`
-                return (
-                  <li
-                    key={child.id}
-                    className="flex items-center gap-3 rounded-md border border-border/60 px-3 py-2"
-                  >
-                    <Checkbox
-                      id={checkboxId}
-                      checked={selectedChildIds.includes(child.id)}
-                      onCheckedChange={(checked) => onToggleChild(child.id, Boolean(checked))}
-                    />
-                    <Label htmlFor={checkboxId} className="text-sm font-medium leading-none">
-                      {contactFullName(child)}
-                    </Label>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-        </div>
-      ) : null}
-
-      {showAgeParticipant ? (
-        <div className="space-y-2">
-          <Label htmlFor={`${idPrefix}-participant`}>Participant</Label>
-          {childOptions.length > 0 ? (
-            <Select value={participantContactId} onValueChange={onParticipantContactChange}>
-              <SelectTrigger id={`${idPrefix}-participant`}>
-                <SelectValue placeholder="Select a family member" />
-              </SelectTrigger>
-              <SelectContent>
-                {childOptions.map((child) => (
-                  <SelectItem key={child.id} value={child.id}>
-                    {contactFullName(child)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : (
-            <Input
-              id={`${idPrefix}-participant`}
-              value={participantName}
-              onChange={(e) => onParticipantNameChange(e.target.value)}
-              placeholder="Participant full name"
-            />
-          )}
-        </div>
+      {showChildren || showAgeParticipant ? (
+        <FamilyMemberSelectField
+          id={`${idPrefix}-participant`}
+          label={showChildren ? 'Participating child' : participatingChildLabel}
+          placeholder={participatingChildPlaceholder}
+          value={participatingChildValue}
+          options={participatingChildOptions}
+          onValueChange={handleParticipatingChildChange}
+          emptyMessage="Add children to your family list under"
+        />
       ) : null}
     </div>
   )

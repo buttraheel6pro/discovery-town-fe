@@ -13,7 +13,6 @@ import {
   type EventBookingScheduleDraft,
 } from '@/components/admin/event-booking-schedule-fields'
 import { EventTypeSelector } from '@/components/admin/event-type-selector'
-import { ServicePackageLinker } from '@/components/admin/service-package-linker'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -42,7 +41,6 @@ import {
   slotIncrementMinutesFromAdminValue,
 } from '@/lib/open-booking-slot-windows'
 import { isOpenPlayPassCatalogServiceId } from '@/lib/open-play-pass-catalog'
-import { buildPackageEditHref } from '@/lib/package-placement'
 import {
   ADMIN_LISTING_KIND_OPTIONS,
   adminListingKindFromService,
@@ -54,6 +52,11 @@ import {
   eventBookingSchedulePatchFromDraft,
 } from '@/lib/event-booking-schedule'
 import { useScheduling } from '@/lib/scheduling-store'
+import {
+  buildAdminLearnServiceFormHref,
+  isLearnCategoryId,
+  isLearnSchedulingService,
+} from '@/lib/learn-catalog'
 import { findWeBringPlayOfferingByServiceId } from '@/lib/we-bring-play-offerings'
 import { bookingAddOnToSchedulingAddOn, formatPrice } from '@/lib/utils'
 import type {
@@ -183,7 +186,7 @@ function AdminSchedulingServiceNewPageInner() {
   const router = useRouter()
   const { documents } = useClients()
   const { bookingAddOns } = useInventory()
-  const { categories, services, packages, addService, updateService } = useScheduling()
+  const { categories, services, addService, updateService } = useScheduling()
   const requestedCategoryId = searchParams.get('categoryId')?.trim() ?? ''
   const requestedServiceId = searchParams.get('serviceId')?.trim() ?? ''
   const rawReturnTo = searchParams.get('returnTo')?.trim() ?? '/admin/scheduling/services'
@@ -212,6 +215,26 @@ function AdminSchedulingServiceNewPageInner() {
       `/admin/inventory/products/${offering.productId}/edit?returnTo=${encodeURIComponent(returnTo)}`,
     )
   }, [requestedServiceId, returnTo, router])
+
+  useEffect(() => {
+    if (editingService && isLearnSchedulingService(editingService)) {
+      router.replace(
+        buildAdminLearnServiceFormHref({
+          serviceId: editingService.id,
+          returnTo,
+        }),
+      )
+      return
+    }
+    if (requestedCategoryId && isLearnCategoryId(requestedCategoryId)) {
+      router.replace(
+        buildAdminLearnServiceFormHref({
+          categoryId: requestedCategoryId,
+          returnTo,
+        }),
+      )
+    }
+  }, [editingService, requestedCategoryId, returnTo, router])
 
   const sortedCategories = useMemo(() => {
     return categories
@@ -341,29 +364,6 @@ function AdminSchedulingServiceNewPageInner() {
   const selectedCategory = useMemo<SchedulingCategory | null>(() => {
     return sortedCategories.find((entry) => entry.id === draft.categoryId) ?? null
   }, [draft.categoryId, sortedCategories])
-
-  function openEditPackage(packageId: string) {
-    const pkg = packages.find((entry) => entry.id === packageId)
-    if (!pkg) {
-      return
-    }
-    const returnParams = new URLSearchParams()
-    if (requestedServiceId) {
-      returnParams.set('serviceId', requestedServiceId)
-    }
-    if (rawReturnTo.startsWith('/admin/')) {
-      returnParams.set('returnTo', rawReturnTo)
-    }
-    const editReturnTo = returnParams.toString()
-      ? `/admin/scheduling/services/new?${returnParams.toString()}`
-      : '/admin/scheduling/services/new'
-    router.push(
-      buildPackageEditHref(packageId, {
-        returnTo: editReturnTo,
-        category: draft.categoryId || undefined,
-      }),
-    )
-  }
 
   function handleProgramAreaChange(next: SchedulingTopLevelId): void {
     setProgramArea(next)
@@ -737,22 +737,6 @@ function AdminSchedulingServiceNewPageInner() {
                 </Select>
               </div>
             </div>
-
-          {draft.isPackageService && isEditing && editingService ? (
-            <ServicePackageLinker
-              serviceId={editingService.id}
-              serviceName={editingService.name}
-              serviceCategoryId={editingService.categoryId}
-              onRequestEditPackage={openEditPackage}
-            />
-          ) : null}
-
-          {draft.isPackageService && !isEditing ? (
-            <p className="text-xs text-muted-foreground">
-              Save this event, then edit it again to link packages. Customers see the Private
-              Play layout once at least one package is attached.
-            </p>
-          ) : null}
 
           <div className="space-y-4">
             <div className="space-y-2">

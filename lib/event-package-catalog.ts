@@ -197,7 +197,7 @@ export function resolvePackagesForSchedulingService(
 ): EventPackage[] {
   const active = packages.filter((pkg) => pkg.isActive)
 
-  if (isPackageServiceOffering(service)) {
+  if (!isPackageServiceOffering(service)) {
     return sortByTier(active.filter((pkg) => pkg.serviceId === service.id))
   }
 

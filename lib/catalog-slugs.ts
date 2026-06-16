@@ -5,7 +5,7 @@ import {
   type SchedulingTopLevelId,
 } from '@/lib/scheduling-consumer-categories'
 
-export type SchedulingCatalogSlug = 'gym' | 'play' | 'events'
+export type SchedulingCatalogSlug = 'gym' | 'play' | 'events' | 'learn'
 export type ProductCatalogSlug = 'shop' | 'gifts' | 'rentals' | 'cafe-food'
 export type CatalogSlug = SchedulingCatalogSlug | ProductCatalogSlug
 
@@ -15,6 +15,7 @@ export const SCHEDULING_CATALOG_SLUGS: readonly SchedulingCatalogSlug[] = [
   'gym',
   'play',
   'events',
+  'learn',
 ] as const
 
 export const PRODUCT_CATALOG_SLUGS: readonly ProductCatalogSlug[] = [
@@ -32,6 +33,7 @@ export const CATALOG_MENU_ORDER: readonly {
   { slug: 'gym', label: 'Gym', kind: 'scheduling' },
   { slug: 'play', label: 'Play', kind: 'scheduling' },
   { slug: 'events', label: 'Events', kind: 'scheduling' },
+  { slug: 'learn', label: 'Learn', kind: 'scheduling' },
   { slug: 'cafe-food', label: 'Cafe & Food', kind: 'product' },
   { slug: 'gifts', label: 'Gifts', kind: 'product' },
   { slug: 'rentals', label: 'Rentals', kind: 'product' },
@@ -42,12 +44,14 @@ const SCHEDULING_TOP_TO_SLUG: Record<SchedulingTopLevelId, SchedulingCatalogSlug
   GYM: 'gym',
   PLAY: 'play',
   EVENT: 'events',
+  LEARN: 'learn',
 }
 
 const SLUG_TO_SCHEDULING_TOP: Record<SchedulingCatalogSlug, SchedulingTopLevelId> = {
   gym: 'GYM',
   play: 'PLAY',
   events: 'EVENT',
+  learn: 'LEARN',
 }
 
 const PRODUCT_TYPE_TO_SLUG: Record<string, ProductCatalogSlug> = {
@@ -75,6 +79,7 @@ export function normalizeCatalogSlug(value: string | undefined | null): CatalogS
     raw === 'gym' ||
     raw === 'play' ||
     raw === 'events' ||
+    raw === 'learn' ||
     raw === 'shop' ||
     raw === 'gifts' ||
     raw === 'rentals'

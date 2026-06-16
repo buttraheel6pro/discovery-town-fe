@@ -1,10 +1,23 @@
 /** Map catalog scheduling slots to customer availability windows. */
 import {
   expandSchedulingSlotToWindows,
+  shouldSplitSessionBySlotIncrement,
 } from '@/lib/open-booking-slot-windows'
+import {
+  EVENT_PRIVATE_PARTY_ROOM_SUBCATEGORY_ID,
+  EVENT_WHOLE_PLACE_SUBCATEGORY_ID,
+} from '@/lib/event-package-catalog'
 import { locations } from '@/lib/mock-data'
+import { PRIVATE_PLAY_CATEGORY_ID } from '@/lib/private-play-packages'
+import { isPackageServiceOffering, isPassOffering } from '@/lib/scheduling-listing-kind'
 import { formatSlotTimeRange } from '@/lib/utils'
 import type { AvailableWindow, SchedulingService, SchedulingSlot } from '@/lib/types'
+
+const SCHEDULED_PARTY_SERVICE_CATEGORY_IDS = new Set<string>([
+  PRIVATE_PLAY_CATEGORY_ID,
+  EVENT_PRIVATE_PARTY_ROOM_SUBCATEGORY_ID,
+  EVENT_WHOLE_PLACE_SUBCATEGORY_ID,
+])
 
 export const SPECIAL_PLAY_EVENTS_CATEGORY_ID = 'cat-special-play-events' as const
 export const CAMP_PLAY_CATEGORY_ID = 'cat-camps-play' as const
@@ -46,11 +59,52 @@ export function isParentsNightOutCatalogService(
   return service.categoryId === PARENTS_NIGHT_CATEGORY_ID
 }
 
-/** Camp or Parents Night Out event detail layout (no meta grid, split checkout). */
-export function usesPlayEventCheckoutLayout(
-  service: Pick<SchedulingService, 'categoryId' | 'serviceType'>,
+/** Play menu special events (`cat-special-play-events`) — workshops and themed days. */
+export function isSpecialPlayEventCatalogService(
+  service: Pick<SchedulingService, 'categoryId'>,
 ): boolean {
-  return isCampPlayCatalogService(service) || isParentsNightOutCatalogService(service)
+  return service.categoryId === SPECIAL_PLAY_EVENTS_CATEGORY_ID
+}
+
+/**
+ * Scheduled party listings on Service kind (not package-only) — customer availability
+ * calendar and split checkout layout on the event detail page.
+ */
+export function usesScheduledPartyServiceEventBookingSchedule(
+  service: Pick<
+    SchedulingService,
+    | 'categoryId'
+    | 'bookingMode'
+    | 'isPackageService'
+    | 'bookingOfferingKind'
+    | 'eventBookingScheduleMode'
+  >,
+): boolean {
+  if (isPackageServiceOffering(service) || isPassOffering(service)) {
+    return false
+  }
+  if (service.bookingMode !== 'SCHEDULED') {
+    return false
+  }
+  if (service.eventBookingScheduleMode != null) {
+    return true
+  }
+  return SCHEDULED_PARTY_SERVICE_CATEGORY_IDS.has(service.categoryId)
+}
+
+/** Camp, Parents Night Out, Special Play, or scheduled party Service — split layout. */
+export function usesPlayEventCheckoutLayout(
+  service: Pick<
+    SchedulingService,
+    'categoryId' | 'serviceType' | 'bookingMode' | 'isPackageService' | 'eventBookingScheduleMode'
+  >,
+): boolean {
+  return (
+    isCampPlayCatalogService(service) ||
+    isParentsNightOutCatalogService(service) ||
+    isSpecialPlayEventCatalogService(service) ||
+    usesScheduledPartyServiceEventBookingSchedule(service)
+  )
 }
 
 export function isCampMonthLongBooking(
@@ -143,9 +197,14 @@ export function windowsFromSchedulingSlots(
     readonly now?: number
     /** When true, includes sold-out windows (for view-only calendars). */
     readonly includeUnavailable?: boolean
+    /** One window per admin session — ignores slot increment splitting. */
+    readonly exactSessionOnly?: boolean
   },
 ): AvailableWindow[] {
   const now = options?.now ?? Date.now()
+  const exactSessionOnly =
+    options?.exactSessionOnly ??
+    (service.bookingMode === 'SCHEDULED' && !shouldSplitSessionBySlotIncrement(service))
   const matchingSlots = slots
     .filter((slot) => {
       if (slot.serviceId !== service.id) {
@@ -170,6 +229,7 @@ export function windowsFromSchedulingSlots(
       ...expandSchedulingSlotToWindows(slot, service, {
         durationMinutes: options?.durationMinutes,
         now,
+        exactSessionOnly,
       }),
     )
   }

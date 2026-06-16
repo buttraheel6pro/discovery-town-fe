@@ -17,6 +17,7 @@ import { BookingAdditionalAdultField } from '@/components/customer/booking-addit
 import { BookingAmenitiesSection } from '@/components/customer/booking-amenities-section'
 import { BookingCategoryAddons } from '@/components/customer/booking-category-addons'
 import { BookingFamilyMemberFields } from '@/components/customer/booking-family-member-fields'
+import { BookingStudentFields } from '@/components/customer/booking-student-fields'
 import { BookingHouseholdFields } from '@/components/customer/booking-household-fields'
 import { BookingFlowCouponSection } from '@/components/customer/booking-flow-coupon-section'
 import { EventBookingScheduleSection } from '@/components/customer/event-booking-schedule-section'
@@ -46,15 +47,30 @@ import { useClients } from '@/lib/client-store'
 import { useInventory } from '@/lib/inventory-store'
 import { instructors } from '@/lib/mock-data'
 import {
+  formatLearningFormat,
+  formatProgramTermLabel,
+} from '@/lib/learn-catalog'
+import {
+  formatLearnProgramPeriodLabel,
+  isLearnProgramEnrollmentReady,
+  resolveLearnProgramBounds,
+  resolveLearnProgramSessionsInBounds,
+} from '@/lib/learn-enrollment'
+import {
   buildEventCartBookingDescription,
   buildGymCartBookingDescription,
+  buildLearnCartBookingDescription,
   buildPlayCartBookingDescription,
   EVENT_CART_BOOKING_META_KEY,
   GYM_CART_BOOKING_META_KEY,
+  LEARN_CART_BOOKING_META_KEY,
   PLAY_CART_BOOKING_META_KEY,
   isEventSlotCartCheckoutService,
   isGymClassCartCheckoutService,
+  isLearnCartCheckoutService,
   isPlayClassCartCheckoutService,
+  isPlayMenuServiceEventScheduleListing,
+  usesClassDetailSplitCartCheckoutLayout,
 } from '@/lib/play-cart'
 import { useScheduling } from '@/lib/scheduling-store'
 import {
@@ -67,7 +83,11 @@ import {
 } from '@/lib/scheduling-consumer-categories'
 import { getPlayBookingConfirmCartLabel } from '@/lib/play-cart'
 import {
+  eventBookingScheduleRequiresTimeSelection,
+  isEventBookingScheduleReadyForBookingForm,
+  resolveEventBookingScheduleMode,
   shouldShowCustomerEventBookingSchedule,
+  shouldShowEventDayRangePicker,
 } from '@/lib/event-booking-schedule'
 import {
   findSchedulingSlotContainingWindow,
@@ -75,6 +95,7 @@ import {
 import {
   formatPrice,
   formatSlotDate,
+  formatSlotTime,
   formatSlotTimeRange,
   isDocumentSignedAndValid,
 } from '@/lib/utils'
@@ -95,18 +116,20 @@ const levelColors: Record<string, string> = {
 function getClassEnrolButtonLabel(
   selectedSlot: SchedulingSlot | undefined,
   gymClassCartCheckout: boolean,
+  learnCartCheckout: boolean,
   eventClassCartCheckout: boolean,
   playClassCartCheckout: boolean,
-  hasSelectedPlayWindow: boolean,
+  showBookingDetailsReady: boolean,
   showEventBookingSchedule: boolean,
+  requiresTimeSelection: boolean,
 ): string {
-  if (showEventBookingSchedule && !hasSelectedPlayWindow) {
-    return 'Select date and time'
+  if (showEventBookingSchedule && !showBookingDetailsReady) {
+    return requiresTimeSelection ? 'Select date and time' : 'Select a date'
   }
   if (!selectedSlot && !showEventBookingSchedule) {
     return 'Select a session'
   }
-  if (playClassCartCheckout && !hasSelectedPlayWindow) {
+  if (playClassCartCheckout && !showBookingDetailsReady) {
     return 'Select a time slot'
   }
   if (selectedSlot?.status === 'FULL') {
@@ -115,7 +138,7 @@ function getClassEnrolButtonLabel(
   if (playClassCartCheckout) {
     return getPlayBookingConfirmCartLabel()
   }
-  if (gymClassCartCheckout || eventClassCartCheckout) {
+  if (gymClassCartCheckout || learnCartCheckout || eventClassCartCheckout) {
     return 'Add to cart'
   }
   return 'Enrol now'
@@ -140,13 +163,26 @@ function formatStartTimeDisplay(startAt: string | null): string {
   if (!startAt) {
     return '—'
   }
-  return new Date(startAt).toLocaleTimeString('en-GB', {
-    hour: 'numeric',
-    minute: '2-digit',
-  })
+  return formatSlotTime(startAt)
 }
 
-function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }>) {
+function getClassCartSuccessCopy(
+  kind: 'gym' | 'learn' | 'event' | 'play',
+  serviceName: string,
+): { readonly title: string; readonly description: string } {
+  const sectionByKind: Record<'gym' | 'learn' | 'event' | 'play', string> = {
+    gym: 'Gym bookings',
+    learn: 'Learn bookings',
+    event: 'Event bookings',
+    play: 'Play bookings',
+  }
+  return {
+    title: 'Added to cart',
+    description: `${serviceName} — open ${sectionByKind[kind]} in your cart to complete checkout.`,
+  }
+}
+
+export function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }>) {
   const { slots, packages, categories } = useScheduling()
   const { contacts, subscriptions, documents, addContact, addRelationship } = useClients()
   const { addCustomCartItem } = useInventory()
@@ -182,8 +218,25 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
     [service.category, service.categoryId],
   )
   const gymClassCartCheckout = isGymClassCartCheckoutService(service)
+  const learnCartCheckout = isLearnCartCheckoutService(service)
+  const learnProgramSummary = useMemo(() => {
+    if (!learnCartCheckout) {
+      return null
+    }
+    const bounds = resolveLearnProgramBounds(service, slots)
+    const sessions = resolveLearnProgramSessionsInBounds(service, slots)
+    if (!bounds || sessions.length === 0) {
+      return null
+    }
+    return {
+      periodLabel: formatLearnProgramPeriodLabel(bounds),
+      sessionCount: sessions.length,
+    }
+  }, [learnCartCheckout, service, slots])
   const eventClassCartCheckout =
-    isEventSlotCartCheckoutService(service, categoryById) && !gymClassCartCheckout
+    isEventSlotCartCheckoutService(service, categoryById) &&
+    !gymClassCartCheckout &&
+    !learnCartCheckout
   const playClassCartCheckout = isPlayClassCartCheckoutService(service, service.category)
   const instructor: Instructors | undefined = service.instructorId
     ? instructors.find((i) => i.instructorId === service.instructorId || i.id === service.instructorId)
@@ -216,8 +269,52 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
     getSchedulingTopLevelId(service.categoryId) === 'PLAY' &&
     service.bookingOfferingKind !== 'PASS'
   const showEventBookingSchedule = shouldShowCustomerEventBookingSchedule(service)
+  const playMenuServiceEventSchedule = isPlayMenuServiceEventScheduleListing(
+    service,
+    service.category,
+    showEventBookingSchedule,
+  )
+  const eventScheduleMode = useMemo(
+    () => resolveEventBookingScheduleMode(service),
+    [service],
+  )
+  const eventShowDayRangePicker = useMemo(
+    () => shouldShowEventDayRangePicker(eventScheduleMode, slots, service),
+    [eventScheduleMode, service, slots],
+  )
+  const showBookingDetailsForm = useMemo(() => {
+    if (learnCartCheckout) {
+      return isLearnProgramEnrollmentReady(service, slots, selectedPlayWindow)
+    }
+    if (!showEventBookingSchedule) {
+      return selectedSlot != null
+    }
+    return isEventBookingScheduleReadyForBookingForm(eventScheduleMode, {
+      selectedDate: selectedAvailabilityDate,
+      selectedToDate: selectedToDate,
+      selectedWindow: selectedPlayWindow,
+      showDayRangePicker: eventShowDayRangePicker,
+    })
+  }, [
+    eventScheduleMode,
+    eventShowDayRangePicker,
+    selectedAvailabilityDate,
+    selectedPlayWindow,
+    selectedSlot,
+    selectedToDate,
+    showEventBookingSchedule,
+    learnCartCheckout,
+    service,
+    slots,
+  ])
+  const requiresTimeSelection = eventBookingScheduleRequiresTimeSelection(eventScheduleMode)
+  const useSplitCartCheckoutLayout = usesClassDetailSplitCartCheckoutLayout(
+    service,
+    service.category,
+    showEventBookingSchedule,
+  )
   const selectedAvailabilityWindow = useMemo<AvailableWindow | null>(() => {
-    if (isPlayServiceOffering) {
+    if (showEventBookingSchedule) {
       return selectedPlayWindow
     }
     if (!selectedSlot) {
@@ -232,19 +329,24 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
       endAt: selectedSlot.endAt,
       spotsRemaining: Math.max(0, selectedSlot.effectiveCapacity - selectedSlot.bookedCount),
     }
-  }, [isPlayServiceOffering, selectedAvailabilityDate, selectedPlayWindow, selectedSlot])
+  }, [
+    selectedAvailabilityDate,
+    selectedPlayWindow,
+    selectedSlot,
+    showEventBookingSchedule,
+  ])
 
   useEffect(() => {
-    if (isPlayServiceOffering) {
+    if (showEventBookingSchedule) {
       return
     }
     if (selectedSlotId === null && upcomingSlots[0]) {
       setSelectedSlotId(upcomingSlots[0].id)
     }
-  }, [isPlayServiceOffering, upcomingSlots, selectedSlotId])
+  }, [showEventBookingSchedule, upcomingSlots, selectedSlotId])
 
   useEffect(() => {
-    if (isPlayServiceOffering) {
+    if (showEventBookingSchedule) {
       return
     }
     if (!selectedSlot) {
@@ -252,7 +354,7 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
     }
     const slotDate = selectedSlot.startAt.split('T')[0]
     setSelectedAvailabilityDate(slotDate)
-  }, [isPlayServiceOffering, selectedSlot])
+  }, [showEventBookingSchedule, selectedSlot])
 
   const activePackages = useMemo(
     () => packages.filter((p) => p.serviceId === service.id && p.isActive),
@@ -295,6 +397,24 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
       ].join('|'),
     [bookingForm.totalBeforeCoupon, selectedPackageId, selectedSlot?.id],
   )
+  const selectedCategoryAddOnNames = useMemo(() => {
+    const selectedIds = new Set(bookingForm.selectedCategoryAddOnIds)
+    return bookingForm.categoryOptionalAddOns
+      .filter((addOn) => selectedIds.has(addOn.id))
+      .map((addOn) => addOn.name)
+  }, [bookingForm.categoryOptionalAddOns, bookingForm.selectedCategoryAddOnIds])
+  const selectedAdditionalAdultLabel = useMemo(() => {
+    if (
+      bookingForm.additionalAdultCount < 1 ||
+      bookingForm.additionalAdultUnitPrice == null
+    ) {
+      return null
+    }
+    return `Additional adult x${bookingForm.additionalAdultCount}`
+  }, [bookingForm.additionalAdultCount, bookingForm.additionalAdultUnitPrice])
+  const showOptionalAddOnsSummary =
+    bookingForm.showAdditionalAdultPicker ||
+    bookingForm.categoryOptionalAddOns.length > 0
 
   const requiredWaiverDocs = useMemo(() => {
     if (!service.requiresWaiver) return []
@@ -324,9 +444,9 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
   ])
 
   const [enrolled, setEnrolled] = useState(false)
-  const [classCartSuccessKind, setClassCartSuccessKind] = useState<null | 'gym' | 'event' | 'play'>(
-    null,
-  )
+  const [classCartSuccessKind, setClassCartSuccessKind] = useState<
+    null | 'gym' | 'learn' | 'event' | 'play'
+  >(null)
   const [waitlistOpen, setWaitlistOpen] = useState(false)
 
   const capacity = selectedSlot?.effectiveCapacity ?? service.capacity
@@ -364,6 +484,25 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
       setClassCartSuccessKind('gym')
       return
     }
+    if (learnCartCheckout) {
+      const booking = bookingForm.submitBooking({ persist: false })
+      addCustomCartItem({
+        type: 'booking',
+        name: service.name,
+        description: buildLearnCartBookingDescription(booking, {
+          packageName: selectedPackage?.name ?? null,
+        }),
+        price: booking.totalAmount,
+        quantity: 1,
+        imageUrl: service.imageUrl ?? undefined,
+        metadata: {
+          [LEARN_CART_BOOKING_META_KEY]: true,
+          serviceId: service.id,
+        },
+      })
+      setClassCartSuccessKind('learn')
+      return
+    }
     if (eventClassCartCheckout) {
       const booking = bookingForm.submitBooking({ persist: false })
       addCustomCartItem({
@@ -385,7 +524,7 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
       setClassCartSuccessKind('event')
       return
     }
-    if (playClassCartCheckout) {
+    if (playClassCartCheckout || playMenuServiceEventSchedule) {
       const booking = bookingForm.submitBooking({ persist: false })
       addCustomCartItem({
         type: 'booking',
@@ -433,12 +572,37 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div className="space-y-2">
               <div className="flex items-center gap-2 flex-wrap">
-                <Badge className="bg-accent text-accent-foreground">
-                  {service.sport ?? 'CLASS'}
-                </Badge>
-                <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${levelClass}`}>
-                  {level}
-                </span>
+                {learnCartCheckout ? (
+                  <>
+                    <Badge className="bg-accent text-accent-foreground">
+                      {service.subjectArea ?? 'Learn'}
+                    </Badge>
+                    {service.gradeLevel ? (
+                      <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-blue-100 text-blue-700">
+                        Grades {service.gradeLevel}
+                      </span>
+                    ) : null}
+                    {service.learningFormat ? (
+                      <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-secondary text-secondary-foreground">
+                        {formatLearningFormat(service.learningFormat)}
+                      </span>
+                    ) : null}
+                    {service.programTerm ? (
+                      <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-secondary text-secondary-foreground">
+                        {formatProgramTermLabel(service.programTerm, service.programYear)}
+                      </span>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    <Badge className="bg-accent text-accent-foreground">
+                      {service.sport ?? 'CLASS'}
+                    </Badge>
+                    <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${levelClass}`}>
+                      {level}
+                    </span>
+                  </>
+                )}
               </div>
               <h1
                 className="text-3xl sm:text-4xl font-black text-white text-balance"
@@ -455,10 +619,22 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 space-y-8">
+      <div
+        className={
+          useSplitCartCheckoutLayout
+            ? 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 grid grid-cols-1 gap-8 lg:grid-cols-3'
+            : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 grid grid-cols-1 lg:grid-cols-3 gap-8'
+        }
+      >
+        <div
+          className={
+            useSplitCartCheckoutLayout ? 'space-y-8 lg:col-span-2' : 'lg:col-span-2 space-y-8'
+          }
+        >
           <section>
-            <h2 className="text-xl font-bold mb-3">About this Class</h2>
+            <h2 className="text-xl font-bold mb-3">
+              {learnCartCheckout ? 'About this Program' : 'About this Class'}
+            </h2>
             <p className="text-muted-foreground leading-relaxed">
               {service.description ?? '—'}
             </p>
@@ -471,45 +647,56 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
             freeCategoryAddOns={bookingForm.categoryIncludedAddOns}
           />
 
-          <Separator />
-
-          <section>
-            <h2 className="text-xl font-bold mb-5">Schedule</h2>
-            {service.schedule?.length ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {service.schedule.map((s, idx) => (
-                  <div
-                    key={`${s.dayOfWeek}-${idx}`}
-                    className="flex items-center gap-3 p-4 rounded-xl bg-secondary border border-border"
-                  >
-                    <Calendar className="w-5 h-5 text-accent shrink-0" />
-                    <div>
-                      <p className="font-bold text-sm">{s.dayOfWeek}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {s.startTime} – {s.endTime}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">See available sessions to book.</p>
-            )}
-            <div className="flex items-center gap-4 mt-4 text-sm text-muted-foreground">
-              <span className="flex items-center gap-1.5">
-                <Clock className="w-4 h-4 text-accent" /> {service.durationMinutes} min
-              </span>
-              {service.facilityName ? (
-                <span className="flex items-center gap-1.5">
-                  <MapPin className="w-4 h-4 text-accent" /> {service.facilityName}
-                </span>
-              ) : null}
-            </div>
-          </section>
-
           {showEventBookingSchedule ? (
             <>
               <Separator />
+              {/*
+              <section>
+                <h2 className="text-xl font-bold mb-5">Schedule</h2>
+                {service.schedule?.length ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {service.schedule.map((s, idx) => (
+                      <div
+                        key={`${s.dayOfWeek}-${idx}`}
+                        className="flex items-center gap-3 p-4 rounded-xl bg-secondary border border-border"
+                      >
+                        <Calendar className="w-5 h-5 text-accent shrink-0" />
+                        <div>
+                          <p className="font-bold text-sm">{s.dayOfWeek}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {s.startTime} – {s.endTime}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">See available sessions to book.</p>
+                )}
+                <div className="flex items-center gap-4 mt-4 text-sm text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <Clock className="w-4 h-4 text-accent" /> {service.durationMinutes} min
+                  </span>
+                  {service.facilityName ? (
+                    <span className="flex items-center gap-1.5">
+                      <MapPin className="w-4 h-4 text-accent" /> {service.facilityName}
+                    </span>
+                  ) : null}
+                </div>
+              </section>
+
+              <Separator />
+              */}
+              <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                <span className="flex items-center gap-1.5">
+                  <Clock className="w-4 h-4 text-accent" /> {service.durationMinutes} min
+                </span>
+                {service.facilityName ? (
+                  <span className="flex items-center gap-1.5">
+                    <MapPin className="w-4 h-4 text-accent" /> {service.facilityName}
+                  </span>
+                ) : null}
+              </div>
               <EventBookingScheduleSection
                 service={service}
                 slots={slots}
@@ -539,7 +726,47 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
                 }}
               />
             </>
-          ) : upcomingSlots.length > 0 ? (
+          ) : (
+            <>
+              <Separator />
+
+              <section>
+                <h2 className="text-xl font-bold mb-5">Schedule</h2>
+                {service.schedule?.length ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {service.schedule.map((s, idx) => (
+                      <div
+                        key={`${s.dayOfWeek}-${idx}`}
+                        className="flex items-center gap-3 p-4 rounded-xl bg-secondary border border-border"
+                      >
+                        <Calendar className="w-5 h-5 text-accent shrink-0" />
+                        <div>
+                          <p className="font-bold text-sm">{s.dayOfWeek}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {s.startTime} – {s.endTime}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">See available sessions to book.</p>
+                )}
+                <div className="flex items-center gap-4 mt-4 text-sm text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <Clock className="w-4 h-4 text-accent" /> {service.durationMinutes} min
+                  </span>
+                  {service.facilityName ? (
+                    <span className="flex items-center gap-1.5">
+                      <MapPin className="w-4 h-4 text-accent" /> {service.facilityName}
+                    </span>
+                  ) : null}
+                </div>
+              </section>
+            </>
+          )}
+
+          {!showEventBookingSchedule && upcomingSlots.length > 0 ? (
             <>
               <Separator />
               <section>
@@ -578,7 +805,7 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
             </>
           ) : null}
 
-          {instructor ? (
+          {!learnCartCheckout && instructor ? (
             <>
               <Separator />
               <section>
@@ -613,14 +840,474 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
                 </div>
               </section>
             </>
+          ) : !learnCartCheckout && service.instructorName ? (
+            <>
+              <Separator />
+              <section>
+                <h2 className="text-xl font-bold mb-5">Your Instructor</h2>
+                <div className="flex items-start gap-4 p-5 rounded-xl bg-secondary border border-border">
+                  <Avatar className="h-16 w-16">
+                    <AvatarFallback>
+                      {service.instructorName
+                        .split(' ')
+                        .map((namePart) => namePart[0])
+                        .join('')}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="space-y-1.5">
+                    <p className="font-bold text-base">{service.instructorName}</p>
+                    {service.subjectArea ? (
+                      <Badge variant="outline" className="text-xs">
+                        {service.subjectArea}
+                      </Badge>
+                    ) : null}
+                  </div>
+                </div>
+              </section>
+            </>
           ) : null}
         </div>
 
+        {useSplitCartCheckoutLayout ? (
+          <aside className="space-y-4 lg:col-span-1 lg:row-span-2 lg:self-start lg:sticky lg:top-24">
+            <Card className="border-border shadow-xl">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg font-bold">Add to cart</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {classCartSuccessKind !== null ? (
+                  <div className="text-center py-6 space-y-3">
+                    <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto" />
+                    <p className="font-bold text-lg">
+                      {getClassCartSuccessCopy(classCartSuccessKind, service.name).title}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {getClassCartSuccessCopy(classCartSuccessKind, service.name).description}
+                    </p>
+                    <Link href="/cart">
+                      <Button variant="outline" className="w-full mt-2">
+                        View cart
+                      </Button>
+                    </Link>
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-2 text-sm">
+                      {learnProgramSummary ? (
+                        <>
+                          <div className="flex justify-between gap-3">
+                            <span className="text-muted-foreground shrink-0">Program period</span>
+                            <span className="font-semibold text-right">
+                              {learnProgramSummary.periodLabel}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Sessions included</span>
+                            <span className="font-semibold">
+                              {learnProgramSummary.sessionCount}
+                            </span>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Date</span>
+                            <span className="font-semibold">
+                              {formatBookingDateDisplay(selectedAvailabilityDate)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Start time</span>
+                            <span className="font-semibold">
+                              {formatStartTimeDisplay(
+                                showEventBookingSchedule
+                                  ? selectedPlayWindow?.startAt ?? null
+                                  : selectedPlayWindow?.startAt ??
+                                      selectedSlot?.startAt ??
+                                      null,
+                              )}
+                            </span>
+                          </div>
+                        </>
+                      )}
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">
+                          {bookingForm.guestCountLabel}
+                        </span>
+                        <span className="font-semibold">{bookingForm.guestCount}</span>
+                      </div>
+                      {selectedPackage ? (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Package</span>
+                          <span className="font-semibold">{selectedPackage.name}</span>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    {showOptionalAddOnsSummary ? (
+                    <div className="space-y-2">
+                      <Label className="text-sm font-semibold">Selected options</Label>
+                      {selectedAdditionalAdultLabel ||
+                      selectedCategoryAddOnNames.length > 0 ? (
+                        <ul className="space-y-1 text-sm text-muted-foreground">
+                          {selectedAdditionalAdultLabel ? (
+                            <li>• {selectedAdditionalAdultLabel}</li>
+                          ) : null}
+                          {selectedCategoryAddOnNames.map((name) => (
+                            <li key={name}>• {name}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          No optional add-ons selected.
+                        </p>
+                      )}
+                    </div>
+                    ) : null}
+
+                    {membersOnlyBlocked ? (
+                      <div className="space-y-2">
+                        <Button
+                          type="button"
+                          className="w-full bg-amber-500 text-white hover:bg-amber-500/90 font-bold h-11"
+                          disabled
+                        >
+                          Members Only
+                        </Button>
+                        <Link
+                          href="/membership"
+                          className="block text-center text-sm text-accent hover:underline"
+                        >
+                          Become a member →
+                        </Link>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between border-t border-border pt-2">
+                          <span className="text-sm text-muted-foreground">Total</span>
+                          <span className="text-lg font-bold text-foreground">
+                            {formatPrice(bookingForm.grandTotal)}
+                          </span>
+                        </div>
+                        <Button
+                          type="button"
+                          className="w-full bg-accent text-accent-foreground hover:bg-accent/90 font-bold h-11"
+                          disabled={
+                            !showBookingDetailsForm ||
+                            selectedSlot?.status === 'FULL' ||
+                            !bookingForm.canSubmitDetails ||
+                            !waiversOk
+                          }
+                          onClick={handleEnrol}
+                        >
+                          Add to cart
+                        </Button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </aside>
+        ) : null}
+
+        {useSplitCartCheckoutLayout &&
+        (showBookingDetailsForm || classCartSuccessKind !== null) ? (
+          <aside className="lg:col-span-2">
+            <Card className="border-border shadow-xl">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg font-bold">
+                  {learnCartCheckout
+                    ? 'Enroll in this program'
+                    : playMenuServiceEventSchedule
+                      ? 'Enrol in this Class'
+                      : 'Book this class'}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                {classCartSuccessKind !== null ? (
+                  <div className="text-center py-6 space-y-3">
+                    <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto" />
+                    <p className="font-bold text-lg">
+                      {getClassCartSuccessCopy(classCartSuccessKind, service.name).title}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {getClassCartSuccessCopy(classCartSuccessKind, service.name).description}
+                    </p>
+                    <Link href="/cart">
+                      <Button variant="outline" className="w-full mt-2">
+                        View cart
+                      </Button>
+                    </Link>
+                  </div>
+                ) : (
+                  <>
+                    {selectedSlot ? (
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Users className="w-3.5 h-3.5" /> {booked}/{capacity} booked
+                          </span>
+                          <span
+                            className={spotsLeft <= 3 ? 'text-destructive font-bold' : ''}
+                          >
+                            {spotsLeft} spot{spotsLeft !== 1 ? 's' : ''} left
+                          </span>
+                        </div>
+                        <Progress value={fillPct} className="h-2" />
+                      </div>
+                    ) : null}
+
+                    <div>
+                      <Label className="text-sm font-semibold">
+                        {bookingForm.guestCountLabel}
+                      </Label>
+                      <div className="flex items-center gap-3 mt-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() =>
+                            bookingForm.setGuestCount(
+                              Math.max(
+                                bookingForm.minGuestCount,
+                                bookingForm.guestCount - 1,
+                              ),
+                            )
+                          }
+                          disabled={bookingForm.guestCount <= bookingForm.minGuestCount}
+                          aria-label={`Decrease ${bookingForm.guestCountLabel.toLowerCase()}`}
+                        >
+                          –
+                        </Button>
+                        <span className="font-bold text-base w-12 text-center">
+                          {bookingForm.guestCount}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => bookingForm.setGuestCount(bookingForm.guestCount + 1)}
+                          disabled={
+                            selectedSlot !== undefined &&
+                            bookingForm.guestCount >=
+                              Math.max(
+                                1,
+                                selectedSlot.effectiveCapacity - selectedSlot.bookedCount,
+                              )
+                          }
+                          aria-label={`Increase ${bookingForm.guestCountLabel.toLowerCase()}`}
+                        >
+                          +
+                        </Button>
+                      </div>
+                    </div>
+
+                    {activePackages.length > 0 ? (
+                      <div className="space-y-2">
+                        <Label className="text-sm font-semibold">Packages</Label>
+                        <PackageSelector
+                          packages={activePackages}
+                          selectedId={selectedPackageId}
+                          onSelect={(id) => setSelectedPackageId(id)}
+                        />
+                        {selectedPackage ? (
+                          <Badge variant="secondary" className="w-fit">
+                            Package selected: {selectedPackage.name}
+                          </Badge>
+                        ) : null}
+                      </div>
+                    ) : null}
+
+                    {bookingForm.showAdditionalAdultPicker &&
+                    bookingForm.additionalAdultUnitPrice != null ? (
+                      <BookingAdditionalAdultField
+                        count={bookingForm.additionalAdultCount}
+                        unitPrice={bookingForm.additionalAdultUnitPrice}
+                        freeAdultCount={bookingForm.freeAdultCount}
+                        onChange={bookingForm.setAdditionalAdultCount}
+                      />
+                    ) : null}
+
+                    {learnCartCheckout ? (
+                      <BookingStudentFields
+                        service={service}
+                        contacts={contacts}
+                        selectedChildIds={bookingForm.selectedChildIds}
+                        onToggleChild={bookingForm.toggleSelectedChild}
+                        participantContactId={bookingForm.participantContactId}
+                        onParticipantContactChange={bookingForm.applyParticipantContact}
+                        participantName={bookingForm.participantName}
+                        onParticipantNameChange={bookingForm.setParticipantName}
+                        idPrefix="learn-class"
+                      />
+                    ) : bookingForm.needsHouseholdChildren ? (
+                      <BookingHouseholdFields
+                        contacts={contacts}
+                        primaryGuardianId={bookingForm.primaryGuardianContactId}
+                        onPrimaryGuardianChange={bookingForm.setPrimaryGuardianContactId}
+                        secondaryGuardianId={bookingForm.secondaryGuardianContactId}
+                        onSecondaryGuardianChange={bookingForm.setSecondaryGuardianContactId}
+                        selectedChildIds={bookingForm.selectedChildIds}
+                        onToggleChild={bookingForm.toggleSelectedChild}
+                        onAddContact={addContact}
+                        onAddRelationship={addRelationship}
+                        idPrefix="gym-class-household"
+                        maxChildSelections={bookingForm.maxChildSelections}
+                        passCount={bookingForm.guestCount}
+                        additionalSiblingCount={bookingForm.additionalSiblingCount}
+                      />
+                    ) : (
+                      <BookingFamilyMemberFields
+                        service={service}
+                        contacts={contacts}
+                        selectedChildIds={bookingForm.selectedChildIds}
+                        onToggleChild={bookingForm.toggleSelectedChild}
+                        accompanyingAdultId={bookingForm.accompanyingAdultContactId}
+                        onAccompanyingAdultChange={bookingForm.setAccompanyingAdultContactId}
+                        participantContactId={bookingForm.participantContactId}
+                        onParticipantContactChange={bookingForm.applyParticipantContact}
+                        participantName={bookingForm.participantName}
+                        onParticipantNameChange={bookingForm.setParticipantName}
+                        idPrefix="gym-class"
+                      />
+                    )}
+
+                    <BookingCategoryAddons
+                      optional={bookingForm.categoryOptionalAddOns}
+                      selectedOptionalIds={bookingForm.selectedCategoryAddOnIds}
+                      onOptionalToggle={bookingForm.setCategoryAddOnSelected}
+                    />
+
+                    {service.requiresWaiver ? (
+                      requiredWaiverDocs.length === 0 ? (
+                        <div className="flex items-start gap-2">
+                          <Checkbox
+                            id="waiver-gym"
+                            checked={bookingForm.waiverAccepted}
+                            onCheckedChange={(v) => bookingForm.setWaiverAccepted(Boolean(v))}
+                          />
+                          <Label htmlFor="waiver-gym" className="text-sm leading-relaxed">
+                            I confirm I have read and accept the waiver.
+                          </Label>
+                        </div>
+                      ) : (
+                        <div className="space-y-2 rounded-lg border border-border bg-card p-3">
+                          <p className="text-sm font-semibold text-foreground">
+                            Required waivers
+                          </p>
+                          <ul className="space-y-1">
+                            {requiredWaiverDocs.map((doc) => {
+                              const signed = primaryContact
+                                ? isDocumentSignedAndValid(primaryContact.documents, doc.id)
+                                : false
+                              return (
+                                <li
+                                  key={doc.id}
+                                  className="flex items-center justify-between gap-3 text-sm"
+                                >
+                                  <span className="text-muted-foreground">{doc.title}</span>
+                                  <span
+                                    className={
+                                      signed
+                                        ? 'text-emerald-700 font-medium'
+                                        : 'text-destructive font-medium'
+                                    }
+                                  >
+                                    {signed ? 'Signed' : 'Not signed'}
+                                  </span>
+                                </li>
+                              )
+                            })}
+                          </ul>
+                          {waiversOk ? null : (
+                            <p className="text-xs text-muted-foreground">
+                              Please sign required waivers in{' '}
+                              <Link href="/account/documents" className="underline">
+                                Documents & waivers
+                              </Link>{' '}
+                              before enrolling.
+                            </p>
+                          )}
+                        </div>
+                      )
+                    ) : null}
+
+                    <div className="space-y-2">
+                      <Label htmlFor="notes-gym">Notes (optional)</Label>
+                      <Textarea
+                        id="notes-gym"
+                        value={bookingForm.notes}
+                        onChange={(e) => bookingForm.setNotes(e.target.value)}
+                        placeholder="Anything we should know?"
+                        rows={3}
+                      />
+                    </div>
+
+                    {service.category.specialInstructionsEnabled ? (
+                      <div className="space-y-2">
+                        <Label htmlFor="special-gym">Special instructions (optional)</Label>
+                        <Textarea
+                          id="special-gym"
+                          value={bookingForm.specialInstructions}
+                          onChange={(e) => {
+                            const next = e.target.value
+                            bookingForm.setSpecialInstructions(next.slice(0, 2000))
+                          }}
+                          placeholder="Dietary requirements, accessibility needs, preferences..."
+                          rows={3}
+                        />
+                        <p className="text-xs text-muted-foreground text-right">
+                          {bookingForm.specialInstructions.length}/2000
+                        </p>
+                      </div>
+                    ) : null}
+
+                    <BookingFlowCouponSection
+                      pricingResetKey={bookingPricingResetKey}
+                      totalBeforeCoupon={bookingForm.totalBeforeCoupon}
+                      grandTotal={bookingForm.grandTotal}
+                      checkoutCouponDiscount={bookingForm.checkoutCouponDiscount}
+                      setCoupon={bookingForm.setCoupon}
+                      appliedCouponCode={bookingForm.checkoutCouponCode}
+                      appliedCouponDiscount={bookingForm.checkoutCouponDiscount}
+                      hasActiveSubscription={hasSubscriptionForCoupons}
+                      contactId={primaryContact?.id}
+                      isFreeInfant={bookingForm.isFreeInfant}
+                      freeInfantMonths={bookingForm.freeInfantMonths}
+                      depositPercent={bookingForm.depositPercent}
+                      depositDueToday={bookingForm.depositDueToday}
+                      depositDueOnArrival={bookingForm.depositDueOnArrival}
+                      showPricingSummary={false}
+                    />
+
+                    {selectedSlot?.status === 'FULL' ? (
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => setWaitlistOpen(true)}
+                      >
+                        Join waitlist
+                      </Button>
+                    ) : null}
+
+                    <p className="text-xs text-center text-muted-foreground">
+                      Complete your selections, then use the Add to cart panel.
+                    </p>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </aside>
+        ) : !useSplitCartCheckoutLayout &&
+          (showBookingDetailsForm || enrolled || classCartSuccessKind !== null) ? (
         <aside>
           <Card className="sticky top-24 shadow-xl">
             <CardHeader className="pb-3">
               <CardTitle className="text-lg font-bold">
-                {gymClassCartCheckout || eventClassCartCheckout || playClassCartCheckout
+                {eventClassCartCheckout || playClassCartCheckout
                   ? 'Book this class'
                   : 'Enrol in this Class'}
               </CardTitle>
@@ -665,6 +1352,18 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
                         </Button>
                       </Link>
                     </>
+                  ) : classCartSuccessKind === 'learn' ? (
+                    <>
+                      <p className="font-bold text-lg">Added to cart</p>
+                      <p className="text-sm text-muted-foreground">
+                        {service.name} — open Learn bookings in your cart to complete checkout.
+                      </p>
+                      <Link href="/cart">
+                        <Button variant="outline" className="w-full mt-2">
+                          View cart
+                        </Button>
+                      </Link>
+                    </>
                   ) : (
                     <>
                       <p className="font-bold text-lg">Enrolment Confirmed!</p>
@@ -681,7 +1380,7 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
                 </div>
               ) : (
                 <>
-                  {showEventBookingSchedule ? (
+                  {showEventBookingSchedule && !learnCartCheckout ? (
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Date</span>
@@ -692,10 +1391,21 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Start time</span>
                         <span className="font-semibold">
-                          {formatStartTimeDisplay(
-                            selectedPlayWindow?.startAt ?? selectedSlot?.startAt ?? null,
-                          )}
+                          {formatStartTimeDisplay(selectedPlayWindow?.startAt ?? null)}
                         </span>
+                      </div>
+                    </div>
+                  ) : learnProgramSummary ? (
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between gap-3">
+                        <span className="text-muted-foreground shrink-0">Program period</span>
+                        <span className="font-semibold text-right">
+                          {learnProgramSummary.periodLabel}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Sessions included</span>
+                        <span className="font-semibold">{learnProgramSummary.sessionCount}</span>
                       </div>
                     </div>
                   ) : null}
@@ -729,9 +1439,14 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
                         size="icon"
                         className="h-8 w-8"
                         onClick={() =>
-                          bookingForm.setGuestCount(Math.max(1, bookingForm.guestCount - 1))
+                          bookingForm.setGuestCount(
+                            Math.max(
+                              bookingForm.minGuestCount,
+                              bookingForm.guestCount - 1,
+                            ),
+                          )
                         }
-                        disabled={bookingForm.guestCount <= 1}
+                        disabled={bookingForm.guestCount <= bookingForm.minGuestCount}
                         aria-label={`Decrease ${bookingForm.guestCountLabel.toLowerCase()}`}
                       >
                         –
@@ -792,7 +1507,19 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
                     onOptionalToggle={bookingForm.setCategoryAddOnSelected}
                   />
 
-                  {bookingForm.needsHouseholdChildren ? (
+                  {learnCartCheckout ? (
+                    <BookingStudentFields
+                      service={service}
+                      contacts={contacts}
+                      selectedChildIds={bookingForm.selectedChildIds}
+                      onToggleChild={bookingForm.toggleSelectedChild}
+                      participantContactId={bookingForm.participantContactId}
+                      onParticipantContactChange={bookingForm.applyParticipantContact}
+                      participantName={bookingForm.participantName}
+                      onParticipantNameChange={bookingForm.setParticipantName}
+                      idPrefix="learn-class-alt"
+                    />
+                  ) : bookingForm.needsHouseholdChildren ? (
                     <BookingHouseholdFields
                       contacts={contacts}
                       primaryGuardianId={bookingForm.primaryGuardianContactId}
@@ -941,25 +1668,22 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
                     <Button
                       className="w-full bg-accent text-accent-foreground hover:bg-accent/90 font-bold h-11"
                       disabled={
-                        showEventBookingSchedule
-                          ? !selectedPlayWindow ||
-                            !bookingForm.canSubmitDetails ||
-                            !waiversOk
-                          : !selectedSlot ||
-                            (isPlayServiceOffering && !selectedPlayWindow) ||
-                            selectedSlot.status === 'FULL' ||
-                            !bookingForm.canSubmitDetails ||
-                            !waiversOk
+                        !showBookingDetailsForm ||
+                        selectedSlot?.status === 'FULL' ||
+                        !bookingForm.canSubmitDetails ||
+                        !waiversOk
                       }
                       onClick={handleEnrol}
                     >
                       {getClassEnrolButtonLabel(
                         selectedSlot,
                         gymClassCartCheckout,
+                        learnCartCheckout,
                         eventClassCartCheckout,
                         playClassCartCheckout,
-                        selectedPlayWindow != null,
+                        showBookingDetailsForm,
                         showEventBookingSchedule,
+                        requiresTimeSelection,
                       )}
                     </Button>
                   )}
@@ -978,6 +1702,7 @@ function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }
             </CardContent>
           </Card>
         </aside>
+        ) : null}
       </div>
 
       <Dialog open={waitlistOpen} onOpenChange={setWaitlistOpen}>

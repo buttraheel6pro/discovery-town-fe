@@ -18,7 +18,7 @@ export interface BookingPassCountFieldProps {
 export function BookingPassCountField({
   label,
   count,
-  min = 1,
+  min = 0,
   max = null,
   onChange,
   decreaseAriaLabel,

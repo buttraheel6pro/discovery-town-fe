@@ -40,7 +40,6 @@ import {
   type EventBookingScheduleDraft,
 } from '@/components/admin/event-booking-schedule-fields'
 import { EventTypeSelector } from "@/components/admin/event-type-selector";
-import { ServicePackageLinker } from "@/components/admin/service-package-linker";
 import { ServiceTypeBadge } from "@/components/customer/service-type-badge";
 import {
   Accordion,
@@ -148,10 +147,14 @@ import {
 import { showMaxPassCountAdminField } from "@/lib/booking-pass-count";
 import { withoutOpenPlayPassCatalogServices } from "@/lib/open-play-pass-catalog";
 import {
-  buildPackageEditHref,
   resolveAdminCategoryPlacedPackages,
 } from "@/lib/package-placement";
 import { serviceSupportsAdminSlotCreation } from "@/lib/admin-scheduling-slot-actions";
+import {
+  buildAdminLearnServiceFormHref,
+  isLearnCategoryId,
+  isLearnSchedulingService,
+} from "@/lib/learn-catalog";
 import { isCurrentCatalogService } from "@/lib/scheduling-visibility";
 import {
   isWeBringPlayCatalogServiceId,
@@ -702,6 +705,7 @@ function AdminSchedulingServicesPageContent() {
       GYM: [],
       PLAY: [],
       EVENT: [],
+      LEARN: [],
     };
     for (const category of sortedCategories) {
       grouped[getSchedulingTopLevelId(category.id)].push(category);
@@ -716,6 +720,7 @@ function AdminSchedulingServicesPageContent() {
       GYM: 0,
       PLAY: 0,
       EVENT: 0,
+      LEARN: 0,
     };
     for (const service of alignedServices) {
       counts[getSchedulingTopLevelId(service.categoryId)] += 1;
@@ -1253,6 +1258,29 @@ function AdminSchedulingServicesPageContent() {
     alignedServices.length,
   ]);
 
+  const createServiceCategoryId =
+    serviceCategoryFilterId !== "ALL" ? serviceCategoryFilterId : categoryId;
+
+  const createServiceFormHref = useMemo(() => {
+    if (isLearnCategoryId(createServiceCategoryId)) {
+      return buildAdminLearnServiceFormHref({
+        categoryId: createServiceCategoryId,
+        returnTo: contextualReturnTo,
+      });
+    }
+    return `/admin/scheduling/services/new?categoryId=${encodeURIComponent(createServiceCategoryId)}&returnTo=${encodeURIComponent(contextualReturnTo)}`;
+  }, [contextualReturnTo, createServiceCategoryId]);
+
+  function resolveEditServiceFormHref(service: (typeof filtered)[number]): string {
+    if (isLearnSchedulingService(service)) {
+      return buildAdminLearnServiceFormHref({
+        serviceId: service.id,
+        returnTo: contextualReturnTo,
+      });
+    }
+    return `/admin/scheduling/services/new?serviceId=${encodeURIComponent(service.id)}&returnTo=${encodeURIComponent(contextualReturnTo)}`;
+  }
+
   const selectedLive = useMemo(() => {
     if (!selected) return null;
     return alignedServices.find((s) => s.id === selected.id) ?? selected;
@@ -1343,25 +1371,6 @@ function AdminSchedulingServicesPageContent() {
     };
     updateService(selected.id, servicePatch);
     setSelected(null);
-  }
-
-  function openEditPackage(pkgId: string) {
-    const pkg = packages.find((p) => p.id === pkgId) ?? null;
-    if (!pkg) return;
-    const returnParams = new URLSearchParams();
-    if (serviceCategoryFilterId !== "ALL") {
-      returnParams.set("serviceCategoryFilterId", serviceCategoryFilterId);
-    }
-    const returnTo = returnParams.toString()
-      ? `/admin/scheduling/services?${returnParams.toString()}`
-      : "/admin/scheduling/services";
-    router.push(
-      buildPackageEditHref(pkgId, {
-        returnTo,
-        category:
-          serviceCategoryFilterId !== "ALL" ? serviceCategoryFilterId : undefined,
-      }),
-    );
   }
 
   function buildServiceForCategory(input: {
@@ -1715,6 +1724,7 @@ function AdminSchedulingServicesPageContent() {
       GYM: "cat-gym-",
       PLAY: "cat-play-",
       EVENT: "cat-event-",
+      LEARN: "cat-learn-",
     };
     const targetTopLevel = catalogSlugToSchedulingTopLevel(menuSlug);
     const existing = sortedCategories.find((row) => row.id === categoryId);
@@ -2065,6 +2075,7 @@ function AdminSchedulingServicesPageContent() {
       GYM: "cat-gym-",
       PLAY: "cat-play-",
       EVENT: "cat-event-",
+      LEARN: "cat-learn-",
     };
 
     if (editingCategoryId) {
@@ -2899,9 +2910,7 @@ function AdminSchedulingServicesPageContent() {
                       asChild
                       className="bg-accent text-accent-foreground hover:bg-accent/90"
                     >
-                      <Link
-                        href={`/admin/scheduling/services/new?categoryId=${encodeURIComponent(categoryId)}&returnTo=${encodeURIComponent(contextualReturnTo)}`}
-                      >
+                      <Link href={createServiceFormHref}>
                         {LABELS.createService}
                       </Link>
                     </Button>
@@ -2982,9 +2991,7 @@ function AdminSchedulingServicesPageContent() {
                               </Button>
                             ) : null}
                             <Button asChild variant="outline" size="sm">
-                              <Link
-                                href={`/admin/scheduling/services/new?serviceId=${encodeURIComponent(service.id)}&returnTo=${encodeURIComponent(contextualReturnTo)}`}
-                              >
+                              <Link href={resolveEditServiceFormHref(service)}>
                                 Edit
                               </Link>
                             </Button>
@@ -3534,7 +3541,7 @@ function AdminSchedulingServicesPageContent() {
             </Select>
             <p className="text-xs text-muted-foreground">
               Choose which catalog menu shows this sub-category. Product menus
-              only change placement; Gym, Play, and Events keep the same id.
+              only change placement; Gym, Play, Events, and Learn keep the same id.
             </p>
           </div>
           <div className="space-y-2">
@@ -4316,15 +4323,6 @@ function AdminSchedulingServicesPageContent() {
                 </AlertDescription>
               </Alert>
             ) : null}
-            {editDraft.isPackageService && selected ? (
-              <ServicePackageLinker
-                serviceId={selected.id}
-                serviceName={selected.name}
-                serviceCategoryId={selected.categoryId}
-                onRequestEditPackage={openEditPackage}
-              />
-            ) : null}
-
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="edit-sub-price">
@@ -5176,8 +5174,8 @@ function AdminSchedulingServicesPageContent() {
                 Package-only
               </AlertTitle>
               <AlertDescription className="text-amber-900/90 dark:text-amber-50/90">
-                After you create this {LABELS.service.toLowerCase()}, open it
-                again to link or create packages.
+                Manage package tiers from Scheduling → Packages and assign them to
+                this service there.
               </AlertDescription>
             </Alert>
           ) : null}

@@ -50,7 +50,7 @@ export function PrivatePlayPackageDetail({
         embedded ? undefined : 'rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8',
       )}
     >
-      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border pb-6">
+      <div className="flex flex-col gap-4 border-b border-border pb-6 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 flex-1 space-y-3">
           <h3
             className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl"
@@ -81,8 +81,8 @@ export function PrivatePlayPackageDetail({
             ) : null}
           </div>
         </div>
-        <div className="shrink-0 text-right">
-          <p className="text-4xl font-black text-foreground sm:text-5xl">
+        <div className="shrink-0 sm:text-right">
+          <p className="text-3xl font-black text-foreground sm:text-4xl">
             {formatPrice(pkg.basePrice)}
           </p>
           <p className="mt-1 text-sm font-medium text-muted-foreground">Package price</p>

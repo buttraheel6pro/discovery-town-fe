@@ -23,3 +23,10 @@ export function getWeekOffsetForYmd(targetYmd: string, anchorToday: Date = new D
 export function ymdFromInstant(iso: string): string {
   return formatLocalYmd(new Date(iso))
 }
+
+/** Add calendar days to a local YYYY-MM-DD string. */
+export function addDaysToYmd(ymd: string, days: number): string {
+  const date = new Date(`${ymd}T12:00:00`)
+  date.setDate(date.getDate() + days)
+  return formatLocalYmd(date)
+}

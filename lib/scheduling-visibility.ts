@@ -96,10 +96,10 @@ export function isConsumerListedSchedulingService(
   slots: readonly SchedulingSlot[],
   options?: { readonly requireCurrentCatalog?: boolean },
 ): boolean {
-  return (
-    isConsumerVisibleSchedulingService(service, categoryById, options) &&
-    hasAssignedConsumerSlot(service, slots)
-  )
+  if (!isConsumerVisibleSchedulingService(service, categoryById, options)) {
+    return false
+  }
+  return hasAssignedConsumerSlot(service, slots)
 }
 
 /** Listed on customer menus — slots, or active packages for package-only offerings. */

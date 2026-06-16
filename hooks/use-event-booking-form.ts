@@ -91,8 +91,8 @@ export function useEventBookingForm({
   const [selectedDate, setSelectedDate] = useState<string | null>(todayIsoDate())
   const [selectedToDate, setSelectedToDate] = useState<string | null>(todayIsoDate())
   const [selectedWindow, setSelectedWindow] = useState<AvailableWindow | null>(null)
-  const [childrenCount, setChildrenCount] = useState<number>(Math.max(1, defaultChildren))
-  const [adultsCount, setAdultsCount] = useState<number>(Math.max(1, defaultAdults))
+  const [childrenCount, setChildrenCount] = useState<number>(Math.max(0, defaultChildren))
+  const [adultsCount, setAdultsCount] = useState<number>(Math.max(0, defaultAdults))
   const [optionalAddOns, setOptionalAddOns] = useState<Record<string, OptionalAddOnSelection>>({})
   const [notes, setNotes] = useState('')
   const [couponCode, setCouponCode] = useState<string | null>(null)
@@ -166,7 +166,13 @@ export function useEventBookingForm({
     }
     return Boolean(selectedDate && selectedWindow)
   })()
-  const canSubmit = Boolean(selectedPackage && selectedDate && selectedWindow && service)
+  const canSubmit = Boolean(
+    selectedPackage &&
+      selectedDate &&
+      selectedWindow &&
+      service &&
+      childrenCount + adultsCount >= 1,
+  )
 
   function updateBirthdayDetails(patch: Partial<BirthdayDetails>): void {
     setBirthdayDetails((prev) => ({ ...prev, ...patch }))

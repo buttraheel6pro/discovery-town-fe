@@ -36,7 +36,12 @@ export function draftFieldsFromAdminListingKind(
 ): ListingKindDraftFields {
   switch (value) {
     case 'PASS':
-      return { bookingOfferingKind: 'PASS', isPackageService: false }
+      return {
+        bookingOfferingKind: 'PASS',
+        isPackageService: false,
+        serviceType: 'OPEN_PLAY',
+        bookingMode: 'OPEN',
+      }
     case 'PACKAGE_SERVICE':
       return {
         bookingOfferingKind: 'SERVICE',
@@ -54,4 +59,11 @@ export function isPackageServiceOffering(
   service: Pick<SchedulingService, 'isPackageService'>,
 ): boolean {
   return service.isPackageService === true
+}
+
+/** Pass listing kind — membership / multi-visit passes (no slot booking). */
+export function isPassOffering(
+  service: Pick<SchedulingService, 'bookingOfferingKind'>,
+): boolean {
+  return service.bookingOfferingKind === 'PASS'
 }

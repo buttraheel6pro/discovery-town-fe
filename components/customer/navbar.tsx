@@ -95,6 +95,11 @@ export function CustomerNavbar() {
         description: 'Classes for all ages, from babies to seniors.',
       },
       {
+        key: 'learn',
+        href: '/learn',
+        description: 'Tutoring, test prep, and enrichment for every age.',
+      },
+      {
         key: 'events',
         href: '/events',
         description: 'Discover events and private venue booking.',

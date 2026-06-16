@@ -3,6 +3,7 @@
 export const CUSTOMER_NAV_LABEL_KEYS = [
   'play',
   'gym',
+  'learn',
   'events',
   'shop',
   'gifts',
@@ -25,6 +26,7 @@ export interface CustomerNavSettingsPersisted {
 export const DEFAULT_CUSTOMER_NAV_LABELS: Record<CustomerNavLabelKey, string> = {
   play: 'Play',
   gym: 'Gym',
+  learn: 'Learn',
   events: 'Events',
   shop: 'Shop',
   gifts: 'Gifts',
@@ -35,6 +37,7 @@ export const DEFAULT_CUSTOMER_NAV_LABELS: Record<CustomerNavLabelKey, string> = 
 export const CUSTOMER_NAV_LABEL_ROUTES: Record<CustomerNavLabelKey, string> = {
   play: '/play',
   gym: '/gym',
+  learn: '/learn',
   events: '/events',
   shop: '/store/shop',
   gifts: '/store/gifts',

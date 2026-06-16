@@ -45,7 +45,9 @@ import {
   resolveOfferDisplayPrice,
 } from '@/lib/open-play-membership-offers'
 import { isOpenPlayPassCatalogService } from '@/lib/open-play-pass-catalog'
+import { resolvePackagesForSchedulingService } from '@/lib/event-package-catalog'
 import { shouldUsePrivatePlayDetailLayout } from '@/lib/private-play-packages'
+import { isPackageServiceOffering, isPassOffering } from '@/lib/scheduling-listing-kind'
 import {
   getSchedulingConsumerBackLink,
   getSchedulingTopLevelId,
@@ -65,7 +67,9 @@ import {
   buildSchedulingCategoryById,
   isConsumerVisibleSchedulingService,
 } from '@/lib/scheduling-visibility'
+import { getCustomerEventScheduleDetailHref } from '@/lib/event-booking-schedule'
 import { usesEventTicketBookingSidebar } from '@/lib/scheduling-slot-availability'
+import { resolveSlotIncrementMinutes } from '@/lib/open-booking-slot-windows'
 import {
   formatPrice,
   formatSlotTime,
@@ -167,7 +171,6 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
 
   const today = new Date()
   const todayStr = today.toISOString().split('T')[0]
-  const [weekOffset, setWeekOffset] = useState(0)
   const [selectedDate, setSelectedDate] = useState(todayStr)
   const [selectedWindow, setSelectedWindow] = useState<AvailableWindow | null>(null)
   const [durationMinutes, setDurationMinutes] = useState<number>(
@@ -179,14 +182,14 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
   const durationOptions = useMemo(() => {
     const min = service.minDurationMinutes
     const max = service.maxDurationMinutes
-    const inc = service.slotIncrementMinutes
+    const inc = resolveSlotIncrementMinutes(service)
     if (!min || !max || !inc || max <= min) return []
     return generateDurationOptions(min, max, inc)
   }, [service])
 
   const activePackages = useMemo(
-    () => packages.filter((p) => p.serviceId === service.id && p.isActive),
-    [packages, service.id],
+    () => resolvePackagesForSchedulingService(service, packages),
+    [packages, service],
   )
   const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null)
   const selectedPackage = useMemo(
@@ -344,6 +347,7 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
 
   const openMode = service.bookingMode === 'OPEN'
   const isPassOffering = service.bookingOfferingKind === 'PASS'
+  const showBookingDetailsForm = isPassOffering || selectedWindow != null
 
   return (
     <>
@@ -432,8 +436,6 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
               <Separator />
               <OpenBookingAvailabilitySection
                 service={service}
-                weekOffset={weekOffset}
-                onWeekOffsetChange={setWeekOffset}
                 selectedDate={selectedDate}
                 onSelectedDateChange={setSelectedDate}
                 selectedWindow={selectedWindow}
@@ -533,7 +535,7 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
                     type="button"
                     className="w-full bg-accent text-accent-foreground hover:bg-accent/90 font-bold h-11"
                     disabled={
-                      (!isPassOffering && !selectedWindow) ||
+                      !showBookingDetailsForm ||
                       !bookingForm.canSubmitDetails ||
                       !waiversOk
                     }
@@ -552,6 +554,7 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
           </Card>
         </aside>
 
+        {(showBookingDetailsForm || bookedOk || addedToCartKind !== null) ? (
         <aside className="lg:col-span-2">
           <Card
             className="border-border shadow-xl"
@@ -614,7 +617,7 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
                       <BookingPassCountField
                         label={bookingForm.guestCountLabel}
                         count={bookingForm.guestCount}
-                        min={1}
+                        min={bookingForm.minGuestCount}
                         max={bookingForm.maxPassCount}
                         onChange={bookingForm.setGuestCount}
                         helperText={passCountHelperText}
@@ -813,6 +816,7 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
             </CardContent>
           </Card>
         </aside>
+        ) : null}
       </div>
     </>
   )
@@ -863,15 +867,46 @@ export default function FacilityDetailPage({
     service != null &&
     usesEventTicketBookingSidebar(service) &&
     !shouldUsePrivatePlayDetailLayout(service, packages)
+  const redirectsToPartyServiceEventDetail =
+    service != null &&
+    service.serviceType === 'PARTY_PACKAGE' &&
+    !isPackageServiceOffering(service) &&
+    !isPassOffering(service) &&
+    !isOpenPlayPassCatalogService(service)
+  const eventScheduleDetailHref = useMemo(() => {
+    if (service == null) {
+      return null
+    }
+    if (
+      isPassOffering(service) ||
+      shouldUsePrivatePlayDetailLayout(service, packages) ||
+      isOpenPlayPassCatalogService(service)
+    ) {
+      return null
+    }
+    return getCustomerEventScheduleDetailHref(service)
+  }, [packages, service])
+  const redirectsAwayFromFacilityDetail =
+    redirectsToEventDetail ||
+    redirectsToPartyServiceEventDetail ||
+    eventScheduleDetailHref != null
 
   useEffect(() => {
-    if (!redirectsToEventDetail || !service) {
+    if (!redirectsAwayFromFacilityDetail || !service) {
       return
     }
     const query = searchParams.toString()
     const suffix = query.length > 0 ? `?${query}` : ''
-    router.replace(`/events/${service.id}${suffix}`)
-  }, [redirectsToEventDetail, router, searchParams, service])
+    const targetHref =
+      eventScheduleDetailHref ?? `/events/${service.id}`
+    router.replace(`${targetHref}${suffix}`)
+  }, [
+    eventScheduleDetailHref,
+    redirectsAwayFromFacilityDetail,
+    router,
+    searchParams,
+    service,
+  ])
 
   if (!service) {
     return (
@@ -890,7 +925,7 @@ export default function FacilityDetailPage({
     )
   }
 
-  if (redirectsToEventDetail) {
+  if (redirectsAwayFromFacilityDetail) {
     return (
       <>
         <CustomerNavbar />

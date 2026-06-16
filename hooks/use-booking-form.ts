@@ -19,6 +19,7 @@ import {
   showsAdditionalSiblingPicker,
 } from '@/lib/booking-additional-sibling'
 import {
+  isCampPlayCategory,
   needsAccompanyingAdultPicker,
   needsAgeParticipantPicker,
   needsHouseholdChildPicker,
@@ -32,6 +33,7 @@ import { resolveServiceChildAgeRules } from '@/lib/booking-child-age'
 import { PARENTS_NIGHT_OUT_SERVICE_ID } from '@/lib/booking-household'
 import { getCustomerSchedulingMenuSlug } from '@/lib/catalog-placement'
 import { getSchedulingTopLevelId } from '@/lib/scheduling-consumer-categories'
+import { isGymClassCartCheckoutService, isLearnCartCheckoutService } from '@/lib/play-cart'
 import { usesEventTicketBookingSidebar } from '@/lib/scheduling-slot-availability'
 import {
   buildSchedulingAddOnCatalog,
@@ -135,7 +137,10 @@ export function useBookingForm({
   const { addBooking, addToWaitlist, services, categories } = useScheduling()
   const { bookingAddOns } = useInventory()
 
-  const [guestCount, setGuestCount] = useState(1)
+  const learnCartCheckout = isLearnCartCheckoutService(service)
+  const minGuestCount = 0
+
+  const [guestCount, setGuestCount] = useState(0)
   const [participantName, setParticipantName] = useState('')
   const [participantContactId, setParticipantContactId] = useState('')
   const [selectedChildIds, setSelectedChildIds] = useState<string[]>([])
@@ -148,14 +153,19 @@ export function useBookingForm({
 
   const setGuestCountClamped = useCallback(
     (next: number) => {
-      setGuestCount(clampPassCount(next, maxPassCount, 1))
+      setGuestCount(clampPassCount(next, maxPassCount, minGuestCount))
     },
-    [maxPassCount],
+    [maxPassCount, minGuestCount],
   )
 
   useEffect(() => {
-    setGuestCount((prev) => clampPassCount(prev, maxPassCount, 1))
-  }, [maxPassCount, service.id])
+    setGuestCount((prev) => clampPassCount(prev, maxPassCount, minGuestCount))
+  }, [maxPassCount, minGuestCount, service.id])
+
+  useEffect(() => {
+    setGuestCount(0)
+    setSelectedChildIds([])
+  }, [service.id])
 
   const defaultPrimaryGuardianId = useMemo(
     () => getBookingPrimaryGuardianId(contacts),
@@ -190,14 +200,20 @@ export function useBookingForm({
   const [checkoutCouponDiscount, setCheckoutCouponDiscount] = useState(0)
 
   const usesTicketBookingSidebar = usesEventTicketBookingSidebar(service)
+  const isCampPlayBooking = isCampPlayCategory(service.category)
+  const isAdultLearnProgram = learnCartCheckout && service.gradeLevel === 'Adult'
 
   const needsHouseholdChildren =
     !usesTicketBookingSidebar &&
+    !learnCartCheckout &&
     (usesOpenPlayHouseholdBooking || needsHouseholdChildPicker(service.category))
   const needsAccompanyingAdult =
-    !usesTicketBookingSidebar &&
     !usesOpenPlayHouseholdBooking &&
-    needsAccompanyingAdultPicker(service.category)
+    !learnCartCheckout &&
+    needsAccompanyingAdultPicker(service.category) &&
+    (!usesTicketBookingSidebar || isCampPlayBooking)
+  const showFamilyMemberFields =
+    !needsHouseholdChildren && (!usesTicketBookingSidebar || isCampPlayBooking)
   const needsAgeParticipant = needsAgeParticipantPicker(
     service.category,
     service.ageMin,
@@ -234,11 +250,14 @@ export function useBookingForm({
   }, [maxChildSelections, usesOpenPlayHouseholdBooking])
 
   useEffect(() => {
-    if (!needsHouseholdChildren) {
+    if (!needsHouseholdChildren && !learnCartCheckout) {
+      return
+    }
+    if (learnCartCheckout && isAdultLearnProgram) {
       return
     }
     if (selectedChildIds.length === 0) {
-      if (usesOpenPlayHouseholdBooking) {
+      if (usesOpenPlayHouseholdBooking || learnCartCheckout) {
         setParticipantName('')
       }
       return
@@ -253,6 +272,8 @@ export function useBookingForm({
     }
   }, [
     childContacts,
+    isAdultLearnProgram,
+    learnCartCheckout,
     needsHouseholdChildren,
     selectedChildIds,
     usesOpenPlayHouseholdBooking,
@@ -345,8 +366,21 @@ export function useBookingForm({
     (service.category != null &&
       getCustomerSchedulingMenuSlug(service.category) === 'play') ||
     getSchedulingTopLevelId(service.categoryId) === 'PLAY'
-  const guestCountLabel =
-    usesOpenPlayHouseholdBooking || isPlayCategory ? 'No of passes' : 'Guests'
+  const guestCountLabel = (() => {
+    if (usesOpenPlayHouseholdBooking) {
+      return 'No of passes'
+    }
+    if (learnCartCheckout) {
+      return 'Number of students'
+    }
+    if (isGymClassCartCheckoutService(service)) {
+      return 'Number of tickets'
+    }
+    if (isPlayCategory) {
+      return 'No of passes'
+    }
+    return 'Guests'
+  })()
   const passCountHelperText = useMemo(
     () => buildPassCountHelperText(service, maxPassCount),
     [maxPassCount, service],
@@ -520,7 +554,18 @@ export function useBookingForm({
 
   const canSubmitDetails = useMemo(() => {
     if (usesTicketBookingSidebar) {
-      return guestCount >= 1
+      if (guestCount < 1) {
+        return false
+      }
+      if (isCampPlayBooking) {
+        if (needsAgeParticipant && participantName.trim().length === 0) {
+          return false
+        }
+        if (needsAccompanyingAdult && accompanyingAdultContactId.trim().length === 0) {
+          return false
+        }
+      }
+      return true
     }
     if (usesOpenPlayHouseholdBooking) {
       if (service.id === PARENTS_NIGHT_OUT_SERVICE_ID) {
@@ -531,20 +576,32 @@ export function useBookingForm({
     if (needsAccompanyingAdult && accompanyingAdultContactId.trim().length === 0) {
       return false
     }
+    if (learnCartCheckout) {
+      if (isAdultLearnProgram) {
+        return (
+          participantContactId.trim().length > 0 || participantName.trim().length > 0
+        )
+      }
+      return selectedChildIds.length >= 1
+    }
     if (needsHouseholdChildren && selectedChildIds.length < 1) {
       return false
     }
     if (needsAgeParticipant && participantName.trim().length === 0) {
       return false
     }
-    return true
+    return guestCount >= 1
   }, [
     accompanyingAdultContactId,
     guestCount,
+    isAdultLearnProgram,
+    learnCartCheckout,
     usesTicketBookingSidebar,
+    isCampPlayBooking,
     needsAccompanyingAdult,
     needsAgeParticipant,
     needsHouseholdChildren,
+    participantContactId,
     participantName,
     selectedChildIds.length,
     selectedChildrenMeetAgeRules,
@@ -858,6 +915,7 @@ export function useBookingForm({
     setSecondaryGuardianContactId,
     usesOpenPlayHouseholdBooking,
     needsHouseholdChildren,
+    showFamilyMemberFields,
     needsAccompanyingAdult,
     needsAgeParticipant,
     participantDateOfBirth,
@@ -881,6 +939,7 @@ export function useBookingForm({
     setAdditionalSiblingPassQuantity,
     maxChildSelections,
     guestCountLabel,
+    minGuestCount,
     freeAdultCount,
     categoryIncludedAddOns,
     categoryOptionalAddOns,

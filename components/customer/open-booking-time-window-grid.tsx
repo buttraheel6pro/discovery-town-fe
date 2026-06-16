@@ -4,7 +4,7 @@
 import type { ReactNode } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { cn, formatSlotTime, formatSlotTimeRange } from '@/lib/utils'
+import { cn, formatSlotTime, formatSlotTimeRange, areAvailableWindowsEqual } from '@/lib/utils'
 import type { AvailableWindow } from '@/lib/types'
 
 export interface OpenBookingTimeWindowGridProps {
@@ -53,7 +53,7 @@ export function OpenBookingTimeWindowGrid({
             !interactionDisabled &&
             (isWindowSelected
               ? isWindowSelected(w)
-              : selectedWindow?.startAt === w.startAt && selectedWindow?.endAt === w.endAt)
+              : areAvailableWindowsEqual(selectedWindow, w))
           const label =
             formatWindowLabel?.(w) ??
             (showTimeRange ? formatSlotTimeRange(w.startAt, w.endAt) : formatSlotTime(w.startAt))

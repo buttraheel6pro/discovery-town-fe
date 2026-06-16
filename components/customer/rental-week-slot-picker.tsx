@@ -1,16 +1,18 @@
-/** PER_HOUR / PER_HALF_DAY rentals — reuses play week strip + time slot grid from open booking. */
+/** PER_HOUR / PER_HALF_DAY rentals — compact date strip + time slot grid. */
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useState } from 'react'
 
+import { CompactAvailabilityDateStrip } from '@/components/customer/compact-availability-date-strip'
 import {
   formatOpenBookingDateDisplay,
   getOpenBookingTodayIsoDate,
-  getOpenBookingWeekDatesFromOffset,
-  OpenBookingWeekDayButtonGrid,
-  OpenBookingWeekToolbar,
 } from '@/components/customer/open-booking-week-ui'
 import { OpenBookingTimeWindowGrid } from '@/components/customer/open-booking-time-window-grid'
+import {
+  resolveRentalAvailabilityDayStatus,
+  type AvailabilityCalendarDayStatus,
+} from '@/lib/availability-calendar-status'
 import type { RentalHalfDayWindow } from '@/lib/rental-calendar-helpers'
 import { formatSlotTimeRange } from '@/lib/utils'
 import type { AvailableWindow } from '@/lib/types'
@@ -82,29 +84,28 @@ export function RentalWeekSlotPicker({
   generateWindows,
   legendMode,
 }: Readonly<RentalWeekSlotPickerProps>) {
-  const [weekOffset, setWeekOffset] = useState(0)
   const [pickedDay, setPickedDay] = useState('')
   const [hourlyRangeAnchorStartAt, setHourlyRangeAnchorStartAt] = useState<string | null>(null)
   const [hourlyAwaitingRangeEnd, setHourlyAwaitingRangeEnd] = useState(false)
 
-  const weekDates = useMemo(() => getOpenBookingWeekDatesFromOffset(weekOffset), [weekOffset])
   const todayStr = getOpenBookingTodayIsoDate()
 
-  useEffect(() => {
-    if (pickedDay && !weekDates.includes(pickedDay)) {
-      setPickedDay('')
-      setHourlyRangeAnchorStartAt(null)
-      setHourlyAwaitingRangeEnd(false)
-      onRentalSlotChange('', '')
-    }
-  }, [onRentalSlotChange, pickedDay, weekDates])
-
   function isDateDisabled(dateStr: string): boolean {
-    if (dateStr < todayStr) return true
+    if (dateStr < todayStr) {
+      return true
+    }
     const booked = availabilityMap.get(dateStr) ?? 0
-    if (booked >= stockQuantity && stockQuantity > 0) return true
+    if (booked >= stockQuantity && stockQuantity > 0) {
+      return true
+    }
     return false
   }
+
+  const getDateStatus = useCallback(
+    (dateStr: string): AvailabilityCalendarDayStatus =>
+      resolveRentalAvailabilityDayStatus(dateStr, todayStr, availabilityMap, stockQuantity),
+    [availabilityMap, stockQuantity, todayStr],
+  )
 
   const slotWindows = pickedDay ? generateWindows(pickedDay) : []
   const isHourly = legendMode === 'hourly'
@@ -157,21 +158,13 @@ export function RentalWeekSlotPicker({
 
   return (
     <section id="rental-dates" className="space-y-4 rounded-xl border border-border bg-card p-4">
-      <div>
-        <h2 className="text-lg font-bold text-foreground">{title}</h2>
-        <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p>
-      </div>
+      <p className="text-sm text-muted-foreground">{subtitle}</p>
 
-      <OpenBookingWeekToolbar
-        weekOffset={weekOffset}
-        onWeekOffsetChange={setWeekOffset}
-        weekDates={weekDates}
-      />
-
-      <OpenBookingWeekDayButtonGrid
-        weekDates={weekDates}
-        isDateDisabled={isDateDisabled}
+      <CompactAvailabilityDateStrip
+        title={title}
         selectedDate={pickedDay}
+        isDateDisabled={isDateDisabled}
+        getDateStatus={getDateStatus}
         onDayClick={(date) => {
           setPickedDay(date)
           setHourlyRangeAnchorStartAt(null)
@@ -187,7 +180,9 @@ export function RentalWeekSlotPicker({
           selectedWindow={selectedWindow}
           showTimeRange
           isWindowSelected={(window) => {
-            if (!hasSelectedHourlyRange) return false
+            if (!hasSelectedHourlyRange) {
+              return false
+            }
             return window.startAt >= selectedSlotStartAt && window.endAt <= selectedSlotEndAt
           }}
           onSelectedWindowChange={(w) => {

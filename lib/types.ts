@@ -773,7 +773,7 @@ export interface MembershipPlan {
   /** Seasonal / marketing badge (e.g. winter pass). */
   seasonalBadge?: string;
   /** Customer pages where this plan is listed (gym, play, events, membership). */
-  displayPages?: Array<'gym' | 'play' | 'events' | 'membership'>;
+  displayPages?: Array<'gym' | 'play' | 'events' | 'learn' | 'membership'>;
   /** Scheduling sub-category ids — limits which page sections show the plan. */
   schedulingCategoryIds?: string[];
 }
@@ -1843,10 +1843,37 @@ export const SchedulingServiceTypeEnum = {
   WORKSHOP: "WORKSHOP",
   SWIM_CLASS: "SWIM_CLASS",
   FITNESS_ASSESSMENT: "FITNESS_ASSESSMENT",
+  TUTORING_SESSION: "TUTORING_SESSION",
+  TEST_PREP: "TEST_PREP",
+  ENRICHMENT_CLASS: "ENRICHMENT_CLASS",
 } as const;
 
 export type SchedulingServiceType =
   (typeof SchedulingServiceTypeEnum)[keyof typeof SchedulingServiceTypeEnum];
+
+export type GradeLevel = "K-2" | "3-5" | "6-8" | "9-12" | "Adult" | "All";
+
+export type SubjectArea =
+  | "Math"
+  | "Literacy"
+  | "Writing"
+  | "Science"
+  | "History"
+  | "Foreign Language"
+  | "Test Prep"
+  | "Technology"
+  | "Life Skills"
+  | "Arts"
+  | "Other";
+
+export type LearningFormat =
+  | "individual"
+  | "small-group"
+  | "group"
+  | "bootcamp"
+  | "workshop";
+
+export type ProgramTerm = "Fall" | "Spring" | "Summer" | "Year-Round" | "Custom";
 
 export type EventOccasion =
   | "BIRTHDAY"
@@ -2046,6 +2073,16 @@ export interface SchedulingService {
   registeredCount?: number;
   /** Optional add-ons available at checkout (catalog). */
   addOns?: SchedulingServiceAddOn[];
+  /** Learn / tutoring catalog. */
+  gradeLevel?: GradeLevel;
+  subjectArea?: SubjectArea;
+  learningFormat?: LearningFormat;
+  programTerm?: ProgramTerm;
+  programYear?: number;
+  programStartDate?: string;
+  programEndDate?: string;
+  trialSessionAvailable?: boolean;
+  trialSessionPrice?: number | null;
 }
 
 export interface SchedulingSlot {
@@ -2561,7 +2598,7 @@ export interface EventPackage {
   isActive: boolean;
   createdAt: string;
   /** Customer page(s) where this package is listed (admin placement). */
-  displayPages?: Array<"gym" | "play" | "events">;
+  displayPages?: Array<"gym" | "play" | "events" | "learn">;
   /** Scheduling sub-category section(s), e.g. Play → Private Play. */
   schedulingCategoryIds?: string[];
   depositAmount?: number;

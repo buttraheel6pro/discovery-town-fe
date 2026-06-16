@@ -42,6 +42,8 @@ const GYM_CATEGORY_DESCRIPTIONS: Record<string, string> = {
   'cat-gym-family': 'Concurrent programming for parents and children together.',
   'cat-gym-prenatal': 'Prenatal-safe and postnatal recovery focused classes.',
   'cat-gym-special-needs': 'Inclusive, adaptive fitness sessions for every learner.',
+  'cat-gym-parents': 'Morning fitness and strength sessions designed for parents.',
+  'cat-gym-after-school': 'Structured after-school gym blocks by age wave, Mon–Thu afternoons.',
 }
 
 export default function GymPage() {

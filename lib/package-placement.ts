@@ -25,7 +25,7 @@ import {
 } from '@/lib/membership-placement'
 import type { EventPackage, SchedulingCategory } from '@/lib/types'
 
-export type PackageDisplayPage = 'gym' | 'play' | 'events'
+export type PackageDisplayPage = 'gym' | 'play' | 'events' | 'learn'
 
 export const PACKAGE_DISPLAY_PAGE_OPTIONS: readonly {
   readonly value: PackageDisplayPage
@@ -63,13 +63,13 @@ export const DEFAULT_EVENT_WHOLE_PLACE_PACKAGE_PLACEMENT: PackagePlacementDraft 
 
 export const PACKAGE_PLACEMENT_ALL_SUBCATEGORIES = '__all__' as const
 
-/** Admin services catalog — sub-categories that show the placed-packages panel. */
+/**
+ * Admin services catalog — sub-categories that show the placed-packages panel.
+ * Events sub-categories are excluded; tier packages are managed per service (Link package).
+ */
 export function resolveAdminCategoryPlacedPackages(
-  categoryId: string,
+  _categoryId: string,
 ): { page: PackageDisplayPage; categoryId: string } | null {
-  if (categoryId.startsWith('cat-event-')) {
-    return { page: 'events', categoryId }
-  }
   return null
 }
 
@@ -89,6 +89,8 @@ export function displayPageFromTopLevel(topLevel: SchedulingTopLevelId): Package
       return 'play'
     case 'EVENT':
       return 'events'
+    case 'LEARN':
+      return 'learn'
     default:
       return 'play'
   }
@@ -104,6 +106,8 @@ export function displayPageToTopLevel(
       return 'PLAY'
     case 'events':
       return 'EVENT'
+    case 'learn':
+      return 'LEARN'
     default:
       return null
   }
@@ -157,6 +161,7 @@ export function groupPackageCategoriesByPage(
     gym: grouped.gym,
     play: grouped.play,
     events: grouped.events,
+    learn: grouped.learn,
   }
 }
 

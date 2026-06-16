@@ -17,9 +17,26 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { LABELS } from '@/lib/constants/ui-labels'
+import {
+  patchSchedulingCategoryPlacement,
+  resolveCatalogMenuTarget,
+} from '@/lib/catalog-placement'
+import {
+  CATALOG_MENU_ORDER,
+  catalogSlugFromProductType,
+  catalogSlugToSchedulingTopLevel,
+  isProductCatalogSlug,
+  isSchedulingCatalogSlug,
+  type CatalogSlug,
+} from '@/lib/catalog-slugs'
 import { samplePreschoolAddOns } from '@/lib/mock-data'
 import { useInventory } from '@/lib/inventory-store'
 import { newAdminEntityId } from '@/lib/scheduling-admin-builders'
+import {
+  getSchedulingTopLevelLabel,
+  SCHEDULING_TOP_LEVEL_ORDER,
+  type SchedulingTopLevelId,
+} from '@/lib/scheduling-consumer-categories'
 import { useScheduling } from '@/lib/scheduling-store'
 import { bookingAddOnToSchedulingAddOn, formatPrice } from '@/lib/utils'
 import {
@@ -28,10 +45,9 @@ import {
   type SchedulingCategory,
 } from '@/lib/types'
 
-const SCHEDULING_TOP_LEVEL_ORDER = ['GYM', 'PLAY', 'EVENT'] as const
-type SchedulingTopLevelId = (typeof SCHEDULING_TOP_LEVEL_ORDER)[number]
 interface CategoryDraft {
   readonly parentTopLevelId: SchedulingTopLevelId
+  readonly menuCatalogSlug: CatalogSlug
   readonly name: string
   readonly icon: string
   readonly displayOrder: string
@@ -63,38 +79,53 @@ function slugifyCategoryName(input: string): string {
     .replace(/(^-|-$)/g, '')
 }
 
-function getSchedulingTopLevelLabel(topLevelId: SchedulingTopLevelId): string {
+function schedulingSlugForTopLevel(topLevelId: SchedulingTopLevelId): CatalogSlug {
   switch (topLevelId) {
     case 'GYM':
-      return 'Gym'
+      return 'gym'
     case 'PLAY':
-      return 'Play'
+      return 'play'
     case 'EVENT':
-      return 'Event'
+      return 'events'
+    case 'LEARN':
+      return 'learn'
     default:
-      return 'Event'
+      return 'events'
   }
 }
 
 function AdminSchedulingCategoryNewPageInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { bookingAddOns } = useInventory()
+  const { bookingAddOns, productCategories } = useInventory()
   const { categories, addCategory } = useScheduling()
 
   const rawReturnTo = searchParams.get('returnTo')?.trim() ?? '/admin/scheduling/services'
   const returnTo = rawReturnTo.startsWith('/admin/') ? rawReturnTo : '/admin/scheduling/services'
   const requestedTopLevel = searchParams.get('topLevelId')
   const initialTopLevelId: SchedulingTopLevelId =
-    requestedTopLevel === 'GYM' || requestedTopLevel === 'PLAY' || requestedTopLevel === 'EVENT'
+    requestedTopLevel === 'GYM' ||
+    requestedTopLevel === 'PLAY' ||
+    requestedTopLevel === 'EVENT' ||
+    requestedTopLevel === 'LEARN'
       ? requestedTopLevel
       : 'GYM'
+
+  const productRootBySlug = useMemo(() => {
+    const out: Record<string, string | undefined> = {}
+    for (const root of productCategories.filter((row) => (row.parentId ?? null) === null)) {
+      const slug = catalogSlugFromProductType(root.productType ?? 'shop')
+      out[slug] = root.id
+    }
+    return out
+  }, [productCategories])
 
   const nextDisplayOrder = useMemo(() => {
     const prefixByTopLevel: Record<SchedulingTopLevelId, string> = {
       GYM: 'cat-gym-',
       PLAY: 'cat-play-',
       EVENT: 'cat-event-',
+      LEARN: 'cat-learn-',
     }
     const matching = categories.filter((category) =>
       category.id.startsWith(prefixByTopLevel[initialTopLevelId]),
@@ -104,6 +135,7 @@ function AdminSchedulingCategoryNewPageInner() {
 
   const [draft, setDraft] = useState<CategoryDraft>({
     parentTopLevelId: initialTopLevelId,
+    menuCatalogSlug: schedulingSlugForTopLevel(initialTopLevelId),
     name: '',
     icon: '',
     displayOrder: String(nextDisplayOrder),
@@ -202,10 +234,15 @@ function AdminSchedulingCategoryNewPageInner() {
       GYM: 'cat-gym-',
       PLAY: 'cat-play-',
       EVENT: 'cat-event-',
+      LEARN: 'cat-learn-',
     }
+    const menuSlug = draft.menuCatalogSlug
+    const targetTopLevel = isSchedulingCatalogSlug(menuSlug)
+      ? catalogSlugToSchedulingTopLevel(menuSlug)
+      : draft.parentTopLevelId
 
     const categorySlug = slugifyCategoryName(draft.name) || newAdminEntityId('cat').slice(4)
-    const idBase = `${categoryPrefixByTopLevel[draft.parentTopLevelId]}${categorySlug}`
+    const idBase = `${categoryPrefixByTopLevel[targetTopLevel]}${categorySlug}`
     const categoryId = categories.some((category) => category.id === idBase)
       ? `${idBase}-${newAdminEntityId('cat').slice(4)}`
       : idBase
@@ -221,7 +258,11 @@ function AdminSchedulingCategoryNewPageInner() {
       chargeFrequency: link.chargeFrequency,
     }))
 
-    const created: SchedulingCategory = {
+    const productRootId = isProductCatalogSlug(menuSlug)
+      ? (productRootBySlug[menuSlug] ?? null)
+      : null
+    const nativeSlug = schedulingSlugForTopLevel(draft.parentTopLevelId)
+    const placementBase: SchedulingCategory = {
       id: categoryId,
       name: draft.name.trim(),
       icon: draft.icon.trim() || null,
@@ -236,7 +277,18 @@ function AdminSchedulingCategoryNewPageInner() {
       waitlistEnabled: draft.waitlistEnabled,
       allowFamilyMember: draft.allowFamilyMember,
       requireCheckInBeforeRebook: draft.requireCheckInBeforeRebook,
+      catalogSlug: isSchedulingCatalogSlug(nativeSlug) ? nativeSlug : undefined,
       linkedAddOns,
+    }
+    const created: SchedulingCategory = {
+      ...placementBase,
+      ...patchSchedulingCategoryPlacement(
+        placementBase,
+        resolveCatalogMenuTarget({
+          catalogSlug: menuSlug,
+          productRootId,
+        }),
+      ),
     }
 
     addCategory(created)
@@ -244,45 +296,77 @@ function AdminSchedulingCategoryNewPageInner() {
   }
 
   return (
-    <div className="max-w-4xl space-y-6">
+    <div className="w-full space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-foreground">{`New ${LABELS.serviceCategory}`}</h1>
+        <h1 className="text-3xl font-bold text-foreground">New sub-category</h1>
         <p className="mt-2 text-muted-foreground">
-          {`${LABELS.serviceCategory} group ${LABELS.services.toLowerCase()} in the catalog.`}
+          Create a sub-category under Gym, Play, Events, or Learn and choose where it appears in
+          customer menus.
         </p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">{`Create ${LABELS.serviceCategory.toLowerCase()}`}</CardTitle>
-          <CardDescription>Configure category details and booking behavior.</CardDescription>
+          <CardTitle className="text-base">Create sub-category</CardTitle>
+          <CardDescription>Configure sub-category details and booking behavior.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="cat-parent-top">Parent category</Label>
-            <Select
-              value={draft.parentTopLevelId}
-              onValueChange={(value) =>
-                setDraft((previous) => ({
-                  ...previous,
-                  parentTopLevelId: value as SchedulingTopLevelId,
-                }))
-              }
-            >
-              <SelectTrigger id="cat-parent-top">
-                <SelectValue placeholder="Select parent category" />
-              </SelectTrigger>
-              <SelectContent>
-                {SCHEDULING_TOP_LEVEL_ORDER.map((topLevelId) => (
-                  <SelectItem key={topLevelId} value={topLevelId}>
-                    {getSchedulingTopLevelLabel(topLevelId)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              Choose Gym, Play, or Event. Changing this while editing moves the sub-category.
-            </p>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="cat-parent-top">Category</Label>
+              <Select
+                value={draft.parentTopLevelId}
+                onValueChange={(value) => {
+                  const topLevelId = value as SchedulingTopLevelId
+                  setDraft((previous) => ({
+                    ...previous,
+                    parentTopLevelId: topLevelId,
+                    menuCatalogSlug: schedulingSlugForTopLevel(topLevelId),
+                  }))
+                }}
+              >
+                <SelectTrigger id="cat-parent-top">
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {SCHEDULING_TOP_LEVEL_ORDER.map((topLevelId) => (
+                    <SelectItem key={topLevelId} value={topLevelId}>
+                      {getSchedulingTopLevelLabel(topLevelId)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Canonical catalog bucket for services in this sub-category.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="cat-menu-placement">Menu placement</Label>
+              <Select
+                value={draft.menuCatalogSlug}
+                onValueChange={(value) =>
+                  setDraft((previous) => ({
+                    ...previous,
+                    menuCatalogSlug: value as CatalogSlug,
+                  }))
+                }
+              >
+                <SelectTrigger id="cat-menu-placement">
+                  <SelectValue placeholder="Select menu" />
+                </SelectTrigger>
+                <SelectContent>
+                  {CATALOG_MENU_ORDER.map((entry) => (
+                    <SelectItem key={entry.slug} value={entry.slug}>
+                      {entry.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Customer menu where this sub-category is listed. Product menus only change
+                placement; scheduling ids stay the same.
+              </p>
+            </div>
           </div>
 
           <div className="space-y-2">

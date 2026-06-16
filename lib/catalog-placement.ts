@@ -204,13 +204,15 @@ export function resolveCatalogMenuTarget(params: {
 
 export function schedulingTopLevelPrefix(slug: CatalogSlug): string {
   const top = catalogSlugToSchedulingTopLevel(
-    slug as 'gym' | 'play' | 'events',
+    slug as 'gym' | 'play' | 'events' | 'learn',
   )
   switch (top) {
     case 'GYM':
       return 'cat-gym-'
     case 'PLAY':
       return 'cat-play-'
+    case 'LEARN':
+      return 'cat-learn-'
     default:
       return 'cat-event-'
   }
