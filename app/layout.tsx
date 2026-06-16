@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { Inter, Barlow } from 'next/font/google'
+import { Barlow, Fredoka, Inter } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { Toaster } from '@/components/ui/toaster'
 import { CalendarProvider } from '@/lib/calendar-store'
@@ -24,6 +24,13 @@ const barlow = Barlow({
   subsets: ['latin'],
   weight: ['400', '500', '600', '700', '800', '900'],
   variable: '--font-barlow',
+  display: 'swap',
+})
+
+const fredoka = Fredoka({
+  subsets: ['latin'],
+  weight: ['600', '700'],
+  variable: '--font-fredoka',
   display: 'swap',
 })
 
@@ -54,7 +61,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className={`${inter.variable} ${barlow.variable}`}>
+    <html lang="en" className={`${inter.variable} ${barlow.variable} ${fredoka.variable}`}>
       <body suppressHydrationWarning className="font-sans antialiased">
         <AppStoreProvider>
           <SchedulingProvider>

@@ -1,115 +1,102 @@
-import Image from "next/image";
-import Link from "next/link";
+import Image from 'next/image'
+import Link from 'next/link'
 import {
-  MapPin,
-  Phone,
-  Mail,
   Facebook,
-  Twitter,
   Instagram,
-} from "lucide-react";
-import { locations } from "@/lib/mock-data";
+  Mail,
+  Phone,
+  Twitter,
+} from 'lucide-react'
 
-/** Footer uses a transparent variant so the mark sits cleanly on bg-primary. */
-const FOOTER_LOGO_SRC = "/Discovery-logo-transparent.svg";
-const FOOTER_LOGO_WIDTH = 1101;
-const FOOTER_LOGO_HEIGHT = 643;
+import { BrandFooterBar } from '@/components/customer/brand-footer-bar'
+import { ScallopDivider } from '@/components/customer/home-wave-divider'
+import { locations } from '@/lib/mock-data'
 
-const mainLocation = locations[0];
-const mainAddressLine = mainLocation
-  ? `${mainLocation.address}, ${mainLocation.city}, ${mainLocation.country ?? "Indiana"}, ${mainLocation.postcode}`
-  : "9753 Crosspoint Blvd, Indianapolis, Indiana, 46256";
+const FOOTER_LOGO_SRC = '/Discovery-logo-transparent.svg'
+const FOOTER_LOGO_WIDTH = 1101
+const FOOTER_LOGO_HEIGHT = 643
+
+const mainLocation = locations[0]
 
 const footerLinks = {
-  Facilities: [
-    { label: "Football", href: "/facilities?sport=Football" },
-    { label: "Swimming", href: "/facilities?sport=Swimming" },
-    { label: "Gym & Fitness", href: "/facilities?sport=Gym" },
-    { label: "Tennis", href: "/facilities?sport=Tennis" },
-    { label: "Yoga Studio", href: "/facilities?sport=Yoga" },
+  Explore: [
+    { label: 'Play', href: '/play' },
+    { label: 'Events', href: '/events' },
+    { label: 'Gym', href: '/gym' },
+    { label: 'Learn', href: '/learn' },
   ],
-  Programmes: [
-    { label: "Classes", href: "/classes" },
-    { label: "Events", href: "/events" },
-    { label: "Junior Academy", href: "/classes?level=junior" },
-    { label: "Personal Training", href: "/classes?type=pt" },
+  Shop: [
+    { label: 'Shop', href: '/store/shop' },
+    { label: 'Café & Food', href: '/store/cafe-food' },
+    { label: 'Gifts', href: '/store/gifts' },
+    { label: 'Rentals', href: '/rentals' },
   ],
   Account: [
-    { label: "Sign In", href: "/account/login" },
-    { label: "Register", href: "/account/register" },
-    { label: "My Bookings", href: "/account/bookings" },
-    { label: "Order History", href: "/account/orders" },
+    { label: 'Sign In', href: '/account/login' },
+    { label: 'Register', href: '/account/register' },
+    { label: 'My Bookings', href: '/account/bookings' },
+    { label: 'Membership', href: '/membership' },
   ],
-  Support: [
-    { label: "Contact Us", href: "/contact" },
-    { label: "FAQs", href: "/faqs" },
-    { label: "Privacy Policy", href: "/privacy" },
-    { label: "Terms & Conditions", href: "/terms" },
-  ],
-};
+}
 
 export function CustomerFooter() {
   return (
-    <footer className="bg-primary text-primary-foreground">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-10">
-          {/* Brand column */}
-          <div className="lg:col-span-2 space-y-5">
+    <footer className="bg-background">
+      <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6 sm:py-14">
+        <div className="grid grid-cols-1 gap-10 md:grid-cols-2 lg:grid-cols-5">
+          <div className="space-y-4 lg:col-span-2">
             <Image
               src={FOOTER_LOGO_SRC}
               alt="Discovery Town"
               width={FOOTER_LOGO_WIDTH}
               height={FOOTER_LOGO_HEIGHT}
-              className="h-16 w-auto object-contain object-left sm:h-[4.5rem] sm:min-w-[14rem]"
+              className="h-14 w-auto object-contain object-left sm:h-16"
             />
-            <p className="text-sm leading-relaxed text-primary-foreground/70">
-              Your premier sports complex for facilities, classes, and events.
-              We exist to help you move more, compete harder, and live better.
+            <p className="max-w-sm text-sm leading-relaxed text-muted-foreground">
+              An imaginative indoor play café where families explore, celebrate,
+              and make memories together.
             </p>
-            <div className="space-y-2 text-sm text-primary-foreground/70">
-              <div className="flex items-start gap-2">
-                <MapPin className="w-4 h-4 shrink-0 mt-0.5 text-accent" />
-                <span>{mainAddressLine}</span>
+            <div className="space-y-2 text-sm text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <Phone className="h-4 w-4 shrink-0 text-primary" />
+                <span>{mainLocation?.phone ?? '(317) 555-0142'}</span>
               </div>
               <div className="flex items-center gap-2">
-                <Phone className="w-4 h-4 shrink-0 text-accent" />
-                <span>{mainLocation?.phone ?? "(317) 555-0142"}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Mail className="w-4 h-4 shrink-0 text-accent" />
-                <span>{mainLocation?.email ?? "hello@discoverytown.com"}</span>
+                <Mail className="h-4 w-4 shrink-0 text-primary" />
+                <span>{mainLocation?.email ?? 'hello@discoverytown.com'}</span>
               </div>
             </div>
-            {/* Social */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <a
                 href="#"
                 aria-label="Facebook"
-                className="w-8 h-8 rounded-full bg-primary-foreground/10 hover:bg-accent flex items-center justify-center transition-colors"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary transition-colors hover:bg-primary hover:text-primary-foreground"
               >
-                <Facebook className="w-4 h-4" />
+                <Facebook className="h-4 w-4" />
               </a>
               <a
                 href="#"
                 aria-label="Twitter"
-                className="w-8 h-8 rounded-full bg-primary-foreground/10 hover:bg-accent flex items-center justify-center transition-colors"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary transition-colors hover:bg-primary hover:text-primary-foreground"
               >
-                <Twitter className="w-4 h-4" />
+                <Twitter className="h-4 w-4" />
               </a>
               <a
                 href="#"
                 aria-label="Instagram"
-                className="w-8 h-8 rounded-full bg-primary-foreground/10 hover:bg-accent flex items-center justify-center transition-colors"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary transition-colors hover:bg-primary hover:text-primary-foreground"
               >
-                <Instagram className="w-4 h-4" />
+                <Instagram className="h-4 w-4" />
               </a>
             </div>
           </div>
 
-          {/* Link columns */}
           {Object.entries(footerLinks).map(([heading, links]) => (
-            <div key={heading} className="space-y-4">
-              <h3 className="text-xs font-bold uppercase tracking-widest text-primary-foreground/50">
+            <div key={heading} className="space-y-3">
+              <h3
+                className="text-sm font-bold uppercase tracking-wide text-primary"
+                style={{ fontFamily: 'var(--font-barlow)' }}
+              >
                 {heading}
               </h3>
               <ul className="space-y-2">
@@ -117,7 +104,7 @@ export function CustomerFooter() {
                   <li key={link.href}>
                     <Link
                       href={link.href}
-                      className="text-sm text-primary-foreground/70 hover:text-accent transition-colors"
+                      className="text-sm text-muted-foreground transition-colors hover:text-accent"
                     >
                       {link.label}
                     </Link>
@@ -128,16 +115,13 @@ export function CustomerFooter() {
           ))}
         </div>
 
-        <div className="mt-12 pt-8 border-t border-primary-foreground/10 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="text-xs text-primary-foreground/50">
-            &copy; {new Date().getFullYear()} Discovery Town Complex. All rights
-            reserved.
-          </p>
-          <p className="text-xs text-primary-foreground/30">
-            Built with excellence.
-          </p>
-        </div>
+        <p className="mt-10 text-center text-xs text-muted-foreground sm:text-left">
+          &copy; {new Date().getFullYear()} Discovery Town. All rights reserved.
+        </p>
       </div>
+
+      <ScallopDivider fill="teal" direction="up" />
+      <BrandFooterBar />
     </footer>
-  );
+  )
 }

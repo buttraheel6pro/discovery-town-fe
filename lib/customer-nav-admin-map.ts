@@ -12,8 +12,12 @@ export function schedulingTopLevelToNavKey(
       return 'play'
     case 'EVENT':
       return 'events'
-    default:
-      return 'events'
+    case 'LEARN':
+      return 'learn'
+    default: {
+      const _exhaustive: never = topLevelId
+      return _exhaustive
+    }
   }
 }
 

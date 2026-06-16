@@ -24,13 +24,13 @@ export interface CustomerNavSettingsPersisted {
 }
 
 export const DEFAULT_CUSTOMER_NAV_LABELS: Record<CustomerNavLabelKey, string> = {
-  play: 'Play',
+  play: 'Parties',
   gym: 'Gym',
-  learn: 'Learn',
+  learn: 'Tutoring',
   events: 'Events',
   shop: 'Shop',
   gifts: 'Gifts',
-  rentals: 'Rentals',
+  rentals: 'Rentals To-Go',
   cafeFood: 'Cafe & Food',
 }
 
