@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { isAdminApiReady } from '@/lib/api/client'
+import { deleteUser } from '@/lib/services/users'
 import {
   Card,
   CardContent,
@@ -28,6 +30,7 @@ export default function UsersManagement() {
   };
 
   const handleDelete = (userId: string) => {
+    if (isAdminApiReady()) deleteUser(userId).catch(() => {})
     setUsers(users.filter((u) => u.id !== userId));
   };
 

@@ -243,6 +243,7 @@ interface InventoryStore {
     productType?: string
     parentId?: string | null
     description?: string
+    imageUrl?: string
     isActive?: boolean
     rentalAcknowledgments?: RentalCategoryAcknowledgment[]
   }) => ProductCategory
@@ -480,6 +481,7 @@ export function InventoryProvider({
       productType?: string
       parentId?: string | null
       description?: string
+      imageUrl?: string
       isActive?: boolean
       rentalAcknowledgments?: RentalCategoryAcknowledgment[]
     }): ProductCategory {
@@ -507,6 +509,7 @@ export function InventoryProvider({
         name: input.name.trim(),
         slug,
         description: input.description?.trim() || undefined,
+        imageUrl: input.imageUrl?.trim() || undefined,
         displayOrder: maxOrder + 1,
         isActive: input.isActive ?? true,
         productType: nextProductType,

@@ -20,8 +20,14 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { useToast } from '@/hooks/use-toast'
 import { LABELS } from '@/lib/constants/ui-labels'
-import { locations, staff } from '@/lib/mock-data'
+import { locations as mockLocations, staff as mockStaff } from '@/lib/mock-data'
+import { isAdminApiReady } from '@/lib/api/client'
+import { createSlot } from '@/lib/services/slots'
+import { fetchLocations, fetchStaff } from '@/lib/services/locations-staff'
+import type { Location, Staff } from '@/lib/types'
 import { useScheduling } from '@/lib/scheduling-store'
+import { useAppDispatch } from '@/lib/redux/hooks'
+import { loadSchedulingCatalog } from '@/lib/redux/slices/scheduling-slice'
 import { cn } from '@/lib/utils'
 import type { SchedulingService, SchedulingSlot } from '@/lib/types'
 
@@ -117,6 +123,7 @@ export function SlotRecurringForm({
 }: SlotRecurringFormProps) {
   const router = useRouter()
   const { toast } = useToast()
+  const dispatch = useAppDispatch()
   const { services, addSlots } = useScheduling()
 
   const [serviceId, setServiceId] = useState<string>('')
@@ -138,15 +145,49 @@ export function SlotRecurringForm({
   const [endTime, setEndTime] = useState('10:30')
   const [capacity, setCapacity] = useState('20')
   const [staffId, setStaffId] = useState<string>('UNASSIGNED')
-  const [locationId, setLocationId] = useState<string>(() => locations[0]?.id ?? 'loc-1')
+  const [locationId, setLocationId] = useState<string>(() => mockLocations[0]?.id ?? 'loc-1')
   const [publishImmediately, setPublishImmediately] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [debounceToken, setDebounceToken] = useState(0)
+  const [apiLocations, setApiLocations] = useState<Location[] | null>(null)
+  const [apiStaff, setApiStaff] = useState<Staff[] | null>(null)
+
+  const locations = apiLocations ?? mockLocations
+  const staff = apiStaff ?? mockStaff
+
+  useEffect(() => {
+    if (!isAdminApiReady()) return
+    fetchLocations()
+      .then((locs) => {
+        setApiLocations(locs.length > 0 ? locs : mockLocations)
+        setLocationId((cur) => {
+          const valid = locs.some((l) => l.id === cur)
+          return valid ? cur : (locs[0]?.id ?? cur)
+        })
+      })
+      .catch(() => {})
+    fetchStaff()
+      .then((s) => setApiStaff(s.length > 0 ? s : mockStaff))
+      .catch(() => {})
+  }, [])
 
   const service = useMemo<SchedulingService | undefined>(
     () => services.find((s) => s.id === serviceId),
     [services, serviceId],
   )
+
+  // Force-refresh services from API on mount so the dropdown always shows real backend IDs.
+  useEffect(() => {
+    if (isAdminApiReady()) dispatch(loadSchedulingCatalog())
+  }, [dispatch])
+
+  // Reset serviceId when the current selection is no longer present in services
+  // (e.g. after stale localStorage mock IDs are replaced by real API IDs).
+  useEffect(() => {
+    if (!serviceId) return
+    const valid = services.some((s) => s.id === serviceId)
+    if (!valid) setServiceId('')
+  }, [services, serviceId])
 
   useEffect(() => {
     if (!initialServiceId) return
@@ -203,7 +244,7 @@ export function SlotRecurringForm({
   const selectedStaff = useMemo(() => {
     if (staffId === 'UNASSIGNED') return null
     return staff.find((s) => s.id === staffId) ?? null
-  }, [staffId])
+  }, [staffId, staff])
 
   const effectiveLocationId = useMemo(() => {
     return service?.locationId ?? locationId
@@ -219,36 +260,63 @@ export function SlotRecurringForm({
     })
   }, [])
 
-  function handleSubmit() {
+  async function handleSubmit() {
     if (!service || !canSubmit || capacityNum === null) return
     setSubmitting(true)
     try {
-      const slots: SchedulingSlot[] = previewDates.map((day) => {
-        const startAt = combineDateTime(day, startTime).toISOString()
-        const endAt = combineDateTime(day, endTime).toISOString()
-        return {
-          id: createSlotId(),
-          serviceId: service.id,
-          service,
-          locationId: effectiveLocationId,
-          staffId: selectedStaff?.id ?? null,
-          staffName: selectedStaff
-            ? `${selectedStaff.firstName} ${selectedStaff.lastName}`.trim()
-            : null,
-          startAt,
-          endAt,
-          capacityOverride: capacityNum,
-          priceOverride: null,
-          bookedCount: 0,
-          checkInCount: 0,
-          effectiveCapacity: capacityNum,
-          effectivePrice: service.basePrice,
-          status: 'SCHEDULED',
-          isActive: publishImmediately,
-          isRecurring: true,
-          notes: null,
+      const slotInputs = previewDates.map((day) => ({
+        startAt: combineDateTime(day, startTime).toISOString(),
+        endAt: combineDateTime(day, endTime).toISOString(),
+      }))
+
+      let serverIds: string[] | null = null
+      if (isAdminApiReady()) {
+        try {
+          const results = await Promise.all(
+            slotInputs.map(({ startAt, endAt }) =>
+              createSlot({
+                serviceId: service.id,
+                locationId: effectiveLocationId,
+                staffId: selectedStaff?.id ?? null,
+                startAt,
+                endAt,
+                capacityOverride: capacityNum,
+              }),
+            ),
+          )
+          serverIds = results.map((r) => r.id)
+        } catch {
+          toast({
+            title: 'Save failed',
+            description: 'Could not create sessions via API. Please try again.',
+            variant: 'destructive',
+          })
+          return
         }
-      })
+      }
+
+      const slots: SchedulingSlot[] = slotInputs.map(({ startAt, endAt }, i) => ({
+        id: serverIds?.[i] ?? createSlotId(),
+        serviceId: service.id,
+        service,
+        locationId: effectiveLocationId,
+        staffId: selectedStaff?.id ?? null,
+        staffName: selectedStaff
+          ? `${selectedStaff.firstName} ${selectedStaff.lastName}`.trim()
+          : null,
+        startAt,
+        endAt,
+        capacityOverride: capacityNum,
+        priceOverride: null,
+        bookedCount: 0,
+        checkInCount: 0,
+        effectiveCapacity: capacityNum,
+        effectivePrice: service.basePrice,
+        status: 'SCHEDULED',
+        isActive: publishImmediately,
+        isRecurring: true,
+        notes: null,
+      }))
       addSlots(slots)
       toast({
         title: `${slots.length} sessions created`,

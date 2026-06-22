@@ -17,6 +17,7 @@ import {
 } from '@/lib/mock-data'
 import type { RootState } from '@/lib/redux/store'
 import { enrichProductCategories } from '@/lib/catalog-placement'
+import { isApiEnabled, isMockDataEnabled } from '@/lib/config/data-source'
 import {
   buildSeedProductCategories,
   mergeInventoryWithCatalogDefaults,
@@ -87,7 +88,19 @@ function dedupeProductsById(products: readonly Product[]): Product[] {
   return unique
 }
 
+function emptyInventoryState(): InventoryState {
+  return {
+    products: [],
+    productCategories: [],
+    bookingAddOns: [],
+  }
+}
+
 function buildInitialInventoryState(): InventoryState {
+  if (isApiEnabled) {
+    return emptyInventoryState()
+  }
+
   const productCategories = buildSeedProductCategories([
     ...baseProductCategories,
     ...shopProductCategories,
@@ -118,6 +131,10 @@ function buildInitialInventoryState(): InventoryState {
   }
 }
 
+function hasPersistedInventoryCatalog(state: InventoryState): boolean {
+  return state.productCategories.length > 0 && state.products.length > 0
+}
+
 const SEED_INVENTORY_STATE = buildInitialInventoryState()
 
 const inventorySlice = createSlice({
@@ -125,6 +142,10 @@ const inventorySlice = createSlice({
   initialState: SEED_INVENTORY_STATE,
   reducers: {
     hydrateInventoryState(_state, action: PayloadAction<InventoryState>) {
+      if (isMockDataEnabled() && !hasPersistedInventoryCatalog(action.payload)) {
+        return buildInitialInventoryState()
+      }
+
       const dedupedProducts = dedupeProductsById(action.payload.products ?? [])
       const persisted: InventoryState = {
         products: dedupedProducts.map((product) =>

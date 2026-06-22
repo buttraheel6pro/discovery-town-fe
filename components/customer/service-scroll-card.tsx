@@ -7,11 +7,13 @@ import { Clock3, MapPin, Users } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ListingCard } from '@/components/customer/listing-card'
+import { isLearnSchedulingService } from '@/lib/learn-catalog'
 import {
   isOpenPlayPassCatalogService,
   OPEN_PLAY_MEMBERSHIP_PASS_SERVICE_ID,
   OPEN_PLAY_SEASONAL_PASS_SERVICE_ID,
 } from '@/lib/open-play-pass-catalog'
+import { shouldUsePrivatePlayDetailLayout } from '@/lib/private-play-packages'
 import type { SchedulingCategoryPlacementFields } from '@/lib/catalog-placement'
 import { useScheduling } from '@/lib/scheduling-store'
 import { buildSchedulingCategoryById } from '@/lib/scheduling-visibility'
@@ -22,65 +24,11 @@ import {
   isPlayClassCartCheckoutService,
   usesBuyNowListingCta,
 } from '@/lib/play-cart'
-import { getCustomerEventScheduleDetailHref } from '@/lib/event-booking-schedule'
-import { isLearnSchedulingService } from '@/lib/learn-catalog'
-import { shouldUsePrivatePlayDetailLayout } from '@/lib/private-play-packages'
-import { isPassOffering } from '@/lib/scheduling-listing-kind'
-import { usesEventTicketBookingSidebar } from '@/lib/scheduling-slot-availability'
+import { getSchedulingConsumerDetailHref } from '@/lib/scheduling-consumer-detail-href'
 import type { EventPackage, SchedulingService } from '@/lib/types'
 
 interface ServiceScrollCardProps {
   readonly service: SchedulingService
-}
-
-function getServiceHref(
-  service: SchedulingService,
-  packages: readonly EventPackage[],
-): string {
-  if (isPassOffering(service)) {
-    return `/facilities/${service.id}`
-  }
-  if (shouldUsePrivatePlayDetailLayout(service, packages)) {
-    return `/facilities/${service.id}`
-  }
-  if (usesEventTicketBookingSidebar(service)) {
-    return `/events/${service.id}`
-  }
-  if (service.categoryId === 'cat-we-bring-play') {
-    return '/play#product-menu-pcat-we-bring-party'
-  }
-
-  const eventScheduleHref = getCustomerEventScheduleDetailHref(service)
-  if (
-    eventScheduleHref &&
-    !isPassOffering(service) &&
-    !shouldUsePrivatePlayDetailLayout(service, packages)
-  ) {
-    return eventScheduleHref
-  }
-
-  if (
-    service.serviceType === 'OPEN_PLAY' ||
-    service.serviceType === 'COURT_BOOKING' ||
-    service.serviceType === 'PRIVATE_HIRE'
-  ) {
-    return `/facilities/${service.id}`
-  }
-
-  if (isLearnSchedulingService(service)) {
-    return `/learn/${service.id}`
-  }
-
-  if (
-    service.serviceType === 'GYM_CLASS' ||
-    service.serviceType === 'SWIM_CLASS' ||
-    service.serviceType === 'COACHING_SESSION' ||
-    service.serviceType === 'FITNESS_ASSESSMENT'
-  ) {
-    return `/classes/${service.id}`
-  }
-
-  return `/events/${service.id}`
 }
 
 function getCtaLabel(
@@ -146,7 +94,7 @@ export function ServiceScrollCard({ service }: Readonly<ServiceScrollCardProps>)
       <ListingCard
         fillHeight
         className="w-full"
-        href={getServiceHref(service, packages)}
+        href={getSchedulingConsumerDetailHref(service, packages)}
         title={service.name}
         description={service.description ?? ''}
         imageUrl={service.imageUrl ?? undefined}

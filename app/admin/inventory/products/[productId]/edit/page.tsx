@@ -26,6 +26,8 @@ import { resolveProductEditorSlug, type ProductEditorSlug } from '@/lib/product-
 import { usesRentalBasketBundle } from '@/lib/rental-product'
 import { useInventory } from '@/lib/inventory-store'
 import { useScheduling } from '@/lib/scheduling-store'
+import { isAdminApiReady } from '@/lib/api/client'
+import { updateProduct as updateProductApi } from '@/lib/services/inventory'
 import type { Product } from '@/lib/types'
 
 export default function AdminInventoryProductEditPage() {
@@ -372,6 +374,20 @@ export default function AdminInventoryProductEditPage() {
     const wantsPromote = draft.canBeAddOn && !product.linkedAddOnId
     const patch = draftToProductPatch(draft)
     updateProduct(product.id, patch)
+    if (isAdminApiReady()) {
+      updateProductApi(product.id, {
+        name: typeof patch.name === 'string' ? patch.name : undefined,
+        description: typeof patch.description === 'string' ? patch.description : undefined,
+        sku: typeof patch.sku === 'string' ? patch.sku : undefined,
+        categoryId: typeof patch.categoryId === 'string' ? patch.categoryId : undefined,
+        price: patch.price != null ? String(patch.price) : undefined,
+        isActive: typeof patch.isActive === 'boolean' ? patch.isActive : undefined,
+        availableOnline: typeof patch.availableOnline === 'boolean' ? patch.availableOnline : undefined,
+        stockCount: typeof patch.stockCount === 'number' ? patch.stockCount : undefined,
+      }).catch(() => {
+        toast({ title: 'Sync error', description: 'Product update failed to save.', variant: 'destructive' })
+      })
+    }
     if (wantsPromote) {
       const merged = { ...product, ...patch } as Product
       const result = promoteProductToAddOn(product.id, merged)

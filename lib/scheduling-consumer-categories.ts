@@ -4,7 +4,22 @@ import {
   getCustomerSchedulingMenuSlug,
   type SchedulingCategoryPlacementFields,
 } from '@/lib/catalog-placement'
-import type { SchedulingCatalogSlug } from '@/lib/catalog-slugs'
+import {
+  catalogSlugToProductType,
+  isProductCatalogSlug,
+  normalizeCatalogSlug,
+  type SchedulingCatalogSlug,
+} from '@/lib/catalog-slugs'
+import {
+  CUSTOMER_NAV_LABEL_ROUTES,
+  DEFAULT_CUSTOMER_NAV_LABELS,
+  productTypeToNavLabelKey,
+  type CustomerNavLabelKey,
+} from '@/lib/customer-nav-labels'
+import { getEventsCategoryHref } from '@/lib/events-category-routes'
+import { getGymCategoryHref } from '@/lib/gym-category-routes'
+import { getLearnCategoryHref } from '@/lib/learn-category-routes'
+import { getPlayCategoryHref } from '@/lib/play-category-routes'
 
 export const SCHEDULING_TOP_LEVEL_ORDER = ['GYM', 'PLAY', 'EVENT', 'LEARN'] as const
 
@@ -33,14 +48,16 @@ const PLAY_CATEGORY_IDS = new Set<string>([
   'cat-we-bring-play',
 ])
 
-/** Pre–consumer-catalog ids (cat-1 … cat-6) — admin/seed only, not customer menus. */
+/** Pre–consumer-catalog ids — admin/seed only, not customer menus. */
 export const LEGACY_SCHEDULING_CATEGORY_IDS = new Set<string>([
   'cat-1',
   'cat-2',
   'cat-3',
   'cat-4',
+  
   'cat-5',
   'cat-6',
+  'cat-preschool',
 ])
 
 export function isLegacySchedulingCategoryId(categoryId: string): boolean {
@@ -135,17 +152,70 @@ function consumerBackLinkForMenuSlug(
 ): SchedulingConsumerBackLink {
   switch (menuSlug) {
     case 'play':
-      return { href: `/play#${categoryId}`, label: 'Back to Play' }
+      return { href: getPlayCategoryHref(categoryId), label: 'Back to Play' }
     case 'gym':
-      return { href: `/gym#${categoryId}`, label: 'Back to Gym' }
+      return { href: getGymCategoryHref(categoryId), label: 'Back to Gym' }
     case 'events':
-      return {
-        href: `/events#events-section-${categoryId}`,
-        label: 'Back to Events',
-      }
+      return { href: getEventsCategoryHref(categoryId), label: 'Back to Events' }
     case 'learn':
     default:
-      return { href: `/learn#${categoryId}`, label: 'Back to Learn' }
+      return { href: getLearnCategoryHref(categoryId), label: 'Back to Learn' }
+  }
+}
+
+const SCHEDULING_MENU_NAV_KEYS: Record<SchedulingCatalogSlug, CustomerNavLabelKey> = {
+  play: 'play',
+  gym: 'gym',
+  events: 'events',
+  learn: 'learn',
+}
+
+function consumerMenuLandingBackLink(navKey: CustomerNavLabelKey): SchedulingConsumerBackLink {
+  return {
+    href: CUSTOMER_NAV_LABEL_ROUTES[navKey],
+    label: `Back to ${DEFAULT_CUSTOMER_NAV_LABELS[navKey]}`,
+  }
+}
+
+function consumerProductMenuBackLink(productType: string): SchedulingConsumerBackLink | null {
+  const navKey = productTypeToNavLabelKey(productType)
+  if (!navKey) {
+    return null
+  }
+  return consumerMenuLandingBackLink(navKey)
+}
+
+/** Category detail hero — back to the menu landing where the category is listed. */
+export function getSchedulingCategoryMenuBackLink(
+  categoryId: string,
+  category?: SchedulingCategoryPlacementFields | null,
+): SchedulingConsumerBackLink {
+  const productPlacement = normalizeCatalogSlug(category?.placementCatalogSlug ?? null)
+  if (productPlacement && isProductCatalogSlug(productPlacement)) {
+    const productBack = consumerProductMenuBackLink(
+      catalogSlugToProductType(productPlacement),
+    )
+    if (productBack) {
+      return productBack
+    }
+  }
+
+  const schedulingMenu = category ? getCustomerSchedulingMenuSlug(category) : null
+  if (schedulingMenu) {
+    return consumerMenuLandingBackLink(SCHEDULING_MENU_NAV_KEYS[schedulingMenu])
+  }
+
+  const topLevel = getSchedulingTopLevelId(categoryId)
+  switch (topLevel) {
+    case 'PLAY':
+      return consumerMenuLandingBackLink('play')
+    case 'GYM':
+      return consumerMenuLandingBackLink('gym')
+    case 'LEARN':
+      return consumerMenuLandingBackLink('learn')
+    case 'EVENT':
+    default:
+      return consumerMenuLandingBackLink('events')
   }
 }
 
@@ -154,24 +224,23 @@ export function getSchedulingConsumerBackLink(
   categoryId: string,
   category?: SchedulingCategoryPlacementFields | null,
 ): SchedulingConsumerBackLink {
-  const menuSlug = category
-    ? getCustomerSchedulingMenuSlug(category)
-    : null
-  if (menuSlug) {
-    return consumerBackLinkForMenuSlug(menuSlug, categoryId)
+  const schedulingMenu = category ? getCustomerSchedulingMenuSlug(category) : null
+  if (schedulingMenu) {
+    return consumerBackLinkForMenuSlug(schedulingMenu, categoryId)
   }
+
   const topLevel = getSchedulingTopLevelId(categoryId)
   switch (topLevel) {
     case 'PLAY':
-      return { href: `/play#${categoryId}`, label: 'Back to Play' }
+      return { href: getPlayCategoryHref(categoryId), label: 'Back to Play' }
     case 'GYM':
-      return { href: `/gym#${categoryId}`, label: 'Back to Gym' }
+      return { href: getGymCategoryHref(categoryId), label: 'Back to Gym' }
     case 'LEARN':
-      return { href: `/learn#${categoryId}`, label: 'Back to Learn' }
+      return { href: getLearnCategoryHref(categoryId), label: 'Back to Learn' }
     case 'EVENT':
     default:
       return {
-        href: `/events#events-section-${categoryId}`,
+        href: getEventsCategoryHref(categoryId),
         label: 'Back to Events',
       }
   }

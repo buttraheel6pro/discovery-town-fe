@@ -1,76 +1,63 @@
-/** Category menu — filters cafe products with availability rules. */
+/**
+ * Cafe category page — facility-style hero, product list, and cart sidebar.
+ */
 'use client'
 
-import Link from 'next/link'
-import { useParams } from 'next/navigation'
-import { useMemo } from 'react'
+import { use, useMemo } from 'react'
+import { notFound } from 'next/navigation'
 
-import { CafeProductCard } from '@/components/customer/cafe-product-card'
 import { CustomerFooter } from '@/components/customer/footer'
 import { CustomerNavbar } from '@/components/customer/navbar'
-import { Button } from '@/components/ui/button'
-import { filterCafeProducts, slugToCafeCategory } from '@/lib/cafe-utils'
-import { useCafe } from '@/lib/cafe-store'
+import { CafeCategoryDetailClient } from '@/components/customer/cafe-category-detail-client'
+import { useCafeCategories } from '@/hooks/use-cafe-categories'
+import { resolveCafeConsumerCategoryForRoute } from '@/lib/cafe-consumer-categories'
+import { resolveCafeCategorySlug } from '@/lib/cafe-category-routes'
+import { useInventory } from '@/lib/inventory-store'
+import { useInventoryHydrated } from '@/lib/redux/provider'
 
-export default function CafeCategoryMenuPage() {
-  const params = useParams()
-  const slug = typeof params.category === 'string' ? params.category : ''
-  const category = slugToCafeCategory(slug)
-  const { cafeProducts } = useCafe()
+interface CafeCategoryPageProps {
+  readonly params: Promise<{
+    category: string
+  }>
+}
 
-  const today = useMemo(() => new Date().getDay(), [])
+function CafeCategoryPageContent({
+  categorySlug,
+}: Readonly<{ categorySlug: string }>) {
+  const { categories, isLoading: categoriesLoading } = useCafeCategories()
+  const { productCategories } = useInventory()
+  const inventoryHydrated = useInventoryHydrated()
+  const resolvedSlug = resolveCafeCategorySlug(categorySlug)
 
-  const { visible, soldOut } = useMemo(() => {
-    if (!category) {
-      return { visible: [] as typeof cafeProducts, soldOut: [] as typeof cafeProducts }
-    }
-    const inCat = cafeProducts.filter((p) => p.category === category)
-    return filterCafeProducts(inCat, today)
-  }, [cafeProducts, category, today])
+  const category = useMemo(
+    () => resolveCafeConsumerCategoryForRoute(resolvedSlug, productCategories),
+    [productCategories, resolvedSlug],
+  )
+
+  const categoryIndex = category
+    ? categories.findIndex((entry) => entry.id === category.id)
+    : -1
+
+  if (!inventoryHydrated || categoriesLoading) {
+    return null
+  }
 
   if (!category) {
-    return (
-      <>
-        <CustomerNavbar />
-        <main className="container mx-auto max-w-3xl px-4 py-16 text-center">
-          <p className="text-muted-foreground">Category not found.</p>
-          <Button type="button" className="mt-4" asChild>
-            <Link href="/cafe">Back to cafe</Link>
-          </Button>
-        </main>
-        <CustomerFooter />
-      </>
-    )
+    notFound()
   }
 
   return (
     <>
       <CustomerNavbar />
-      <main className="container mx-auto max-w-6xl px-4 py-8 md:px-6">
-        <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <Link href="/cafe" className="text-sm font-medium text-primary hover:underline">
-              ← Cafe home
-            </Link>
-            <h1
-              className="mt-2 text-3xl font-black tracking-tight text-foreground"
-              style={{ fontFamily: 'var(--font-barlow)' }}
-            >
-              {category}
-            </h1>
-          </div>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {visible.map((p) => (
-            <CafeProductCard key={p.id} product={p} />
-          ))}
-          {soldOut.map((p) => (
-            <CafeProductCard key={p.id} product={p} soldOut />
-          ))}
-        </div>
+      <main>
+        <CafeCategoryDetailClient category={category} categoryIndex={categoryIndex} />
       </main>
       <CustomerFooter />
     </>
   )
+}
+
+export default function CafeCategoryMenuPage({ params }: Readonly<CafeCategoryPageProps>) {
+  const { category } = use(params)
+  return <CafeCategoryPageContent categorySlug={category} />
 }

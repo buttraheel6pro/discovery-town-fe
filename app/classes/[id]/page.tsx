@@ -82,6 +82,7 @@ import {
   getSchedulingTopLevelId,
 } from '@/lib/scheduling-consumer-categories'
 import { getPlayBookingConfirmCartLabel } from '@/lib/play-cart'
+import { navigateToListingAfterCartAdd } from '@/lib/product-detail-navigation'
 import {
   eventBookingScheduleRequiresTimeSelection,
   isEventBookingScheduleReadyForBookingForm,
@@ -183,6 +184,7 @@ function getClassCartSuccessCopy(
 }
 
 export function ClassDetailContent({ service }: Readonly<{ service: SchedulingService }>) {
+  const router = useRouter()
   const { slots, packages, categories } = useScheduling()
   const { contacts, subscriptions, documents, addContact, addRelationship } = useClients()
   const { addCustomCartItem } = useInventory()
@@ -457,6 +459,9 @@ export function ClassDetailContent({ service }: Readonly<{ service: SchedulingSe
   const levelClass = levelColors[level] ?? levelColors['All Levels']
 
   function handleEnrol() {
+    if (enrolled || classCartSuccessKind !== null) {
+      return
+    }
     if (showEventBookingSchedule) {
       if (!selectedPlayWindow) return
     } else {
@@ -482,6 +487,9 @@ export function ClassDetailContent({ service }: Readonly<{ service: SchedulingSe
         },
       })
       setClassCartSuccessKind('gym')
+      navigateToListingAfterCartAdd(router, consumerBackLink.href, {
+        itemName: service.name,
+      })
       return
     }
     if (learnCartCheckout) {
@@ -501,6 +509,9 @@ export function ClassDetailContent({ service }: Readonly<{ service: SchedulingSe
         },
       })
       setClassCartSuccessKind('learn')
+      navigateToListingAfterCartAdd(router, consumerBackLink.href, {
+        itemName: service.name,
+      })
       return
     }
     if (eventClassCartCheckout) {
@@ -522,6 +533,9 @@ export function ClassDetailContent({ service }: Readonly<{ service: SchedulingSe
         },
       })
       setClassCartSuccessKind('event')
+      navigateToListingAfterCartAdd(router, consumerBackLink.href, {
+        itemName: service.name,
+      })
       return
     }
     if (playClassCartCheckout || playMenuServiceEventSchedule) {
@@ -541,6 +555,9 @@ export function ClassDetailContent({ service }: Readonly<{ service: SchedulingSe
         },
       })
       setClassCartSuccessKind('play')
+      navigateToListingAfterCartAdd(router, consumerBackLink.href, {
+        itemName: service.name,
+      })
       return
     }
     bookingForm.submitBooking()
@@ -996,7 +1013,9 @@ export function ClassDetailContent({ service }: Readonly<{ service: SchedulingSe
                             !showBookingDetailsForm ||
                             selectedSlot?.status === 'FULL' ||
                             !bookingForm.canSubmitDetails ||
-                            !waiversOk
+                            !waiversOk ||
+                            enrolled ||
+                            classCartSuccessKind !== null
                           }
                           onClick={handleEnrol}
                         >
@@ -1671,7 +1690,9 @@ export function ClassDetailContent({ service }: Readonly<{ service: SchedulingSe
                         !showBookingDetailsForm ||
                         selectedSlot?.status === 'FULL' ||
                         !bookingForm.canSubmitDetails ||
-                        !waiversOk
+                        !waiversOk ||
+                        enrolled ||
+                        classCartSuccessKind !== null
                       }
                       onClick={handleEnrol}
                     >

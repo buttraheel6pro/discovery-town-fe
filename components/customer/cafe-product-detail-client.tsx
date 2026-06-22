@@ -3,6 +3,7 @@
 
 import Image from 'next/image'
 import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Minus, Plus, ShoppingCart } from 'lucide-react'
 
 import { CafeModifierGroup } from '@/components/customer/cafe-modifier-group'
@@ -19,6 +20,7 @@ import {
   toCartModifierSelections,
 } from '@/lib/cafe-utils'
 import { useInventory } from '@/lib/inventory-store'
+import { navigateToListingAfterCartAdd } from '@/lib/product-detail-navigation'
 import { cn, formatPrice } from '@/lib/utils'
 import type { AttributeGroup, CafeProduct, ModifierGroup } from '@/lib/types'
 
@@ -26,13 +28,16 @@ export interface CafeProductDetailClientProps {
   readonly product: CafeProduct
   readonly modifierGroups: ModifierGroup[]
   readonly attributeGroups: AttributeGroup[]
+  readonly listingBackHref?: string
 }
 
 export function CafeProductDetailClient({
   product,
   modifierGroups,
   attributeGroups,
+  listingBackHref = '/cafe',
 }: Readonly<CafeProductDetailClientProps>) {
+  const router = useRouter()
   const { addCustomCartItem } = useInventory()
 
   const groups = useMemo(
@@ -71,9 +76,11 @@ export function CafeProductDetailClient({
   const [quantity, setQuantity] = useState(1)
   const [customerNote, setCustomerNote] = useState('')
   const [showSelectionCards, setShowSelectionCards] = useState(false)
+  const [addedToCart, setAddedToCart] = useState(false)
 
   useEffect(() => {
     setShowSelectionCards(false)
+    setAddedToCart(false)
   }, [product.id])
 
   useEffect(() => {
@@ -127,7 +134,7 @@ export function CafeProductDetailClient({
   }
 
   function handleAddToCart() {
-    if (!canAdd) return
+    if (!canAdd || addedToCart) return
     const selectedModifiers = toCartModifierSelections(groups, selectedByGroup)
     const selectedAttributes = availableAttributeGroups.flatMap((row) => {
       const selectedIds = selectedAttributesByGroup[row.group.id] ?? []
@@ -158,6 +165,8 @@ export function CafeProductDetailClient({
         customerNote: customerNote.trim() || undefined,
       },
     })
+    setAddedToCart(true)
+    navigateToListingAfterCartAdd(router, listingBackHref, { itemName: product.name })
   }
 
   const prep = product.preparationTimeMinutes ?? 0
@@ -231,7 +240,7 @@ export function CafeProductDetailClient({
         <Button
           type="button"
           className="mt-4 w-full bg-accent text-accent-foreground hover:bg-accent/90 font-semibold"
-          disabled={!canAdd}
+          disabled={!canAdd || addedToCart}
           onClick={handleAddToCart}
         >
           <ShoppingCart className="mr-2 h-4 w-4" />

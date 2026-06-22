@@ -12,6 +12,7 @@ import {
   setAuthSession,
 } from '@/lib/api/token-storage'
 import { getApiV1BaseUrl } from '@/lib/api/base-url'
+import { isApiEnabled } from '@/lib/config/data-source'
 import { API_HEADERS, API_PATHS, LANGUAGE_STORAGE_KEY } from '@/lib/constants/api'
 import { isBrowser } from '@/lib/is-browser'
 import { loginResponseSchema } from '@/lib/schemas/auth/login'
@@ -88,12 +89,19 @@ async function requestNewAccessToken(): Promise<string> {
   return parsed.data.access_token
 }
 
+const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID ?? ''
+
 function applyRequestInterceptors(): void {
   apiClient.interceptors.request.use(
     (config: InternalAxiosRequestConfig) => {
       const nextConfig = config as RetryableRequestConfig
       nextConfig.headers.Accept = API_HEADERS.accept
       nextConfig.headers['Accept-Language'] = getLanguageHeader()
+
+      // Send tenant identifier so public (OptionalJwtGuard) endpoints can resolve the tenant
+      if (TENANT_ID) {
+        nextConfig.headers['x-tenant-id'] = TENANT_ID
+      }
 
       if (!nextConfig.skipAuth) {
         const accessToken = getAccessToken()
@@ -106,6 +114,25 @@ function applyRequestInterceptors(): void {
     },
     async (error: unknown) => Promise.reject(error),
   )
+}
+
+export { isApiEnabled, isApiConfigured, isMockDataEnabled } from '@/lib/config/data-source'
+
+/**
+ * True when API is configured AND an admin JWT is stored in localStorage.
+ * Use this for admin mutation calls — isApiEnabled alone is insufficient when
+ * NEXT_PUBLIC_BYPASS_ADMIN_AUTH allows page access without logging in.
+ */
+export function isAdminApiReady(): boolean {
+  return isApiEnabled && Boolean(getAccessToken())
+}
+
+/** Shared paginated API response shape. */
+export interface PaginatedResponse<T> {
+  items: T[]
+  total: number
+  page: number
+  limit: number
 }
 
 function applyResponseInterceptors(): void {

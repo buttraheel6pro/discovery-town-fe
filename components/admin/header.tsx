@@ -1,10 +1,15 @@
 'use client'
 
-import Link from 'next/link'
 import { Bell, LogOut, Settings, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { clearAuthSession } from '@/lib/api/token-storage'
 
 export function AdminHeader() {
+  function handleLogout() {
+    clearAuthSession()
+    window.location.replace('/admin-login')
+  }
+
   return (
     <header className="fixed top-0 right-0 left-64 z-30 border-b border-border bg-background h-16 flex items-center justify-between px-8">
       <div className="flex items-center gap-8 flex-1">
@@ -32,12 +37,10 @@ export function AdminHeader() {
           </div>
         </div>
 
-        <Link href="/">
-          <Button variant="ghost" size="sm" className="gap-2">
-            <LogOut className="w-4 h-4" />
-            Exit
-          </Button>
-        </Link>
+        <Button variant="ghost" size="sm" className="gap-2" onClick={handleLogout}>
+          <LogOut className="w-4 h-4" />
+          Sign out
+        </Button>
       </div>
     </header>
   )

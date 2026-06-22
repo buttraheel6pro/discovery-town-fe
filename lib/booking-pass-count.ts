@@ -28,12 +28,12 @@ export function isPassCountFixed(maxPassCount: number | null, min = 1): boolean 
 }
 
 export function showMaxPassCountAdminField(
-  service: Pick<SchedulingService, 'id' | 'categoryId'>,
+  service: Pick<SchedulingService, 'id' | 'categoryId' | 'category' | 'serviceType' | 'bookingMode' | 'bookingOfferingKind' | 'isPackageService'>,
 ): boolean {
   return (
     service.categoryId === 'cat-open-play' ||
     service.categoryId === 'cat-parents-night' ||
-    isOpenPlaySessionBookingService(service.id)
+    isOpenPlaySessionBookingService(service as SchedulingService)
   )
 }
 
@@ -41,7 +41,7 @@ export function passCountHelperText(
   service: SchedulingService,
   maxPassCount: number | null,
 ): string | undefined {
-  if (!isOpenPlaySessionBookingService(service.id)) {
+  if (!isOpenPlaySessionBookingService(service)) {
     return undefined
   }
   if (maxPassCount == null) {

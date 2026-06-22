@@ -1953,6 +1953,8 @@ export interface SchedulingCategory {
   icon: string | null;
   displayOrder: number;
   isActive: boolean;
+  /** Consumer card / hero image — configurable in admin. */
+  imageUrl?: string | null;
   /** Canonical scheduling bucket (gym, play, events). */
   catalogSlug?: CatalogSlug;
   /** Admin menu accordion slug (may list under product menus). */
@@ -1973,8 +1975,10 @@ export interface SchedulingCategory {
 export interface CreateServiceCategoryPayload {
   name: string;
   icon?: string;
+  imageUrl?: string;
   displayOrder: string;
   isActive: boolean;
+  catalogSlug?: string;
 }
 
 /** Catalog add-on offered on a scheduling service (consumer booking options). */

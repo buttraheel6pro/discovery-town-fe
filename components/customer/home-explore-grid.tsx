@@ -4,11 +4,10 @@
 import { useMemo } from 'react'
 
 import {
-  HomeExploreCard,
-  type HomeExploreCardAccent,
-  type HomeExploreCardReveal,
-} from '@/components/customer/home-explore-card'
-import { useInView } from '@/hooks/use-in-view'
+  CategoryExploreGrid,
+  type CategoryExploreCardItem,
+} from '@/components/customer/category-explore-grid'
+import type { HomeExploreCardAccent } from '@/components/customer/home-explore-card'
 import { useCustomerNavLabels } from '@/hooks/use-customer-nav-labels'
 import {
   CATALOG_MENU_ORDER,
@@ -16,6 +15,7 @@ import {
   type CatalogSlug,
   type ProductCatalogSlug,
 } from '@/lib/catalog-slugs'
+import { MENU_LANDING_HERO_IMAGES } from '@/lib/menu-landing-hero-config'
 import {
   CUSTOMER_NAV_LABEL_ROUTES,
   isCustomerNavItemVisible,
@@ -23,16 +23,6 @@ import {
 } from '@/lib/customer-nav-labels'
 import { useInventory } from '@/lib/inventory-store'
 import { hasConsumerVisibleProductType } from '@/lib/product-visibility'
-import { cn } from '@/lib/utils'
-
-interface ExploreCardItem {
-  readonly key: CustomerNavLabelKey
-  readonly title: string
-  readonly description: string
-  readonly href: string
-  readonly imageSrc: string
-  readonly accent: HomeExploreCardAccent
-}
 
 const SCHEDULING_SLUGS = new Set<CatalogSlug>(['gym', 'play', 'events', 'learn'])
 
@@ -62,14 +52,12 @@ const CARD_META: Record<
   },
   gym: {
     description: 'Classes and training for every age and skill level.',
-    imageSrc:
-      'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50e?w=900&q=80',
+    imageSrc: MENU_LANDING_HERO_IMAGES.gym,
     accent: 'primary',
   },
   learn: {
     description: 'Tutoring, enrichment, and learning adventures.',
-    imageSrc:
-      'https://images.unsplash.com/photo-1503676260728-1c00da094a0b?w=900&q=80',
+    imageSrc: MENU_LANDING_HERO_IMAGES.learn,
     accent: 'chart-4',
   },
   events: {
@@ -84,15 +72,13 @@ const CARD_META: Record<
   },
   gifts: {
     description: 'Thoughtful gifts for every celebration and occasion.',
-    imageSrc:
-      'https://images.unsplash.com/photo-1513885535751-8b9238b3aee4?w=900&q=80',
+    imageSrc: MENU_LANDING_HERO_IMAGES.gifts,
     accent: 'accent',
   },
   rentals: {
     description:
       'Bounce houses, tables, chairs, and more — perfect for any celebration!',
-    imageSrc:
-      'https://images.unsplash.com/photo-1530103862676-de8c9debad1d?w=900&q=80',
+    imageSrc: MENU_LANDING_HERO_IMAGES.rentals,
     accent: 'primary',
   },
   cafeFood: {
@@ -109,8 +95,8 @@ const ACCENT_CYCLE: HomeExploreCardAccent[] = [
   'chart-4',
 ]
 
-const TILE_GAP = 'gap-2'
-const GRID_INSET = 'px-2 pb-2 pt-1 sm:px-2.5 sm:pb-2.5 sm:pt-1.5'
+const GRID_INSET =
+  'mx-auto max-w-7xl px-4 pb-2 pt-1 sm:px-6 sm:pb-2.5 sm:pt-1.5 lg:px-8'
 
 function isCatalogSlugVisible(
   slug: CatalogSlug,
@@ -135,7 +121,7 @@ function buildExploreCards(
   labels: Record<CustomerNavLabelKey, string>,
   hidden: Record<CustomerNavLabelKey, boolean>,
   productCategories: ReturnType<typeof useInventory>['productCategories'],
-): ExploreCardItem[] {
+): CategoryExploreCardItem[] {
   return CATALOG_MENU_ORDER.flatMap((entry, index) => {
     if (!isCatalogSlugVisible(entry.slug, hidden, productCategories)) {
       return []
@@ -143,7 +129,7 @@ function buildExploreCards(
     const key = SLUG_TO_NAV_KEY[entry.slug]
     const meta = CARD_META[key]
     return [{
-      key,
+      id: key,
       title: labels[key],
       description: meta.description,
       href: CUSTOMER_NAV_LABEL_ROUTES[key],
@@ -151,69 +137,6 @@ function buildExploreCards(
       accent: meta.accent ?? ACCENT_CYCLE[index % ACCENT_CYCLE.length],
     }]
   })
-}
-
-function chunkIntoRows(cards: ExploreCardItem[]): ExploreCardItem[][] {
-  const rows: ExploreCardItem[][] = []
-  for (let index = 0; index < cards.length; index += 3) {
-    rows.push(cards.slice(index, index + 3))
-  }
-  return rows
-}
-
-function rowGridClass(count: number): string {
-  if (count === 1) {
-    return 'grid-cols-1'
-  }
-  if (count === 2) {
-    return 'grid-cols-1 sm:grid-cols-2'
-  }
-  return 'grid-cols-1 sm:grid-cols-3'
-}
-
-function revealFromForColumn(
-  columnIndex: number,
-  columnCount: number,
-): HomeExploreCardReveal {
-  if (columnCount === 1) {
-    return 'up'
-  }
-  if (columnCount === 2) {
-    return columnIndex === 0 ? 'left' : 'right'
-  }
-  if (columnIndex === 0) {
-    return 'left'
-  }
-  if (columnIndex === 2) {
-    return 'right'
-  }
-  return 'up'
-}
-
-interface ExploreCardGridProps {
-  readonly cards: ExploreCardItem[]
-  readonly gridClass: string
-}
-
-function ExploreCardGrid({ cards, gridClass }: ExploreCardGridProps) {
-  return (
-    <div className={cn('grid w-full', TILE_GAP, gridClass)}>
-      {cards.map((card, columnIndex) => (
-        <HomeExploreCard
-          key={card.key}
-          href={card.href}
-          title={card.title}
-          description={card.description}
-          imageSrc={card.imageSrc}
-          accent={card.accent}
-          revealDelay={columnIndex * 120}
-          revealFrom={revealFromForColumn(columnIndex, cards.length)}
-          tiled
-          size="tile"
-        />
-      ))}
-    </div>
-  )
 }
 
 export function HomeExploreGrid() {
@@ -225,69 +148,23 @@ export function HomeExploreGrid() {
     [hidden, labels, productCategories],
   )
 
-  const { gridCards, shopCard, rentalsCard } = useMemo(() => {
-    const shop = cards.find((card) => card.key === 'shop')
-    const rentals = cards.find((card) => card.key === 'rentals')
-    const regular = cards.filter(
-      (card) => card.key !== 'rentals' && card.key !== 'shop',
+  const { gridCards, trailingRow } = useMemo(() => {
+    const shop = cards.find((card) => card.id === 'shop')
+    const rentals = cards.find((card) => card.id === 'rentals')
+    const regular = cards.filter((card) => card.id !== 'rentals' && card.id !== 'shop')
+    const bottomRow = [shop, rentals].filter(
+      (card): card is CategoryExploreCardItem => card != null,
     )
-    return { gridCards: regular, shopCard: shop, rentalsCard: rentals }
+    return { gridCards: regular, trailingRow: bottomRow }
   }, [cards])
 
-  const bottomRowCards = useMemo(
-    () => [shopCard, rentalsCard].filter(
-      (card): card is ExploreCardItem => card != null,
-    ),
-    [rentalsCard, shopCard],
-  )
-
-  const rows = useMemo(() => chunkIntoRows(gridCards), [gridCards])
-
-  const { ref, inView } = useInView<HTMLElement>({
-    rootMargin: '0px 0px -8% 0px',
-    threshold: 0.05,
-    once: true,
-  })
-
-  if (cards.length === 0) {
-    return null
-  }
-
   return (
-    <section
-      ref={ref}
-      className={cn(
-        'relative z-10 w-full bg-white',
-        GRID_INSET,
-        'transition-opacity duration-500',
-        inView ? 'opacity-100' : 'opacity-0',
-      )}
-      aria-labelledby="explore-heading"
-    >
-      <h2 id="explore-heading" className="sr-only">
-        Explore Discovery Town
-      </h2>
-
-      <div className={cn('flex w-full flex-col', TILE_GAP)}>
-        {rows.map((row) => (
-          <ExploreCardGrid
-            key={row.map((card) => card.key).join('-')}
-            cards={row}
-            gridClass={rowGridClass(row.length)}
-          />
-        ))}
-
-        {bottomRowCards.length > 0 ? (
-          <ExploreCardGrid
-            cards={bottomRowCards}
-            gridClass={
-              bottomRowCards.length === 2
-                ? 'grid-cols-1 sm:grid-cols-2'
-                : 'grid-cols-1'
-            }
-          />
-        ) : null}
-      </div>
-    </section>
+    <CategoryExploreGrid
+      cards={gridCards}
+      trailingRow={trailingRow}
+      headingId="explore-heading"
+      headingLabel="Explore Discovery Town"
+      className={`relative z-10 bg-white ${GRID_INSET}`}
+    />
   )
 }

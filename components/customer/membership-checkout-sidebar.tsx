@@ -14,6 +14,8 @@ import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { useToast } from '@/hooks/use-toast'
 import { formatPrice } from '@/lib/utils'
+import { isApiEnabled } from '@/lib/api/client'
+import { enrollSubscription } from '@/lib/api/subscriptions.api'
 import { useClients } from '@/lib/client-store'
 import type { ContactSubscription, Coupon, MembershipPlan } from '@/lib/types'
 
@@ -105,6 +107,7 @@ export function MembershipCheckoutSidebar({
     if (!primary || !canPay) return
 
     const nowIso = new Date().toISOString()
+    const periodEnd = subscriptionPeriodEndIso(plan)
     const sub: ContactSubscription = {
       id: `sub-${primary.id}-${plan.id}-${Date.now()}`,
       tenantId: primary.tenantId,
@@ -114,13 +117,25 @@ export function MembershipCheckoutSidebar({
       status: 'ACTIVE',
       startedAt: nowIso,
       currentPeriodStart: nowIso,
-      currentPeriodEnd: subscriptionPeriodEndIso(plan),
+      currentPeriodEnd: periodEnd,
       familyMemberIds:
         plan.allowFamilyMember && validFamilyIds.length > 0
           ? [...validFamilyIds]
           : undefined,
       couponCode: promoCode && promoDiscount > 0 ? promoCode : undefined,
     }
+
+    if (isApiEnabled) {
+      void enrollSubscription({
+        contactId: primary.id,
+        planId: plan.id,
+        currentPeriodStart: nowIso,
+        currentPeriodEnd: periodEnd,
+        paymentGateway: 'STRIPE',
+        paymentReferenceId: `mock_membership_${Date.now()}`,
+      }).catch(() => {})
+    }
+
     enrollContact(sub)
     toast({
       title: 'Membership activated',

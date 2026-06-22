@@ -1,28 +1,35 @@
-/** Modifier group CRUD boundary — mock-backed fixtures until API exists. */
+/** Modifier group CRUD boundary — API-backed with mock fallback. */
 
+import { apiClient } from '@/lib/api/client'
+import { isApiEnabled } from '@/lib/api/client'
+import { API_PATHS } from '@/lib/constants/api'
 import { MOCK_CAFE_PRODUCTS, MOCK_MODIFIER_GROUPS } from '@/lib/mock-data'
 import { modifierGroupSchema } from '@/lib/schemas/cafe'
 import type { ModifierGroup } from '@/lib/types'
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? ''
 
 function parseRows(rows: unknown): ModifierGroup[] {
   return modifierGroupSchema.array().parse(rows) as ModifierGroup[]
 }
 
 export async function listModifierGroups(): Promise<ModifierGroup[]> {
-  if (API_BASE) {
-    const res = await fetch(`${API_BASE}/api/v1/modifier-groups`)
-    if (!res.ok) throw new Error(`Failed to list modifier groups: ${res.status}`)
-    const data: unknown = await res.json()
-    return parseRows(data)
+  if (!isApiEnabled) {
+    return parseRows(MOCK_MODIFIER_GROUPS)
   }
-  return parseRows(MOCK_MODIFIER_GROUPS)
+  const { data } = await apiClient.get<ModifierGroup[]>(API_PATHS.modifierGroups)
+  return parseRows(data)
 }
 
 export async function getModifierGroup(id: string): Promise<ModifierGroup | null> {
-  const rows = await listModifierGroups()
-  return rows.find((g) => g.id === id) ?? null
+  if (!isApiEnabled) {
+    const rows = await listModifierGroups()
+    return rows.find((g) => g.id === id) ?? null
+  }
+  try {
+    const { data } = await apiClient.get<ModifierGroup>(`${API_PATHS.modifierGroups}/${id}`)
+    return modifierGroupSchema.parse(data) as ModifierGroup
+  } catch {
+    return null
+  }
 }
 
 /** Count products referencing a modifier group id. */

@@ -6,7 +6,20 @@ export const API_PATHS = {
   locations: '/locations',
   services: '/services',
   serviceCategories: '/service-categories',
+  serviceSlots: '/service-slots',
+  bookings: '/bookings',
+  contacts: '/contacts',
   tags: '/tags',
+  eventPackages: '/event-packages',
+  schedulingOccasions: '/scheduling-occasions',
+  plans: '/plans',
+  privateHire: '/private-hire',
+  orders: '/orders',
+  subscriptions: '/subscriptions',
+  reports: '/reports',
+  modifierGroups: '/modifier-groups',
+  attributeGroups: '/attribute-groups',
+  rotationGroups: '/rotation-groups',
 } as const
 
 export const API_HEADERS = {

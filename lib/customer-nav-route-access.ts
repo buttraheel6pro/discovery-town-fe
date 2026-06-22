@@ -10,10 +10,10 @@ export const CUSTOMER_NAV_PATH_PREFIXES: Record<CustomerNavLabelKey, readonly st
   gym: ['/gym', '/classes', '/class-packs'],
   learn: ['/learn'],
   events: ['/events', '/private-hire'],
-  shop: ['/store/shop', '/shop/checkout', '/shop/order-confirmation'],
-  gifts: ['/store/gifts'],
+  shop: ['/shop', '/shop/checkout', '/shop/order-confirmation'],
+  gifts: ['/gifts', '/gifts/category'],
   rentals: ['/rentals'],
-  cafeFood: ['/store/cafe-food', '/cafe'],
+  cafeFood: ['/cafe'],
 }
 
 export function storeSlugToNavLabelKey(slug: string): CustomerNavLabelKey | null {

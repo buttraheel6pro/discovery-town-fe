@@ -1,9 +1,7 @@
-/** Cafe & Food landing — specials, categories, pickup/delivery CTAs. */
+/** Cafe & Food landing — home-style category cards linking to per-category menu pages. */
 import type { Metadata } from 'next'
 
-import { CustomerFooter } from '@/components/customer/footer'
-import { CafeLandingClient } from '@/components/customer/cafe-landing-client'
-import { CustomerNavbar } from '@/components/customer/navbar'
+import { CafeLandingPage } from '@/components/customer/cafe-landing-page'
 
 export const metadata: Metadata = {
   title: 'Cafe & Food',
@@ -11,13 +9,5 @@ export const metadata: Metadata = {
 }
 
 export default function CafePage() {
-  return (
-    <>
-      <CustomerNavbar />
-      <main className="container mx-auto max-w-6xl px-4 py-8 md:px-6">
-        <CafeLandingClient />
-      </main>
-      <CustomerFooter />
-    </>
-  )
+  return <CafeLandingPage />
 }

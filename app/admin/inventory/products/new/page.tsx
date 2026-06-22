@@ -20,6 +20,8 @@ import { useToast } from '@/hooks/use-toast'
 import { productTypeFromEditorSlug } from '@/lib/product-catalog'
 import { useInventory } from '@/lib/inventory-store'
 import { useScheduling } from '@/lib/scheduling-store'
+import { isAdminApiReady } from '@/lib/api/client'
+import { createProduct as createProductApi } from '@/lib/services/inventory'
 import type { Product } from '@/lib/types'
 
 function slugify(input: string): string {
@@ -246,7 +248,7 @@ function AdminInventoryProductsNewPageInner() {
     }
   }
 
-  function persistCreate() {
+  async function persistCreate() {
     if (isGiftsMode) {
       const parsedBasketCapacity = toIntOrUndefined(giftDraft.basketCapacity)
       if (parsedBasketCapacity == null || parsedBasketCapacity < 0) {
@@ -416,7 +418,25 @@ function AdminInventoryProductsNewPageInner() {
       categories.find((entry) => entry.id === (patch.categoryId ?? categories[0]?.id ?? '')) ??
       null
     const nowIso = new Date().toISOString()
-    const id = `prod-admin-${Date.now()}`
+    let id = `prod-admin-${Date.now()}`
+    if (isAdminApiReady() && patch.name && patch.sku != null && patch.categoryId) {
+      try {
+        const saved = await createProductApi({
+          categoryId: patch.categoryId,
+          name: patch.name,
+          sku: patch.sku ?? id,
+          price: String(patch.price ?? 0),
+          description: patch.description,
+          stockCount: patch.stockCount ?? 0,
+          isActive: patch.isActive ?? true,
+          availableOnline: patch.availableOnline ?? true,
+        })
+        id = saved.id
+      } catch {
+        toast({ title: 'Save failed', description: 'Could not create product. Please try again.', variant: 'destructive' })
+        return
+      }
+    }
     const created: Product = {
       id,
       tenantId: 'tenant-1',

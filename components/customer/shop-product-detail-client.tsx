@@ -16,6 +16,7 @@ import { Separator } from '@/components/ui/separator'
 import { useToast } from '@/hooks/use-toast'
 import { cn, formatPrice, formatSlotDate, formatSlotTimeRange, getStockStatus } from '@/lib/utils'
 import { useInventory } from '@/lib/inventory-store'
+import { navigateToListingAfterCartAdd } from '@/lib/product-detail-navigation'
 import { isRentalProduct } from '@/lib/rental-product'
 import { resolveVariantDimensionGroups } from '@/lib/shop-utils'
 import type { AttributeGroup, Product, ShopProductVariant } from '@/lib/types'
@@ -25,6 +26,7 @@ export interface ShopProductDetailClientProps {
   readonly related: Product[]
   readonly relatedTitle?: string
   readonly categoryName: string | null
+  readonly listingBackHref?: string
   readonly isGiftProduct?: boolean
   readonly linkedProducts?: Product[]
   readonly linkedAddOnProducts?: Product[]
@@ -94,6 +96,7 @@ export function ShopProductDetailClient({
   related,
   relatedTitle = 'You might also like',
   categoryName,
+  listingBackHref,
   isGiftProduct = false,
   linkedProducts = [],
   linkedAddOnProducts = [],
@@ -311,6 +314,18 @@ export function ShopProductDetailClient({
   }
 
   const shopProduct = product
+  const resolvedListingBackHref =
+    listingBackHref ??
+    (isGiftProduct ? '/gifts' : isRentalProduct(shopProduct) ? '/rentals' : '/shop')
+
+  function completeAdd(redirectToListing: boolean): void {
+    if (redirectToListing) {
+      navigateToListingAfterCartAdd(router, resolvedListingBackHref, {
+        itemName: shopProduct.name,
+      })
+    }
+  }
+
   const needsVariantPick =
     !isGiftProduct && !isRentalProduct(shopProduct) && variantGroups.length > 0
 
@@ -536,7 +551,7 @@ export function ShopProductDetailClient({
     setQtyRaw(String(next))
   }
 
-  function add() {
+  function add(redirectToListing = true) {
     if (isGiftProduct) {
       if (selectedGiftQuantity <= 0) {
         return
@@ -577,6 +592,7 @@ export function ShopProductDetailClient({
           addOns: selectedAddOns,
         },
       })
+      completeAdd(redirectToListing)
       return
     }
 
@@ -642,6 +658,7 @@ export function ShopProductDetailClient({
           addOns: selectedRentalAddOns,
         },
       })
+      completeAdd(redirectToListing)
       return
     }
 
@@ -664,6 +681,7 @@ export function ShopProductDetailClient({
           tierDailyTotal: tierDailyTotal ?? undefined,
         },
       })
+      completeAdd(redirectToListing)
       return
     }
     if (shopProduct.rentalBillingType === 'PER_HOUR') {
@@ -686,6 +704,7 @@ export function ShopProductDetailClient({
           tierHourlyTotal: tierHourlyTotal ?? undefined,
         },
       })
+      completeAdd(redirectToListing)
       return
     }
     if (needsVariantPick) {
@@ -734,14 +753,16 @@ export function ShopProductDetailClient({
         shopVariantSku: selectedVariant?.sku,
         unitPrice: selectedVariant?.priceOverride ?? defaultUnitPrice,
       })
+      completeAdd(redirectToListing)
       return
     }
 
     addToCart({ product: shopProduct, quantity: qty })
+    completeAdd(redirectToListing)
   }
 
   function buyNow() {
-    add()
+    add(false)
     router.push('/cart')
   }
 

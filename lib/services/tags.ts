@@ -1,12 +1,11 @@
 /** Tags API service for listing contact tags. */
 import { apiClient } from '@/lib/api/client'
+import { extractListRows, extractPaginationMeta } from '@/lib/api/pagination'
 import { API_PATHS } from '@/lib/constants/api'
 import {
   apiTagSchema,
   createTagRequestSchema,
-  tagsListSchema,
   type ApiTag,
-  type TagsListResponse,
 } from '@/lib/schemas/tags/list'
 import type {
   ContactTag,
@@ -23,9 +22,10 @@ function normalizeParams(params: ListTagsParams): Required<ListTagsParams> {
   }
 }
 
-function mapResponseToTags(parsed: TagsListResponse): ContactTag[] {
-  const rows = Array.isArray(parsed) ? parsed : parsed.data
-  return rows.map(mapApiTagToContactTag)
+function mapResponseToTags(payload: unknown): ContactTag[] {
+  return extractListRows<ApiTag>(payload).map((row) =>
+    mapApiTagToContactTag(apiTagSchema.parse(row)),
+  )
 }
 
 function mapApiTagToContactTag(row: ApiTag): ContactTag {
@@ -46,11 +46,10 @@ export async function listTags(params: ListTagsParams = {}): Promise<ListTagsRes
   const response = await apiClient.get(API_PATHS.tags, {
     params: normalized,
   })
-  const parsed = tagsListSchema.parse(response.data)
 
   return {
-    tags: mapResponseToTags(parsed),
-    meta: Array.isArray(parsed) ? null : (parsed.meta ?? null),
+    tags: mapResponseToTags(response.data),
+    meta: extractPaginationMeta(response.data),
   }
 }
 

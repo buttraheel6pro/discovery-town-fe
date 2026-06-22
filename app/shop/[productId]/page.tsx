@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 import { CafeProductDetailClient } from "@/components/customer/cafe-product-detail-client";
 import { CustomerFooter } from "@/components/customer/footer";
@@ -20,6 +21,14 @@ import {
 } from "@/lib/product-visibility";
 import { resolveProductEditorSlug } from "@/lib/product-catalog";
 import { isRentalProduct } from "@/lib/rental-product";
+import { getCafeCategoryHref } from "@/lib/cafe-category-routes";
+import { getGiftsCategoryHref } from "@/lib/gifts-category-routes";
+import { getRentalsCategoryHref } from "@/lib/rentals-category-routes";
+import { getShopCategoryHref } from "@/lib/shop-category-routes";
+import {
+  resolveListingBackHrefFromSearch,
+} from "@/lib/product-detail-navigation";
+import { collectCafeConsumerCategories } from "@/lib/cafe-consumer-categories";
 import { cn } from "@/lib/utils";
 
 interface ShopProductPageProps {
@@ -37,6 +46,8 @@ export default function ShopProductPage({
   const [rentalSlotEndAt, setRentalSlotEndAt] = useState("");
   const [relatedQuantities, setRelatedQuantities] = useState<Record<string, number>>({});
   const { productId } = use(params);
+  const searchParams = useSearchParams();
+  const fromParam = searchParams.get("from");
   const customerCafeProducts = mergedCafeProductsForCustomer(
     cafeProducts,
     products,
@@ -148,6 +159,44 @@ export default function ShopProductPage({
     }
     return category?.productType ?? null;
   }, [cafeProduct, category?.productType, isCafeInventoryProduct, product]);
+  const fallbackListingBackHref = useMemo(() => {
+    if (isGiftProduct) {
+      return category?.slug ? getGiftsCategoryHref(category.slug) : "/gifts";
+    }
+    if (isRental) {
+      return category?.slug ? getRentalsCategoryHref(category.slug) : "/rentals";
+    }
+    if (cafeProduct || isCafeInventoryProduct) {
+      if (category?.slug) {
+        return getCafeCategoryHref(category.slug);
+      }
+      const cafeCategoryName = cafeProduct?.category?.trim();
+      if (cafeCategoryName) {
+        const cafeCategories = collectCafeConsumerCategories(productCategories);
+        const match = cafeCategories.find(
+          (entry) =>
+            entry.name.toLowerCase().includes(cafeCategoryName.toLowerCase()) ||
+            cafeCategoryName.toLowerCase().includes(entry.name.toLowerCase()),
+        );
+        if (match) {
+          return getCafeCategoryHref(match.slug);
+        }
+      }
+      return "/cafe";
+    }
+    return category?.slug ? getShopCategoryHref(category.slug) : "/shop";
+  }, [
+    cafeProduct,
+    category?.slug,
+    isCafeInventoryProduct,
+    isGiftProduct,
+    isRental,
+    productCategories,
+  ]);
+  const listingBackHref = useMemo(
+    () => resolveListingBackHrefFromSearch(fromParam, fallbackListingBackHref),
+    [fallbackListingBackHref, fromParam],
+  );
 
   return (
     <CustomerNavProductRouteGuard productType={guardProductType}>
@@ -159,6 +208,7 @@ export default function ShopProductPage({
               product={cafeProduct}
               modifierGroups={modifierGroups}
               attributeGroups={attributeGroups}
+              listingBackHref={listingBackHref}
             />
           ) : isCafeInventoryProduct ? (
             <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
@@ -178,6 +228,7 @@ export default function ShopProductPage({
               related={related}
               relatedTitle={relatedTitle}
               categoryName={category?.name ?? null}
+              listingBackHref={listingBackHref}
               isGiftProduct={isGiftProduct}
               linkedProducts={linkedProducts}
               linkedAddOnProducts={linkedAddOnProducts}

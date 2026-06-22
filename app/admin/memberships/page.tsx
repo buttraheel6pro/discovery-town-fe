@@ -48,6 +48,8 @@ import {
 } from '@/lib/membership-helpers'
 import { cn } from '@/lib/utils'
 import type { BillingCycle, MembershipPlan, PlanAddOn, PlanCoupon } from '@/lib/types'
+import { isAdminApiReady } from '@/lib/api/client'
+import { createPlan, updatePlan } from '@/lib/services/plans'
 
 interface MembershipPlanEditDraft {
   name: string
@@ -284,10 +286,29 @@ export default function AdminMembershipsPage() {
       patch.annualPrice = p
     }
 
-    updateMembershipPlan(detailPlan.id, {
-      ...patch,
-      ...buildPlacementPatch(detailPlacement),
-    })
+    const fullPatch = { ...patch, ...buildPlacementPatch(detailPlacement) }
+    updateMembershipPlan(detailPlan.id, fullPatch)
+    if (isAdminApiReady()) {
+      const apiPatch: Record<string, unknown> = {}
+      if (patch.name !== undefined) apiPatch.name = patch.name
+      if (patch.description !== undefined) apiPatch.description = patch.description
+      if (patch.price !== undefined) apiPatch.price = String(patch.price)
+      if (patch.billingCycle !== undefined) apiPatch.billingCycle = patch.billingCycle
+      if (patch.benefits !== undefined) apiPatch.benefits = patch.benefits
+      if (patch.isActive !== undefined) apiPatch.isActive = patch.isActive
+      if (patch.isFeatured !== undefined) apiPatch.isFeatured = patch.isFeatured
+      if (patch.allowFamilyMember !== undefined) apiPatch.allowFamilyMember = patch.allowFamilyMember
+      if (patch.isHouseholdOnly !== undefined) apiPatch.isHouseholdOnly = patch.isHouseholdOnly
+      if (patch.maxChildren !== undefined) apiPatch.maxChildren = patch.maxChildren
+      if (patch.seasonalBadge !== undefined) apiPatch.seasonalBadge = patch.seasonalBadge
+      if (patch.minTermMonths !== undefined) apiPatch.minTermMonths = patch.minTermMonths
+      if (patch.cancellationNoticeDays !== undefined) apiPatch.cancellationNoticeDays = patch.cancellationNoticeDays
+      if (patch.monthlyPrice !== undefined) apiPatch.monthlyPrice = String(patch.monthlyPrice)
+      if (patch.annualPrice !== undefined) apiPatch.annualPrice = String(patch.annualPrice)
+      updatePlan(detailPlan.id, apiPatch as Parameters<typeof updatePlan>[1]).catch(() =>
+        toast({ title: 'Sync error', description: 'Plan saved locally but failed to sync.', variant: 'destructive' })
+      )
+    }
     toast({ title: 'Plan saved', description: detailDraft.name.trim() })
     setDetailPlan(null)
   }
@@ -313,7 +334,7 @@ export default function AdminMembershipsPage() {
   }
 
   const handleBulkSubmit = useCallback(
-    (e: React.FormEvent) => {
+    async (e: React.FormEvent) => {
       e.preventDefault()
       if (!bulkName.trim() || !Number.isFinite(monthlyNum) || !Number.isFinite(annualNum)) {
         return
@@ -377,6 +398,19 @@ export default function AdminMembershipsPage() {
         createdAt: now,
         updatedAt: now,
       }
+      if (isAdminApiReady()) {
+        try {
+          const [savedMonthly, savedAnnual] = await Promise.all([
+            createPlan({ name: monthlyPlan.name, billingCycle: 'MONTHLY', price: String(monthlyNum), description: monthlyPlan.description, benefits: monthlyPlan.benefits, isActive: monthlyPlan.isActive, isFeatured: monthlyPlan.isFeatured, monthlyPrice: String(monthlyNum), annualPrice: String(annualNum), planGroupId: groupId, allowFamilyMember: monthlyPlan.allowFamilyMember, isHouseholdOnly: monthlyPlan.isHouseholdOnly, maxChildren: monthlyPlan.maxChildren, minTermMonths: monthlyPlan.minTermMonths, cancellationNoticeDays: monthlyPlan.cancellationNoticeDays, displayPages: monthlyPlan.displayPages, schedulingCategoryIds: monthlyPlan.schedulingCategoryIds }),
+            createPlan({ name: annualPlan.name, billingCycle: 'ANNUAL', price: String(annualNum), description: annualPlan.description, benefits: annualPlan.benefits, isActive: annualPlan.isActive, isFeatured: annualPlan.isFeatured, monthlyPrice: String(monthlyNum), annualPrice: String(annualNum), planGroupId: groupId, allowFamilyMember: annualPlan.allowFamilyMember, isHouseholdOnly: annualPlan.isHouseholdOnly, maxChildren: annualPlan.maxChildren, minTermMonths: annualPlan.minTermMonths, cancellationNoticeDays: annualPlan.cancellationNoticeDays, displayPages: annualPlan.displayPages, schedulingCategoryIds: annualPlan.schedulingCategoryIds }),
+          ])
+          monthlyPlan.id = savedMonthly.id
+          annualPlan.id = savedAnnual.id
+        } catch {
+          toast({ title: 'Save failed', description: 'Could not create plans. Please try again.', variant: 'destructive' })
+          return
+        }
+      }
       addMembershipPlansBulk(monthlyPlan, annualPlan)
       flushPlanExtras(monthlyPlan.id, bulkMonthlyAddonDrafts, bulkMonthlyCouponIds)
       flushPlanExtras(annualPlan.id, bulkAnnualAddonDrafts, bulkAnnualCouponIds)
@@ -411,7 +445,7 @@ export default function AdminMembershipsPage() {
     ],
   )
 
-  function handleSeasonalSubmit(ev: React.FormEvent) {
+  async function handleSeasonalSubmit(ev: React.FormEvent) {
     ev.preventDefault()
     const p = Number.parseFloat(sPrice)
     if (!sName.trim() || !Number.isFinite(p)) return
@@ -438,6 +472,15 @@ export default function AdminMembershipsPage() {
       createdAt: now,
       updatedAt: now,
       ...buildPlacementPatch(seasonalPlacement),
+    }
+    if (isAdminApiReady()) {
+      try {
+        const saved = await createPlan({ name: plan.name, billingCycle: plan.billingCycle, price: String(p), description: plan.description, benefits: plan.benefits, isActive: plan.isActive, isFeatured: plan.isFeatured, allowFamilyMember: plan.allowFamilyMember, isHouseholdOnly: plan.isHouseholdOnly, maxChildren: plan.maxChildren, seasonalBadge: plan.seasonalBadge, minTermMonths: plan.minTermMonths, cancellationNoticeDays: plan.cancellationNoticeDays, displayPages: plan.displayPages, schedulingCategoryIds: plan.schedulingCategoryIds })
+        plan.id = saved.id
+      } catch {
+        toast({ title: 'Save failed', description: 'Could not create plan. Please try again.', variant: 'destructive' })
+        return
+      }
     }
     addMembershipPlan(plan)
     flushPlanExtras(plan.id, sAddonDrafts, sCouponIds)
@@ -513,7 +556,7 @@ export default function AdminMembershipsPage() {
                 <div className="flex items-center gap-2">
                   <Switch
                     checked={plan.isActive}
-                    onCheckedChange={(c) => updateMembershipPlan(plan.id, { isActive: c })}
+                    onCheckedChange={(c) => { updateMembershipPlan(plan.id, { isActive: c }); if (isAdminApiReady()) updatePlan(plan.id, { isActive: c }).catch(() => {}) }}
                     id={`active-${plan.id}`}
                   />
                   <Label htmlFor={`active-${plan.id}`} className="text-xs">
@@ -523,7 +566,7 @@ export default function AdminMembershipsPage() {
                 <div className="flex items-center gap-2">
                   <Switch
                     checked={plan.isFeatured}
-                    onCheckedChange={(c) => updateMembershipPlan(plan.id, { isFeatured: c })}
+                    onCheckedChange={(c) => { updateMembershipPlan(plan.id, { isFeatured: c }); if (isAdminApiReady()) updatePlan(plan.id, { isFeatured: c }).catch(() => {}) }}
                     id={`feat-${plan.id}`}
                   />
                   <Label htmlFor={`feat-${plan.id}`} className="text-xs">

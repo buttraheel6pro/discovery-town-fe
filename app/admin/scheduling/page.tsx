@@ -25,6 +25,8 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { LABELS } from '@/lib/constants/ui-labels'
 import { useScheduling } from '@/lib/scheduling-store'
+import { isAdminApiReady } from '@/lib/api/client'
+import { cancelSlot as cancelSlotApi } from '@/lib/services/slots'
 import { cn, formatSlotDate, formatSlotTimeRange, formatPrice } from '@/lib/utils'
 import type { SchedulingSlotStatus, SchedulingServiceType } from '@/lib/types'
 
@@ -83,7 +85,12 @@ export default function AdminSchedulingPage() {
 
   function handleConfirmCancelSelected() {
     const reason = cancelReason.trim() || 'Cancelled by admin'
-    selectedIds.forEach((id) => cancelSlot(id, reason))
+    selectedIds.forEach((id) => {
+      cancelSlot(id, reason)
+      if (isAdminApiReady()) {
+        cancelSlotApi(id, reason).catch(() => {})
+      }
+    })
     setSelected({})
     setCancelReason('')
     setCancelOpen(false)

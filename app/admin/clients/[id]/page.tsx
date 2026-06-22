@@ -31,6 +31,8 @@ import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useClients } from '@/lib/client-store'
 import { useScheduling } from '@/lib/scheduling-store'
+import { isAdminApiReady } from '@/lib/api/client'
+import { addContactCredit } from '@/lib/services/contacts'
 import { isDocumentSignedAndValid } from '@/lib/utils'
 import type { ClientDocument, DocumentType } from '@/lib/types'
 import { ChevronLeft } from 'lucide-react'
@@ -362,6 +364,9 @@ export default function AdminClientDetailPage() {
             createdAt: new Date().toISOString(),
           }
           addCredit(contact.id, entry)
+          if (isAdminApiReady()) {
+            addContactCredit(contact.id, { amount, reason: reason || 'Manual credit' }).catch(() => {})
+          }
           setCreditOpen(false)
         }}
       />

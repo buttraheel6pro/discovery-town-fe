@@ -26,9 +26,9 @@ const footerLinks = {
     { label: 'Learn', href: '/learn' },
   ],
   Shop: [
-    { label: 'Shop', href: '/store/shop' },
-    { label: 'Café & Food', href: '/store/cafe-food' },
-    { label: 'Gifts', href: '/store/gifts' },
+    { label: 'Shop', href: '/shop' },
+    { label: 'Café & Food', href: '/cafe' },
+    { label: 'Gifts', href: '/gifts' },
     { label: 'Rentals', href: '/rentals' },
   ],
   Account: [

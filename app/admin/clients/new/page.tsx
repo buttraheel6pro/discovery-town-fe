@@ -23,6 +23,12 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
 import { useClients } from '@/lib/client-store'
+import { isAdminApiReady } from '@/lib/api/client'
+import {
+  createContact,
+  assignTagToContact,
+  addContactRelationship,
+} from '@/lib/services/contacts'
 import type { CmContact, ContactType, RelationshipType } from '@/lib/types'
 
 export default function AdminNewClientPage() {
@@ -50,12 +56,53 @@ export default function AdminNewClientPage() {
   const [relationshipType, setRelationshipType] =
     useState<RelationshipType>('PARENT_CHILD')
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!firstName.trim() || !lastName.trim()) return
 
     const now = new Date().toISOString()
-    const id = `cm-${Date.now()}`
+    let id = `cm-${Date.now()}`
+
+    if (isAdminApiReady()) {
+      try {
+        const meta: Record<string, string | boolean | null> = {
+          marketingOptIn,
+          preferredChannel,
+        }
+        if (notes.trim()) meta.notes = notes.trim()
+        if (contactType === 'CHILD') {
+          if (allergies.trim()) meta.allergies = allergies.trim()
+          if (medicalNotes.trim()) meta.medicalNotes = medicalNotes.trim()
+          if (schoolName.trim()) meta.schoolName = schoolName.trim()
+          if (yearGroup.trim()) meta.yearGroup = yearGroup.trim()
+        }
+        const saved = await createContact({
+          contactType,
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          email: email.trim() || undefined,
+          phone: phone.trim() || undefined,
+          dob: dob || undefined,
+          address: [addressLine1, city, postcode].filter(Boolean).join(', ') || undefined,
+          marketingOptIn,
+          preferredChannel,
+          metadata: meta,
+        })
+        id = saved.id
+        if (selectedTagIds.length > 0) {
+          await Promise.allSettled(selectedTagIds.map((tagId) => assignTagToContact(id, tagId)))
+        }
+        if (relatedContactId) {
+          await addContactRelationship(id, {
+            otherContactId: relatedContactId,
+            relationshipType,
+          }).catch(() => {})
+        }
+      } catch {
+        return
+      }
+    }
+
     const contact: CmContact = {
       id,
       tenantId: 'tenant-1',
@@ -73,8 +120,7 @@ export default function AdminNewClientPage() {
         preferredChannel,
         notes: notes.trim() || undefined,
         allergies: contactType === 'CHILD' ? allergies.trim() || undefined : undefined,
-        medicalNotes:
-          contactType === 'CHILD' ? medicalNotes.trim() || undefined : undefined,
+        medicalNotes: contactType === 'CHILD' ? medicalNotes.trim() || undefined : undefined,
         schoolName: contactType === 'CHILD' ? schoolName.trim() || undefined : undefined,
         yearGroup: contactType === 'CHILD' ? yearGroup.trim() || undefined : undefined,
       },
@@ -89,18 +135,18 @@ export default function AdminNewClientPage() {
     }
 
     addContact(contact)
-    selectedTagIds.forEach((tagId) => assignTag(id, tagId))
-
-    if (relatedContactId) {
-      const rel = {
-        id: `rel-${id}-${relatedContactId}-${Date.now()}`,
-        tenantId: 'tenant-1',
-        contactId: relatedContactId,
-        relatedContactId: id,
-        relationshipType,
-        createdAt: now,
+    if (!isAdminApiReady()) {
+      selectedTagIds.forEach((tagId) => assignTag(id, tagId))
+      if (relatedContactId) {
+        addRelationship({
+          id: `rel-${id}-${relatedContactId}-${Date.now()}`,
+          tenantId: 'tenant-1',
+          contactId: relatedContactId,
+          relatedContactId: id,
+          relationshipType,
+          createdAt: now,
+        })
       }
-      addRelationship(rel)
     }
 
     router.push(`/admin/clients/${id}`)

@@ -33,6 +33,7 @@ import { BookingModeBadge } from "@/components/admin/booking-mode-badge";
 import { CategoryPlacedPackagesSection } from "@/components/admin/category-placed-packages-section";
 import { OpenPlayMembershipAdminSection } from "@/components/admin/open-play-membership-admin-section";
 import { CrudModal } from "@/components/admin/crud-modal";
+import { SchedulingCategoryImageField } from "@/components/admin/scheduling-category-image-field";
 import { CustomerNavSettingsModal } from "@/components/admin/customer-nav-settings-modal";
 import { EventTypeBadge } from "@/components/admin/event-type-badge";
 import {
@@ -92,6 +93,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useClients } from "@/lib/client-store";
+import { imageUrlForApiPayload, isInlineImageDataUrl } from "@/lib/client-image-compression";
 import { newAdminEntityId } from "@/lib/scheduling-admin-builders";
 import {
   OPEN_BOOKING_SLOT_INCREMENT_OPTIONS,
@@ -101,7 +103,14 @@ import {
 import {
   createServiceCategory,
   listServiceCategories,
+  updateServiceCategory,
+  deleteServiceCategory,
 } from "@/lib/services/service-categories";
+import {
+  createSchedulingService,
+  updateSchedulingService,
+} from "@/lib/services/scheduling-services";
+import { isAdminApiReady } from "@/lib/api/client";
 import {
   productTypeToCustomerNavKey,
   schedulingTopLevelToNavKey,
@@ -252,6 +261,7 @@ type CategoryDraft = {
   parentTopLevelId: SchedulingTopLevelId;
   name: string;
   icon: string;
+  imageUrl: string;
   displayOrder: string;
   isActive: boolean;
   description: string;
@@ -363,6 +373,7 @@ function AdminSchedulingServicesPageContent() {
   const [productSubCategoryFormOpen, setProductSubCategoryFormOpen] =
     useState(false);
   const [productSubCategoryName, setProductSubCategoryName] = useState("");
+  const [productSubCategoryImageUrl, setProductSubCategoryImageUrl] = useState("");
   const [productSubCategoryIsActive, setProductSubCategoryIsActive] =
     useState(true);
   const [productSubCategoryParentId, setProductSubCategoryParentId] = useState<
@@ -498,6 +509,7 @@ function AdminSchedulingServicesPageContent() {
     parentTopLevelId: "GYM",
     name: "",
     icon: "",
+    imageUrl: "",
     displayOrder: String(
       (sortedCategories[sortedCategories.length - 1]?.displayOrder ?? 0) + 1,
     ),
@@ -1370,6 +1382,42 @@ function AdminSchedulingServicesPageContent() {
       ...eventBookingSchedulePatchFromDraft(editDraft),
     };
     updateService(selected.id, servicePatch);
+    if (isAdminApiReady()) {
+      updateSchedulingService(selected.id, {
+        categoryId: servicePatch.categoryId,
+        locationId: servicePatch.locationId,
+        name: servicePatch.name,
+        description: servicePatch.description ?? undefined,
+        subscriptionPrice: servicePatch.subscriptionPrice,
+        requiresWaiver: servicePatch.requiresWaiver,
+        ageMin: servicePatch.ageMin,
+        ageMax: servicePatch.ageMax,
+        basePrice: servicePatch.basePrice,
+        capacity: servicePatch.capacity,
+        durationMinutes: servicePatch.durationMinutes,
+        isActive: servicePatch.isActive,
+        minDurationMinutes: servicePatch.minDurationMinutes,
+        maxDurationMinutes: servicePatch.maxDurationMinutes,
+        slotIncrementMinutes: servicePatch.slotIncrementMinutes,
+        maxConcurrent: servicePatch.maxConcurrent,
+        minAdvanceHours: servicePatch.minAdvanceHours,
+        maxAdvanceHours: servicePatch.maxAdvanceHours,
+        siblingPrice: servicePatch.siblingPrice,
+        freeAdultCount: servicePatch.freeAdultCount,
+        maxPassCount: servicePatch.maxPassCount,
+        additionalAdultPrice: servicePatch.additionalAdultPrice,
+        minSeats: servicePatch.minSeats,
+        pricePerHour: servicePatch.pricePerHour,
+        minChildSeats: servicePatch.minChildSeats,
+        maxChildSeats: servicePatch.maxChildSeats,
+        minAdultSeats: servicePatch.minAdultSeats,
+        maxAdultSeats: servicePatch.maxAdultSeats,
+        additionalChildPrice: servicePatch.additionalChildPrice,
+        isPackageService: servicePatch.isPackageService,
+      }).catch(() => {
+        toast({ title: "Sync error", description: "Service update failed to save.", variant: "destructive" });
+      });
+    }
     setSelected(null);
   }
 
@@ -1478,7 +1526,7 @@ function AdminSchedulingServicesPageContent() {
     };
   }
 
-  function persistCreate() {
+  async function persistCreate() {
     const basePrice = parseFloat(createDraft.basePrice);
     const capacity = parseInt(createDraft.capacity, 10);
     const durationMinutes = parseInt(createDraft.durationMinutes, 10);
@@ -1521,9 +1569,52 @@ function AdminSchedulingServicesPageContent() {
       ) ?? selectedCategory;
     if (!category) return;
 
-    const id = newAdminEntityId("svc");
+    let serviceId = newAdminEntityId("svc");
+    if (isAdminApiReady()) {
+      try {
+        const saved = await createSchedulingService({
+          categoryId: category.id,
+          serviceType: createDraft.serviceType,
+          bookingMode: createDraft.bookingMode,
+          eventVisibility: createDraft.eventType,
+          locationId: createDraft.locationId.trim() || null,
+          name: createDraft.name.trim(),
+          description: createDraft.description.trim() || undefined,
+          subscriptionPrice,
+          requiresWaiver: createDraft.requiresWaiver,
+          ageMin,
+          ageMax,
+          basePrice,
+          capacity,
+          durationMinutes,
+          isActive: createDraft.isActive,
+          minDurationMinutes: createDraft.bookingMode === "OPEN" ? (minDurationMinutes ?? 60) : minDurationMinutes,
+          maxDurationMinutes: createDraft.bookingMode === "OPEN" ? (maxDurationMinutes ?? 240) : maxDurationMinutes,
+          slotIncrementMinutes,
+          maxConcurrent: createDraft.bookingMode === "OPEN" ? (maxConcurrent ?? 3) : maxConcurrent,
+          minAdvanceHours: minAdvanceHours ?? 0,
+          maxAdvanceHours: maxAdvanceHours ?? 168,
+          siblingPrice: createDraft.siblingPrice.trim() || undefined,
+          freeAdultCount: freeAdultCountC,
+          maxPassCount: (() => { const p = parseOptionalInt(createDraft.maxPassCount); return p != null && p >= 1 ? p : undefined; })(),
+          additionalAdultPrice: createDraft.additionalAdultPrice.trim() || undefined,
+          minSeats: minSeatsC,
+          pricePerHour: createDraft.pricePerHour.trim() || undefined,
+          minChildSeats: minChildSeatsC,
+          maxChildSeats: maxChildSeatsC,
+          minAdultSeats: minAdultSeatsC,
+          maxAdultSeats: maxAdultSeatsC,
+          additionalChildPrice: createDraft.additionalChildPrice.trim() || undefined,
+          isPackageService: createDraft.isPackageService,
+        });
+        serviceId = saved.id;
+      } catch {
+        toast({ title: "Save failed", description: "Could not create service. Please try again.", variant: "destructive" });
+        return;
+      }
+    }
     const created = buildServiceForCategory({
-      id,
+      id: serviceId,
       categoryId: category.id,
       category,
       serviceType: createDraft.serviceType,
@@ -1621,7 +1712,7 @@ function AdminSchedulingServicesPageContent() {
       pendingServiceAddOnLinks: [],
     });
     const redirectParams = new URLSearchParams({
-      serviceId: id,
+      serviceId: serviceId,
       returnTo: contextualReturnTo,
     });
     router.push(`/admin/scheduling/new/recurring?${redirectParams.toString()}`);
@@ -1654,6 +1745,7 @@ function AdminSchedulingServicesPageContent() {
       parentTopLevelId: getSchedulingTopLevelIdFromCategory(category),
       name: category.name,
       icon: category.icon ?? "",
+      imageUrl: category.imageUrl ?? "",
       displayOrder: String(category.displayOrder),
       isActive: category.isActive,
       description: category.description ?? "",
@@ -1902,6 +1994,7 @@ function AdminSchedulingServicesPageContent() {
     setProductSubCategoryMenuSlug(menuSlug);
     setProductSubCategoryParentId(parentId);
     setProductSubCategoryName("");
+    setProductSubCategoryImageUrl("");
     setProductSubCategoryIsActive(true);
     setEditingProductSubCategoryId(null);
     setProductSubCategoryAcknowledgmentRows(
@@ -1920,6 +2013,7 @@ function AdminSchedulingServicesPageContent() {
       category.placementParentId ?? category.parentId ?? null,
     );
     setProductSubCategoryName(category.name);
+    setProductSubCategoryImageUrl(category.imageUrl ?? "");
     setProductSubCategoryIsActive(category.isActive ?? true);
     setEditingProductSubCategoryId(category.id);
     setProductSubCategoryAcknowledgmentRows(
@@ -1931,6 +2025,16 @@ function AdminSchedulingServicesPageContent() {
   function persistProductSubCategory() {
     const trimmedName = productSubCategoryName.trim();
     if (!trimmedName) return;
+
+    const trimmedImage = productSubCategoryImageUrl.trim();
+    if (trimmedImage && isInlineImageDataUrl(trimmedImage)) {
+      toast({
+        title: "Image saved in this browser",
+        description: isAdminApiReady()
+          ? "Uploaded photos are stored locally until you use an https:// image URL."
+          : "Saved with your catalog. Consumer pages will show it after you close this dialog.",
+      });
+    }
 
     const menuSlug = productSubCategoryMenuSlug;
     const nativeRootId = isProductCatalogSlug(menuSlug)
@@ -1965,6 +2069,7 @@ function AdminSchedulingServicesPageContent() {
       if (!existing) return;
       updateProductCategory(editingProductSubCategoryId, {
         name: trimmedName,
+        imageUrl: trimmedImage || undefined,
         isActive: productSubCategoryIsActive,
         ...(isRentalSubCategory ? { rentalAcknowledgments: normalizedAcks } : {}),
         ...patchProductSubCategoryPlacement(
@@ -1988,6 +2093,7 @@ function AdminSchedulingServicesPageContent() {
       name: trimmedName,
       productType: nativeParent?.productType ?? "shop",
       parentId: nativeRootId,
+      imageUrl: trimmedImage || undefined,
       isActive: productSubCategoryIsActive,
       ...(isRentalSubCategory ? { rentalAcknowledgments: normalizedAcks } : {}),
     });
@@ -1998,6 +2104,7 @@ function AdminSchedulingServicesPageContent() {
 
     setProductSubCategoryFormOpen(false);
     setProductSubCategoryName("");
+    setProductSubCategoryImageUrl("");
     setProductSubCategoryIsActive(true);
     setProductSubCategoryParentId(null);
     setEditingProductSubCategoryId(null);
@@ -2039,12 +2146,21 @@ function AdminSchedulingServicesPageContent() {
     setDeleteProductId(null);
   }
 
-  function confirmDeleteCategory() {
+  async function confirmDeleteCategory() {
     if (!deleteCategoryId) return;
     const assignedServiceCount = countByCategory.get(deleteCategoryId) ?? 0;
     if (assignedServiceCount > 0) {
       setDeleteCategoryId(null);
       return;
+    }
+    if (isAdminApiReady()) {
+      try {
+        await deleteServiceCategory(deleteCategoryId);
+      } catch {
+        toast({ title: "Delete failed", description: "Could not delete category. Please try again.", variant: "destructive" });
+        setDeleteCategoryId(null);
+        return;
+      }
     }
     removeCategory(deleteCategoryId);
     if (categoryId === deleteCategoryId) {
@@ -2059,9 +2175,22 @@ function AdminSchedulingServicesPageContent() {
     setDeleteCategoryId(null);
   }
 
-  function persistCategory() {
+  async function persistCategory() {
     const displayOrder = parseInt(categoryDraft.displayOrder, 10);
     if (!categoryDraft.name.trim() || !Number.isFinite(displayOrder)) return;
+
+    const toastLocalCategoryImage = (): void => {
+      const trimmedImage = categoryDraft.imageUrl.trim();
+      if (!trimmedImage || !isInlineImageDataUrl(trimmedImage)) {
+        return;
+      }
+      toast({
+        title: "Image saved in this browser",
+        description: isAdminApiReady()
+          ? "Uploaded photos are stored locally until you use an https:// image URL."
+          : "Saved with your catalog. Consumer pages will show it after you close this dialog.",
+      });
+    };
 
     const freeInfantMonths =
       categoryDraft.freeInfantMonths.trim().length > 0
@@ -2085,6 +2214,7 @@ function AdminSchedulingServicesPageContent() {
       const normalizedPatch = {
         name: categoryDraft.name.trim(),
         icon: categoryDraft.icon.trim() || null,
+        imageUrl: categoryDraft.imageUrl.trim() || undefined,
         displayOrder,
         isActive: categoryDraft.isActive,
         description: categoryDraft.description.trim() || undefined,
@@ -2126,6 +2256,16 @@ function AdminSchedulingServicesPageContent() {
             }),
           ),
         });
+        if (isAdminApiReady()) {
+          const apiImageUrl = imageUrlForApiPayload(categoryDraft.imageUrl)
+          updateServiceCategory(editingCategoryId, {
+            ...normalizedPatch,
+            ...(apiImageUrl !== undefined ? { imageUrl: apiImageUrl } : {}),
+          }).catch(() => {
+            toast({ title: "Sync error", description: "Category update failed to save.", variant: "destructive" });
+          });
+        }
+        toastLocalCategoryImage();
         setCategoryOpen(false);
         setEditingCategoryId(null);
         return;
@@ -2143,7 +2283,17 @@ function AdminSchedulingServicesPageContent() {
             }),
           ),
         });
+        if (isAdminApiReady()) {
+          const apiImageUrl = imageUrlForApiPayload(categoryDraft.imageUrl)
+          updateServiceCategory(editingCategoryId, {
+            ...normalizedPatch,
+            ...(apiImageUrl !== undefined ? { imageUrl: apiImageUrl } : {}),
+          }).catch(() => {
+            toast({ title: "Sync error", description: "Category update failed to save.", variant: "destructive" });
+          });
+        }
       }
+      toastLocalCategoryImage();
       setCategoryOpen(false);
       setEditingCategoryId(null);
       return;
@@ -2157,9 +2307,26 @@ function AdminSchedulingServicesPageContent() {
       slugifyCategoryName(categoryDraft.name) ||
       newAdminEntityId("cat").slice(4);
     const idBase = `${categoryPrefixByTopLevel[targetTopLevel]}${categorySlug}`;
-    const catId = categories.some((category) => category.id === idBase)
+    let catId = categories.some((category) => category.id === idBase)
       ? `${idBase}-${newAdminEntityId("cat").slice(4)}`
       : idBase;
+    if (isAdminApiReady()) {
+      try {
+        const apiImageUrl = imageUrlForApiPayload(categoryDraft.imageUrl)
+        const saved = await createServiceCategory({
+          name: categoryDraft.name.trim(),
+          icon: categoryDraft.icon.trim() || undefined,
+          ...(apiImageUrl !== undefined ? { imageUrl: apiImageUrl } : {}),
+          displayOrder: String(displayOrder),
+          isActive: categoryDraft.isActive,
+          catalogSlug: isSchedulingCatalogSlug(menuSlug) ? menuSlug : undefined,
+        });
+        catId = saved.id;
+      } catch {
+        toast({ title: "Save failed", description: "Could not create category. Please try again.", variant: "destructive" });
+        return;
+      }
+    }
     const linkedAddOns = categoryDraft.pendingAddOnLinks.map((l) => ({
       id: newAdminEntityId("cao"),
       categoryId: catId,
@@ -2178,6 +2345,7 @@ function AdminSchedulingServicesPageContent() {
       id: catId,
       name: categoryDraft.name.trim(),
       icon: categoryDraft.icon.trim() || null,
+      imageUrl: categoryDraft.imageUrl.trim() || undefined,
       displayOrder,
       isActive: categoryDraft.isActive,
       description: categoryDraft.description.trim() || undefined,
@@ -2201,6 +2369,7 @@ function AdminSchedulingServicesPageContent() {
     addCategory(created);
     setCategoryId(created.id);
     setCreateDraft((d) => ({ ...d, categoryId: created.id }));
+    toastLocalCategoryImage();
     setCategoryOpen(false);
   }
 
@@ -2222,7 +2391,7 @@ function AdminSchedulingServicesPageContent() {
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-        <Card className="lg:col-span-3">
+        <Card className="min-w-0 lg:col-span-3">
           <CardHeader>
             <CardTitle className="text-base">
               {LABELS.serviceCategory}
@@ -2231,7 +2400,7 @@ function AdminSchedulingServicesPageContent() {
               Browse by top-level groups and category sections.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-2">
+          <CardContent className="min-w-0 space-y-2">
             <Accordion type="single" collapsible className="w-full space-y-2">
               {CATALOG_MENU_ORDER.filter((entry) => entry.kind === "scheduling").map(
                 (menuEntry) => {
@@ -2374,7 +2543,7 @@ function AdminSchedulingServicesPageContent() {
                               setDragOverCategoryId(null);
                             }}
                             className={cn(
-                              "flex items-center gap-2 rounded-md px-2 py-2 transition-colors",
+                              "flex min-w-0 items-center gap-2 rounded-md px-2 py-2 transition-colors",
                               dragOverCategoryId === category.id &&
                                 draggingCategoryId !== category.id &&
                                 "bg-accent/10",
@@ -2384,7 +2553,7 @@ function AdminSchedulingServicesPageContent() {
                             )}
                           >
                             <span
-                              className="cursor-grab text-muted-foreground/90"
+                              className="shrink-0 cursor-grab text-muted-foreground/90"
                               aria-label={`Drag ${category.name}`}
                             >
                               <GripVertical className="h-4 w-4" />
@@ -2397,14 +2566,15 @@ function AdminSchedulingServicesPageContent() {
                                 setCategoryId(category.id);
                                 setServiceCategoryFilterId(category.id);
                               }}
-                              className="min-w-0 flex-1 text-left text-sm font-medium"
+                              className="min-w-0 flex-1 overflow-hidden text-left text-sm font-medium"
+                              title={category.name}
                             >
-                              <span className="truncate">{category.name}</span>
+                              <span className="block truncate">{category.name}</span>
                             </button>
                             <Badge
                               variant="outline"
                               className={cn(
-                                "h-5 text-[10px]",
+                                "h-5 shrink-0 text-[10px]",
                                 isActiveCategory
                                   ? "border-sidebar-accent-foreground/30 bg-sidebar-accent/40 text-sidebar-accent-foreground"
                                   : "",
@@ -2418,7 +2588,7 @@ function AdminSchedulingServicesPageContent() {
                                   type="button"
                                   variant="ghost"
                                   size="icon"
-                                  className="h-7 w-7"
+                                  className="h-7 w-7 shrink-0"
                                   aria-label={`${category.name} actions`}
                                   onClick={(event) => event.stopPropagation()}
                                   onPointerDown={(event) => event.stopPropagation()}
@@ -2499,7 +2669,7 @@ function AdminSchedulingServicesPageContent() {
                               setDragOverProductMenuCategoryId(null);
                             }}
                             className={cn(
-                              "flex items-center gap-2 rounded-md px-2 py-2 text-xs transition-colors",
+                              "flex min-w-0 items-center gap-2 rounded-md px-2 py-2 text-xs transition-colors",
                               dragOverProductMenuCategoryId === sub.id &&
                                 draggingProductMenuCategoryId !== sub.id &&
                                 "bg-accent/10",
@@ -2515,11 +2685,12 @@ function AdminSchedulingServicesPageContent() {
                                 setCatalogView("products");
                                 setSelectedProductMenuCategoryId(sub.id);
                               }}
-                              className="min-w-0 flex-1 truncate text-left font-medium"
+                              className="min-w-0 flex-1 overflow-hidden truncate text-left font-medium"
+                              title={sub.name}
                             >
                               {sub.name}
                             </button>
-                            <Badge variant="outline" className="h-5 text-[10px]">
+                            <Badge variant="outline" className="h-5 shrink-0 text-[10px]">
                               {subCount}
                             </Badge>
                             <DropdownMenu>
@@ -2672,7 +2843,7 @@ function AdminSchedulingServicesPageContent() {
                           <div
                             key={`sched-${category.id}`}
                             className={cn(
-                              "mb-1 flex items-center gap-2 rounded-md px-2 py-1.5 text-xs",
+                              "mb-1 flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-xs",
                               isActiveCategory
                                 ? "bg-sidebar-accent text-sidebar-accent-foreground"
                                 : "text-muted-foreground",
@@ -2686,11 +2857,12 @@ function AdminSchedulingServicesPageContent() {
                                 setCategoryId(category.id);
                                 setServiceCategoryFilterId(category.id);
                               }}
-                              className="min-w-0 flex-1 truncate text-left"
+                              className="min-w-0 flex-1 overflow-hidden truncate text-left"
+                              title={category.name}
                             >
                               {category.name}
                             </button>
-                            <Badge variant="outline" className="h-5 text-[10px]">
+                            <Badge variant="outline" className="h-5 shrink-0 text-[10px]">
                               {serviceCount}
                             </Badge>
                             <DropdownMenu>
@@ -2699,7 +2871,7 @@ function AdminSchedulingServicesPageContent() {
                                   type="button"
                                   variant="ghost"
                                   size="icon"
-                                  className="h-6 w-6"
+                                  className="h-6 w-6 shrink-0"
                                   aria-label={`${category.name} actions`}
                                 >
                                   <MoreHorizontal className="h-3.5 w-3.5" />
@@ -2806,7 +2978,7 @@ function AdminSchedulingServicesPageContent() {
                                 }`}
                               >
                                 <div className="flex min-w-0 items-center gap-1.5">
-                                  <span className="cursor-grab text-muted-foreground/90">
+                                  <span className="shrink-0 cursor-grab text-muted-foreground/90">
                                     <GripVertical className="h-3.5 w-3.5" />
                                   </span>
                                   <button
@@ -2815,7 +2987,8 @@ function AdminSchedulingServicesPageContent() {
                                       setCatalogView("products");
                                       setSelectedProductMenuCategoryId(sub.id);
                                     }}
-                                    className="min-w-0 flex-1 text-left"
+                                    className="min-w-0 flex-1 overflow-hidden text-left"
+                                    title={sub.name}
                                   >
                                     <span className="block truncate">
                                       {sub.name}
@@ -3190,6 +3363,7 @@ function AdminSchedulingServicesPageContent() {
           setProductSubCategoryFormOpen(open);
           if (!open) {
             setProductSubCategoryName("");
+            setProductSubCategoryImageUrl("");
             setProductSubCategoryIsActive(true);
             setProductSubCategoryParentId(null);
             setEditingProductSubCategoryId(null);
@@ -3208,7 +3382,7 @@ function AdminSchedulingServicesPageContent() {
               ? "Create a sub-category and optional checkout acknowledgments for rentals."
               : "Create a sub-category under the selected category."
         }
-        size={isRentalProductSubCategoryModal ? "md" : "sm"}
+        size="md"
         variant={editingProductSubCategoryId ? "edit" : "create"}
         footer={
           <>
@@ -3268,6 +3442,11 @@ function AdminSchedulingServicesPageContent() {
               placeholder="Sub-category name"
             />
           </div>
+          <SchedulingCategoryImageField
+            value={productSubCategoryImageUrl}
+            onChange={setProductSubCategoryImageUrl}
+            helpText="Shown on Cafe & Food, Shop, Gifts, and Rentals category cards and hero banners. Uploads are automatically compressed. For production APIs, prefer an https:// image URL."
+          />
           <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
             <span className="text-sm font-medium text-foreground">
               Active
@@ -3583,6 +3762,10 @@ function AdminSchedulingServicesPageContent() {
               />
             </div>
           </div>
+          <SchedulingCategoryImageField
+            value={categoryDraft.imageUrl}
+            onChange={(imageUrl) => setCategoryDraft((draft) => ({ ...draft, imageUrl }))}
+          />
           <div className="flex items-center justify-between">
             <Label htmlFor="cat-active">Active</Label>
             <Switch

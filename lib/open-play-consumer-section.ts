@@ -13,7 +13,7 @@ import {
   isSchedulingCatalogSlug,
   type CatalogSlug,
 } from '@/lib/catalog-slugs'
-import { isConsumerListedSchedulingService } from '@/lib/scheduling-visibility'
+import { isConsumerListedSchedulingService, type SchedulingCategoryConsumerVisibilityFields } from '@/lib/scheduling-visibility'
 import type { OpenPlayMembershipOffer } from '@/lib/open-play-membership-offers'
 import type { MembershipDisplayPage } from '@/lib/membership-placement'
 import type {
@@ -249,7 +249,7 @@ export function collectOpenPlaySessionServices(
   categories: readonly SchedulingCategory[],
   services: readonly SchedulingService[],
   slots: readonly SchedulingSlot[],
-  categoryById: ReadonlyMap<string, { readonly isActive: boolean }>,
+  categoryById: ReadonlyMap<string, SchedulingCategoryConsumerVisibilityFields>,
 ): SchedulingService[] {
   const aliasIds = new Set(openPlayCategoryIds(categories))
   return services
@@ -275,7 +275,7 @@ export function buildOpenPlayConsumerSection(params: {
   readonly services: readonly SchedulingService[]
   readonly slots: readonly SchedulingSlot[]
   readonly plans: readonly MembershipPlan[]
-  readonly categoryById: ReadonlyMap<string, { readonly isActive: boolean }>
+  readonly categoryById: ReadonlyMap<string, SchedulingCategoryConsumerVisibilityFields>
   readonly description: string
   readonly productRootIdsBySlug?: Readonly<Record<string, string | undefined>>
   readonly productCategories?: readonly Pick<

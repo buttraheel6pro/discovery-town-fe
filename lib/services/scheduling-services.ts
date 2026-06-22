@@ -1,10 +1,10 @@
 /** Scheduling services API integration for catalog listing. */
 import { apiClient } from '@/lib/api/client'
+import { extractListRows, extractPaginationMeta } from '@/lib/api/pagination'
 import { API_PATHS } from '@/lib/constants/api'
 import {
-  schedulingServicesListSchema,
+  apiSchedulingServiceSchema,
   type ApiSchedulingService,
-  type SchedulingServicesListResponse,
 } from '@/lib/schemas/services/list'
 import type {
   PaginationMeta,
@@ -114,9 +114,149 @@ function mapApiSchedulingService(item: ApiSchedulingService): SchedulingService 
   }
 }
 
-function mapResponseToServices(parsed: SchedulingServicesListResponse): SchedulingService[] {
-  const rows = Array.isArray(parsed) ? parsed : parsed.data
-  return rows.map(mapApiSchedulingService)
+function mapResponseToServices(payload: unknown): SchedulingService[] {
+  return extractListRows<ApiSchedulingService>(payload).map((row) =>
+    mapApiSchedulingService(apiSchedulingServiceSchema.parse(row)),
+  )
+}
+
+function slotIncrementToEnum(minutes: number | null | undefined): 'NONE' | 'HALF_HOUR' | 'HOUR' {
+  if (minutes === 30) return 'HALF_HOUR'
+  if (minutes === 60) return 'HOUR'
+  return 'NONE'
+}
+
+export interface CreateSchedulingServicePayload {
+  categoryId: string
+  serviceType: string
+  name: string
+  description?: string | null
+  durationMinutes: number
+  capacity: number
+  basePrice: number
+  subscriptionPrice?: number | null
+  locationId?: string | null
+  isActive?: boolean
+  ageMin?: number | null
+  ageMax?: number | null
+  requiresWaiver?: boolean
+  bookingMode?: string
+  slotIncrementMinutes?: number | null
+  minDurationMinutes?: number | null
+  maxDurationMinutes?: number | null
+  maxConcurrent?: number | null
+  minAdvanceHours?: number | null
+  maxAdvanceHours?: number | null
+  isPackageService?: boolean
+  siblingPrice?: string
+  freeAdultCount?: number
+  additionalAdultPrice?: string
+  minSeats?: number
+  pricePerHour?: string
+  minChildSeats?: number | null
+  maxChildSeats?: number | null
+  minAdultSeats?: number | null
+  maxAdultSeats?: number | null
+  additionalChildPrice?: string
+  maxPassCount?: number | null
+  eventBookingScheduleMode?: string
+  eventVisibility?: string
+}
+
+function buildServiceApiBody(payload: CreateSchedulingServicePayload): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    categoryId: payload.categoryId,
+    serviceType: payload.serviceType,
+    name: payload.name,
+    durationMinutes: payload.durationMinutes,
+    capacity: payload.capacity,
+    basePrice: String(payload.basePrice),
+    slotIncrement: slotIncrementToEnum(payload.slotIncrementMinutes),
+  }
+  if (payload.description != null) body.description = payload.description
+  if (payload.subscriptionPrice != null) body.subscriptionPrice = String(payload.subscriptionPrice)
+  if (payload.locationId != null) body.locationId = payload.locationId
+  if (payload.isActive !== undefined) body.isActive = payload.isActive
+  if (payload.ageMin != null) body.ageMin = payload.ageMin
+  if (payload.ageMax != null) body.ageMax = payload.ageMax
+  if (payload.requiresWaiver !== undefined) body.requiresWaiver = payload.requiresWaiver
+  if (payload.bookingMode) body.bookingMode = payload.bookingMode
+  if (payload.minDurationMinutes != null) body.minDurationMinutes = payload.minDurationMinutes
+  if (payload.maxDurationMinutes != null) body.maxDurationMinutes = payload.maxDurationMinutes
+  if (payload.maxConcurrent != null) body.maxConcurrent = payload.maxConcurrent
+  if (payload.minAdvanceHours != null) body.minAdvanceHours = payload.minAdvanceHours
+  if (payload.maxAdvanceHours != null) body.maxAdvanceHours = payload.maxAdvanceHours
+  if (payload.isPackageService !== undefined) body.isPackageService = payload.isPackageService
+  if (payload.siblingPrice) body.siblingPrice = payload.siblingPrice
+  if (payload.freeAdultCount !== undefined) body.freeAdultCount = payload.freeAdultCount
+  if (payload.additionalAdultPrice) body.additionalAdultPrice = payload.additionalAdultPrice
+  if (payload.minSeats !== undefined) body.minSeats = payload.minSeats
+  if (payload.pricePerHour) body.pricePerHour = payload.pricePerHour
+  if (payload.minChildSeats != null) body.minChildSeats = payload.minChildSeats
+  if (payload.maxChildSeats != null) body.maxChildSeats = payload.maxChildSeats
+  if (payload.minAdultSeats != null) body.minAdultSeats = payload.minAdultSeats
+  if (payload.maxAdultSeats != null) body.maxAdultSeats = payload.maxAdultSeats
+  if (payload.additionalChildPrice) body.additionalChildPrice = payload.additionalChildPrice
+  if (payload.maxPassCount != null) body.maxPassCount = payload.maxPassCount
+  if (payload.eventBookingScheduleMode) body.eventBookingScheduleMode = payload.eventBookingScheduleMode
+  if (payload.eventVisibility) body.eventVisibility = payload.eventVisibility
+  return body
+}
+
+export async function createSchedulingService(
+  payload: CreateSchedulingServicePayload,
+): Promise<SchedulingService> {
+  const response = await apiClient.post(API_PATHS.services, buildServiceApiBody(payload))
+  const raw = response.data as ApiSchedulingService
+  return mapApiSchedulingService(raw)
+}
+
+export async function updateSchedulingService(
+  id: string,
+  patch: Partial<CreateSchedulingServicePayload>,
+): Promise<SchedulingService> {
+  const body: Record<string, unknown> = {}
+  if (patch.categoryId !== undefined) body.categoryId = patch.categoryId
+  if (patch.serviceType !== undefined) body.serviceType = patch.serviceType
+  if (patch.name !== undefined) body.name = patch.name
+  if (patch.description !== undefined) body.description = patch.description
+  if (patch.durationMinutes !== undefined) body.durationMinutes = patch.durationMinutes
+  if (patch.capacity !== undefined) body.capacity = patch.capacity
+  if (patch.basePrice !== undefined) body.basePrice = String(patch.basePrice)
+  if (patch.subscriptionPrice !== undefined) body.subscriptionPrice = patch.subscriptionPrice != null ? String(patch.subscriptionPrice) : null
+  if (patch.locationId !== undefined) body.locationId = patch.locationId
+  if (patch.isActive !== undefined) body.isActive = patch.isActive
+  if (patch.ageMin !== undefined) body.ageMin = patch.ageMin
+  if (patch.ageMax !== undefined) body.ageMax = patch.ageMax
+  if (patch.requiresWaiver !== undefined) body.requiresWaiver = patch.requiresWaiver
+  if (patch.bookingMode !== undefined) body.bookingMode = patch.bookingMode
+  if (patch.slotIncrementMinutes !== undefined) body.slotIncrement = slotIncrementToEnum(patch.slotIncrementMinutes)
+  if (patch.minDurationMinutes !== undefined) body.minDurationMinutes = patch.minDurationMinutes
+  if (patch.maxDurationMinutes !== undefined) body.maxDurationMinutes = patch.maxDurationMinutes
+  if (patch.maxConcurrent !== undefined) body.maxConcurrent = patch.maxConcurrent
+  if (patch.minAdvanceHours !== undefined) body.minAdvanceHours = patch.minAdvanceHours
+  if (patch.maxAdvanceHours !== undefined) body.maxAdvanceHours = patch.maxAdvanceHours
+  if (patch.isPackageService !== undefined) body.isPackageService = patch.isPackageService
+  if (patch.siblingPrice !== undefined) body.siblingPrice = patch.siblingPrice
+  if (patch.freeAdultCount !== undefined) body.freeAdultCount = patch.freeAdultCount
+  if (patch.additionalAdultPrice !== undefined) body.additionalAdultPrice = patch.additionalAdultPrice
+  if (patch.minSeats !== undefined) body.minSeats = patch.minSeats
+  if (patch.pricePerHour !== undefined) body.pricePerHour = patch.pricePerHour
+  if (patch.minChildSeats !== undefined) body.minChildSeats = patch.minChildSeats
+  if (patch.maxChildSeats !== undefined) body.maxChildSeats = patch.maxChildSeats
+  if (patch.minAdultSeats !== undefined) body.minAdultSeats = patch.minAdultSeats
+  if (patch.maxAdultSeats !== undefined) body.maxAdultSeats = patch.maxAdultSeats
+  if (patch.additionalChildPrice !== undefined) body.additionalChildPrice = patch.additionalChildPrice
+  if (patch.maxPassCount !== undefined) body.maxPassCount = patch.maxPassCount
+  if (patch.eventBookingScheduleMode !== undefined) body.eventBookingScheduleMode = patch.eventBookingScheduleMode
+  if (patch.eventVisibility !== undefined) body.eventVisibility = patch.eventVisibility
+  const response = await apiClient.patch(`${API_PATHS.services}/${id}`, body)
+  const raw = response.data as ApiSchedulingService
+  return mapApiSchedulingService(raw)
+}
+
+export async function deleteSchedulingService(id: string): Promise<void> {
+  await apiClient.delete(`${API_PATHS.services}/${id}`)
 }
 
 export async function listSchedulingServices(
@@ -126,10 +266,9 @@ export async function listSchedulingServices(
   const response = await apiClient.get(API_PATHS.services, {
     params: normalized,
   })
-  const parsed = schedulingServicesListSchema.parse(response.data)
 
   return {
-    services: mapResponseToServices(parsed),
-    meta: Array.isArray(parsed) ? null : (parsed.meta ?? null),
+    services: mapResponseToServices(response.data),
+    meta: extractPaginationMeta(response.data),
   }
 }

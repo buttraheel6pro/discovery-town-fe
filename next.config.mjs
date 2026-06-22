@@ -5,6 +5,13 @@ const nextConfig = {
   },
   images: {
     unoptimized: true,
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'images.unsplash.com',
+        pathname: '/**',
+      },
+    ],
   },
   async redirects() {
     return [
@@ -14,8 +21,18 @@ const nextConfig = {
         permanent: false,
       },
       {
-        source: '/events/take-out-party',
-        destination: '/store/cafe-food#take-out-party',
+        source: '/store/cafe-food',
+        destination: '/cafe',
+        permanent: false,
+      },
+      {
+        source: '/store/shop',
+        destination: '/shop',
+        permanent: false,
+      },
+      {
+        source: '/store/gifts',
+        destination: '/gifts',
         permanent: false,
       },
       {

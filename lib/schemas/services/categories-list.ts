@@ -16,6 +16,7 @@ export const apiSchedulingServiceCategorySchema = z.object({
   tenantId: z.string(),
   name: z.string(),
   icon: z.string().nullable().optional(),
+  imageUrl: z.string().nullable().optional(),
   displayOrder: decimalLikeSchema,
   isActive: z.boolean(),
   createdAt: z.string(),

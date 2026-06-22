@@ -1,17 +1,20 @@
 /** Rental checkout client with multi-step flow. */
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ExternalLink } from 'lucide-react'
 
 import { CouponPanel } from '@/components/customer/coupon-panel'
+import { isStripeCheckoutEnabled, StripeCheckoutForm } from '@/components/customer/stripe-checkout-form'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { useInventory } from '@/lib/inventory-store'
+import { isApiEnabled } from '@/lib/api/client'
+import { checkoutOrder, getOrder } from '@/lib/api/orders.api'
 import { collectRentalAcknowledgmentOptions } from '@/lib/rental-acknowledgments'
 import { formatPrice } from '@/lib/utils'
 import type { Coupon } from '@/lib/types'
@@ -36,6 +39,52 @@ export function RentalCheckoutClient() {
   const [cardNumber, setCardNumber] = useState('')
   const [expiry, setExpiry] = useState('')
   const [cvv, setCvv] = useState('')
+  const [clientSecret, setClientSecret] = useState<string | null>(null)
+  const [pendingOrderId, setPendingOrderId] = useState<string | null>(null)
+
+  const useStripe = isApiEnabled && isStripeCheckoutEnabled()
+  const orderItems = useMemo(
+    () =>
+      cart.items
+        .map((item) => ({
+          productId: String(item.metadata?.productId ?? ''),
+          quantity: item.quantity,
+        }))
+        .filter((item) => item.productId.length > 0),
+    [cart.items],
+  )
+
+  useEffect(() => {
+    if (!useStripe || step !== 'payment' || orderItems.length === 0) {
+      setClientSecret(null)
+      setPendingOrderId(null)
+      return
+    }
+
+    let cancelled = false
+    checkoutOrder({
+      contactId: cart.contactId ?? undefined,
+      channel: 'ONLINE',
+      items: orderItems,
+      couponCode: cart.couponCode ?? undefined,
+    })
+      .then((session) => {
+        if (!cancelled) {
+          setClientSecret(session.clientSecret)
+          setPendingOrderId(session.orderId)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setClientSecret(null)
+          setPendingOrderId(null)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [cart.contactId, cart.couponCode, orderItems, step, useStripe])
 
   const subtotal = useMemo(
     () => cart.items.reduce((sum, item) => sum + item.price * item.quantity, 0),
@@ -70,6 +119,25 @@ export function RentalCheckoutClient() {
       return
     }
     setCouponDirect(coupon.code, discount)
+  }
+
+  async function completeStripeOrder() {
+    if (!pendingOrderId) return
+    const order = await getOrder(pendingOrderId)
+    addOrder({
+      ...order,
+      fulfillmentType: 'RENTAL',
+      rentalStatus: 'PENDING',
+      rentalStartAt: cart.rentalStartAt ?? null,
+      rentalEndAt: cart.rentalEndAt ?? null,
+      fulfillmentMode: cart.fulfillmentMode ?? null,
+      deliveryAddress: cart.deliveryAddress ?? null,
+      deliveryFee,
+      depositAmount: deposit,
+      acknowledgments: cart.acknowledgments ?? [],
+    })
+    clearCart()
+    setStep('confirmation')
   }
 
   function placeOrder() {
@@ -226,22 +294,37 @@ export function RentalCheckoutClient() {
           <h2 className="text-xl font-bold">Payment</h2>
           <CouponPanel context="ORDER" subtotal={subtotal} onCouponApplied={applyCoupon} />
           <Separator />
-          <Label>Card number</Label>
-          <Input value={cardNumber} onChange={(event) => setCardNumber(event.target.value)} />
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1">
-              <Label>Expiry</Label>
-              <Input value={expiry} onChange={(event) => setExpiry(event.target.value)} />
-            </div>
-            <div className="space-y-1">
-              <Label>CVV</Label>
-              <Input value={cvv} onChange={(event) => setCvv(event.target.value)} />
-            </div>
-          </div>
+          {!useStripe ? (
+            <>
+              <Label>Card number</Label>
+              <Input value={cardNumber} onChange={(event) => setCardNumber(event.target.value)} />
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label>Expiry</Label>
+                  <Input value={expiry} onChange={(event) => setExpiry(event.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label>CVV</Label>
+                  <Input value={cvv} onChange={(event) => setCvv(event.target.value)} />
+                </div>
+              </div>
+            </>
+          ) : null}
           <p className="text-sm text-muted-foreground">Total: {formatPrice(total)}</p>
-          <Button onClick={placeOrder} disabled={missingRequiredRentalSchedule}>
-            Place rental order
-          </Button>
+          {useStripe ? (
+            clientSecret ? (
+              <StripeCheckoutForm
+                clientSecret={clientSecret}
+                onSuccess={() => void completeStripeOrder()}
+              />
+            ) : (
+              <p className="text-sm text-muted-foreground">Preparing secure checkout…</p>
+            )
+          ) : (
+            <Button onClick={placeOrder} disabled={missingRequiredRentalSchedule}>
+              Place rental order
+            </Button>
+          )}
         </div>
       ) : null}
 

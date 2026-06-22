@@ -4,6 +4,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import {
+  buildCreateBookingPayload,
+  createBooking,
+  mapApiBooking,
+} from '@/lib/api/bookings.api'
+import { isApiEnabled } from '@/lib/api/client'
+
+import {
   contactFullName as householdContactFullName,
   getBookingPrimaryGuardianId,
   getPrimaryGuardianCandidates,
@@ -32,6 +39,7 @@ import {
 import { resolveServiceChildAgeRules } from '@/lib/booking-child-age'
 import { PARENTS_NIGHT_OUT_SERVICE_ID } from '@/lib/booking-household'
 import { getCustomerSchedulingMenuSlug } from '@/lib/catalog-placement'
+import { isOpenPlaySessionPassOffering } from '@/lib/open-play-session-pass'
 import { getSchedulingTopLevelId } from '@/lib/scheduling-consumer-categories'
 import { isGymClassCartCheckoutService, isLearnCartCheckoutService } from '@/lib/play-cart'
 import { usesEventTicketBookingSidebar } from '@/lib/scheduling-slot-availability'
@@ -148,7 +156,7 @@ export function useBookingForm({
   const [secondaryGuardianContactId, setSecondaryGuardianContactId] = useState('')
   const [participantDateOfBirth, setParticipantDateOfBirth] = useState<string | null>(null)
 
-  const usesOpenPlayHouseholdBooking = isOpenPlaySessionBookingService(service.id)
+  const usesOpenPlayHouseholdBooking = isOpenPlaySessionBookingService(service)
   const maxPassCount = useMemo(() => resolveMaxPassCount(service), [service])
 
   const setGuestCountClamped = useCallback(
@@ -343,7 +351,7 @@ export function useBookingForm({
     return services
       .filter((entry) => entry.id !== service.id)
       .filter((entry) => entry.isActive)
-      .filter((entry) => entry.bookingOfferingKind === 'PASS')
+      .filter((entry) => isOpenPlaySessionPassOffering(entry))
       .map((entry) => ({
         serviceId: entry.id,
         name: entry.name,
@@ -398,7 +406,7 @@ export function useBookingForm({
 
   const baseTotal = useMemo(() => {
     const quantityDrivenBaseTotal =
-      service.bookingOfferingKind === 'PASS' || isPlayCategory
+      isOpenPlaySessionPassOffering(service) || isPlayCategory
         ? Math.round(service.basePrice * guestCount * 100) / 100
         : computeSchedulingBaseTotal(
             service,
@@ -896,6 +904,38 @@ export function useBookingForm({
     })
   }, [])
 
+  const persistBooking = useCallback(async (): Promise<SchedulingBooking> => {
+    const booking = submitBooking({ persist: false })
+    if (!isApiEnabled) {
+      addBooking(booking)
+      return booking
+    }
+
+    const apiRow = await createBooking(
+      buildCreateBookingPayload({
+        serviceType: service.serviceType,
+        serviceId: service.id,
+        serviceSlotId: booking.serviceSlotId,
+        contactId: booking.contactId,
+        locationId: booking.locationId,
+        startAt: booking.startAt,
+        endAt: booking.endAt,
+        guestCount: booking.guestCount,
+        notes: booking.notes,
+        source: booking.source,
+        addOnIds: selectedCategoryAddOnIds,
+      }),
+    )
+
+    const persisted = mapApiBooking(apiRow, {
+      service,
+      contactName: booking.contactName,
+      locationName: booking.locationName,
+    })
+    addBooking(persisted)
+    return persisted
+  }, [addBooking, selectedCategoryAddOnIds, service, submitBooking])
+
   return {
     guestCount,
     setGuestCount: setGuestCountClamped,
@@ -961,6 +1001,7 @@ export function useBookingForm({
     setCoupon,
     canSubmitDetails,
     submitBooking,
+    persistBooking,
     submitWaitlist,
   }
 }

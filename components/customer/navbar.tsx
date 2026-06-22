@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useMemo, useState } from 'react'
 import { Calendar, Menu, ShoppingCart, User, X } from 'lucide-react'
 
+import { HomeHeroCloudDivider } from '@/components/customer/home-hero-cloud-divider'
 import { CustomerNavIcon } from '@/components/customer/navbar-icons'
 import { DiscoveryLogo } from '@/components/discovery-logo'
 import { Button } from '@/components/ui/button'
@@ -15,6 +16,7 @@ import {
   isCustomerNavItemVisible,
   type CustomerNavLabelKey,
 } from '@/lib/customer-nav-labels'
+import { isApiEnabled } from '@/lib/config/data-source'
 import {
   catalogSlugToProductType,
   type ProductCatalogSlug,
@@ -27,13 +29,13 @@ const PLAY_NAV_KEY: CustomerNavLabelKey = 'play'
 
 const NAVBAR_ITEM_ORDER: readonly CustomerNavLabelKey[] = [
   'play',
-  'gym',
-  'learn',
   'events',
   'rentals',
   'cafeFood',
-  'gifts',
   'shop',
+  'gifts',
+  'gym',
+  'learn',
 ] as const
 
 const PRODUCT_NAV_KEYS = new Set<CustomerNavLabelKey>([
@@ -76,6 +78,9 @@ function isNavbarItemVisible(
     return false
   }
   if (!PRODUCT_NAV_KEYS.has(key)) {
+    return true
+  }
+  if (isApiEnabled) {
     return true
   }
   const slug = PRODUCT_KEY_TO_SLUG[key as keyof typeof PRODUCT_KEY_TO_SLUG]
@@ -161,11 +166,23 @@ export function CustomerNavbar({ priority = false }: CustomerNavbarProps) {
 
   return (
     <>
-      <header className="sticky top-0 z-50 w-full bg-brand-cream">
-        <nav
-          className="mx-auto flex max-w-[96rem] items-center gap-2 px-3 py-2 sm:gap-3 sm:px-5 sm:py-2.5"
-          aria-label="Main navigation"
-        >
+      <header
+        className={cn(
+          'sticky top-0 z-50 w-full',
+          isHome ? 'bg-home-cream' : 'bg-brand-cream',
+          isHome && 'relative overflow-x-clip',
+        )}
+      >
+        <div className="relative w-full">
+          <nav
+            className={cn(
+              'relative z-10 flex w-full items-center gap-2 py-2 sm:gap-3 sm:py-2.5',
+              isHome
+                ? 'max-w-none px-2 sm:px-3 lg:px-4 xl:px-5'
+                : 'mx-auto max-w-[96rem] px-3 sm:px-5',
+            )}
+            aria-label="Main navigation"
+          >
           <DiscoveryLogo
             size="homeNav"
             variant="transparent"
@@ -213,10 +230,23 @@ export function CustomerNavbar({ priority = false }: CustomerNavbarProps) {
               )}
             </Button>
           </div>
-        </nav>
+          </nav>
+
+          {isHome ? (
+            <HomeHeroCloudDivider
+              priority={priority}
+              className="top-full -translate-y-4 sm:-translate-y-5 lg:-translate-y-6"
+            />
+          ) : null}
+        </div>
 
         {mobileOpen ? (
-          <div className="border-t border-brand-navy/10 bg-brand-cream px-3 py-3 lg:hidden">
+          <div
+            className={cn(
+              'border-t border-brand-navy/10 px-3 py-3 lg:hidden',
+              isHome ? 'bg-home-cream' : 'bg-brand-cream',
+            )}
+          >
             <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">
               {navItems.map((item) => (
                 <NavbarIconLink

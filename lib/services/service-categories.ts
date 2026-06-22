@@ -1,11 +1,10 @@
 /** Scheduling service categories API integration for admin catalog filters. */
 import { apiClient } from '@/lib/api/client'
+import { extractListRows, extractPaginationMeta } from '@/lib/api/pagination'
 import { API_PATHS } from '@/lib/constants/api'
 import {
   apiSchedulingServiceCategorySchema,
-  schedulingServiceCategoriesListSchema,
   type ApiSchedulingServiceCategory,
-  type SchedulingServiceCategoriesListResponse,
 } from '@/lib/schemas/services/categories-list'
 import type {
   CreateServiceCategoryPayload,
@@ -66,14 +65,16 @@ function mapApiCategory(item: ApiSchedulingServiceCategory): SchedulingCategory 
     id: item.id,
     name: item.name,
     icon: item.icon ?? null,
+    imageUrl: item.imageUrl ?? undefined,
     displayOrder: toNumber(item.displayOrder),
     isActive: item.isActive,
   }
 }
 
-function mapResponseToCategories(parsed: SchedulingServiceCategoriesListResponse): SchedulingCategory[] {
-  const rows = Array.isArray(parsed) ? parsed : parsed.data
-  return rows.map(mapApiCategory)
+function mapResponseToCategories(payload: unknown): SchedulingCategory[] {
+  return extractListRows<ApiSchedulingServiceCategory>(payload).map((row) =>
+    mapApiCategory(apiSchedulingServiceCategorySchema.parse(row)),
+  )
 }
 
 export async function listServiceCategories(
@@ -83,12 +84,50 @@ export async function listServiceCategories(
   const response = await apiClient.get(API_PATHS.serviceCategories, {
     params: normalized,
   })
-  const parsed = schedulingServiceCategoriesListSchema.parse(response.data)
 
   return {
-    categories: mapResponseToCategories(parsed),
-    meta: Array.isArray(parsed) ? null : (parsed.meta ?? null),
+    categories: mapResponseToCategories(response.data),
+    meta: extractPaginationMeta(response.data),
   }
+}
+
+export interface UpdateServiceCategoryPayload {
+  name?: string
+  icon?: string | null
+  imageUrl?: string | null
+  displayOrder?: number | string
+  isActive?: boolean
+  description?: string
+  requiresAttendee?: boolean
+  membersOnly?: boolean
+  freeInfantMonths?: number
+  depositPercent?: number
+  specialInstructionsEnabled?: boolean
+  waitlistEnabled?: boolean
+  allowFamilyMember?: boolean
+  requireCheckInBeforeRebook?: boolean
+  catalogSlug?: string
+}
+
+export async function updateServiceCategory(
+  id: string,
+  patch: UpdateServiceCategoryPayload,
+): Promise<SchedulingCategory> {
+  const response = await apiClient.patch(`${API_PATHS.serviceCategories}/${id}`, patch)
+  const raw = response.data as unknown
+  const direct = apiSchedulingServiceCategorySchema.safeParse(raw)
+  if (direct.success) return mapApiCategory(direct.data)
+  const wrapped = apiSchedulingServiceCategorySchema.safeParse(
+    typeof raw === 'object' && raw !== null && 'data' in raw
+      ? (raw as { data: unknown }).data
+      : raw,
+  )
+  if (!wrapped.success) throw new Error('Invalid update category response')
+  return mapApiCategory(wrapped.data)
+}
+
+export async function deleteServiceCategory(id: string): Promise<void> {
+  await apiClient.delete(`${API_PATHS.serviceCategories}/${id}`)
 }
 
 export async function createServiceCategory(

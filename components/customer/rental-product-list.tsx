@@ -5,6 +5,7 @@ import { useMemo } from 'react'
 
 import { CustomerFooter } from '@/components/customer/footer'
 import { CustomerNavbar } from '@/components/customer/navbar'
+import { CatalogEmptyState } from '@/components/customer/catalog-empty-state'
 import { ShopProductCard } from '@/components/customer/shop-product-card'
 import { useInventory } from '@/lib/inventory-store'
 import { findProductCategoryBySlugOnCustomerMenu } from '@/lib/catalog-placement'
@@ -64,11 +65,20 @@ export function RentalProductList({
           <h1 className="text-3xl font-black text-foreground">{categoryName}</h1>
           <p className="text-muted-foreground">{categoryDescription ?? 'Rental products for this category.'}</p>
         </header>
-        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {items.map((product) => (
-            <ShopProductCard key={product.id} product={product} />
-          ))}
-        </section>
+        {items.length === 0 ? (
+          <CatalogEmptyState
+            title="No rentals in this category yet"
+            description="There aren't any items listed in this category right now. Please check back later or browse all rentals."
+            backHref="/rentals"
+            backLabel="Back to rentals"
+          />
+        ) : (
+          <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {items.map((product) => (
+              <ShopProductCard key={product.id} product={product} />
+            ))}
+          </section>
+        )}
       </main>
       <CustomerFooter />
     </>

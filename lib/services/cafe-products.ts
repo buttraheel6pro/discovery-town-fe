@@ -1,5 +1,8 @@
-/** Cafe product reads and pickup-slot helpers — mock-backed until cafe API exists. */
+/** Cafe product reads and pickup-slot helpers — uses public products API when configured. */
 
+import { apiClient, isApiEnabled } from '@/lib/api/client'
+import type { PaginatedResponse } from '@/lib/api/client'
+import { extractListRows } from '@/lib/api/pagination'
 import { MOCK_CAFE_PRODUCTS, MOCK_ROTATION_GROUPS } from '@/lib/mock-data'
 import {
   cafeProductSchema,
@@ -8,21 +11,59 @@ import {
 } from '@/lib/schemas/cafe'
 import type { CafePickupSlot, CafeProduct } from '@/lib/types'
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? ''
-
 function parseProducts(rows: unknown): CafeProduct[] {
   return cafeProductSchema.array().parse(rows) as CafeProduct[]
 }
 
-/** Lists cafe products (fixtures when API is unset). */
+function num(v: unknown, fallback = 0): number {
+  if (v == null) return fallback
+  if (typeof v === 'number') return Number.isFinite(v) ? v : fallback
+  const n = parseFloat(String(v))
+  return Number.isFinite(n) ? n : fallback
+}
+
+function mapPublicProductToCafeProduct(item: Record<string, unknown>): CafeProduct {
+  return cafeProductSchema.parse({
+    id: item.id,
+    name: item.name,
+    description: item.description ?? '',
+    price: num(item.price),
+    category: 'General',
+    isActive: item.isActive ?? true,
+    isFeatured: item.isFeatured ?? false,
+    imageUrl: item.imageUrl ?? null,
+    modifierGroupIds: [],
+    attributeGroups: {},
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }) as CafeProduct
+}
+
+/** Lists cafe products (API public catalog when configured, else fixtures). */
 export async function listCafeProducts(): Promise<CafeProduct[]> {
-  if (API_BASE) {
-    const res = await fetch(`${API_BASE}/api/v1/products?categorySlug=cafe`)
-    if (!res.ok) throw new Error(`Failed to list cafe products: ${res.status}`)
-    const data: unknown = await res.json()
-    return parseProducts(data)
+  if (!isApiEnabled) {
+    return parseProducts(MOCK_CAFE_PRODUCTS)
   }
-  return parseProducts(MOCK_CAFE_PRODUCTS)
+
+  const tenantId = process.env.NEXT_PUBLIC_TENANT_ID
+  if (!tenantId) {
+    return parseProducts(MOCK_CAFE_PRODUCTS)
+  }
+
+  try {
+    const params = new URLSearchParams({ tenantId, page: '1', limit: '200' })
+    const res = await apiClient.get<PaginatedResponse<Record<string, unknown>>>(
+      `/products/public?${params.toString()}`,
+      { skipAuth: true } as never,
+    )
+    const rows = extractListRows<Record<string, unknown>>(res.data)
+    if (rows.length === 0) {
+      return parseProducts(MOCK_CAFE_PRODUCTS)
+    }
+    return rows.map(mapPublicProductToCafeProduct)
+  } catch {
+    return parseProducts(MOCK_CAFE_PRODUCTS)
+  }
 }
 
 /** Single product by id. */
@@ -33,7 +74,7 @@ export async function getCafeProduct(productId: string): Promise<CafeProduct | n
 
 /** Active rotation specials — one highlighted item per rotation group pool head. */
 export async function getDailySpecials(): Promise<CafeProduct[]> {
-  const products = parseProducts(MOCK_CAFE_PRODUCTS)
+  const products = isApiEnabled ? await listCafeProducts() : parseProducts(MOCK_CAFE_PRODUCTS)
   const rotationIds = new Set(
     MOCK_ROTATION_GROUPS.map((g) => g.activeProductId).filter(Boolean) as string[],
   )
@@ -42,7 +83,6 @@ export async function getDailySpecials(): Promise<CafeProduct[]> {
     const p = products.find((row) => row.id === id)
     if (p) out.push(p)
   }
-  /** Featured specialty drink — prefer Specialty category not in rotation-only list. */
   const featured = products.find((p) => p.category === 'Specialty' && p.id === 'cp-002')
   if (featured && !out.some((x) => x.id === featured.id)) {
     out.unshift(featured)

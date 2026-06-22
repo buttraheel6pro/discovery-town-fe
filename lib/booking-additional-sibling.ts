@@ -14,7 +14,7 @@ export function parseAdditionalSiblingUnitPrice(
       return parsed
     }
   }
-  if (isOpenPlaySessionBookingService(service.id)) {
+  if (isOpenPlaySessionBookingService(service)) {
     return 10
   }
   return null

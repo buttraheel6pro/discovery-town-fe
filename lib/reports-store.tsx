@@ -1,7 +1,16 @@
 /** Reports & analytics store — filters, mock report slices, and invoice list. */
 'use client'
 
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react'
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+
+import {
+  fetchClientInsights,
+  fetchReferralOverview,
+  fetchReportDashboard,
+  fetchRevenueSummary,
+  fetchTopContacts,
+} from '@/lib/api/reports.api'
+import { isAdminApiReady } from '@/lib/api/client'
 
 import {
   cohortMatrixMock,
@@ -100,6 +109,37 @@ export function ReportsProvider({ children }: Readonly<{ children: React.ReactNo
     })),
   )
 
+  const [kpiDashboard, setKpiDashboard] = useState<KpiDashboard>(kpiDashboardMock)
+  const [revenueSummary, setRevenueSummary] = useState<RevenueSummary>(revenueSummaryMock)
+  const [reportClientInsights, setReportClientInsights] =
+    useState<ReportClientInsights>(reportClientInsightsMock)
+  const [topContacts, setTopContacts] = useState<TopContact[]>(topContactsMock)
+  const [referralOverview, setReferralOverview] = useState<ReferralOverview>(referralOverviewMock)
+
+  useEffect(() => {
+    if (!isAdminApiReady()) return
+    const range = {
+      from: filters.dateRange.from,
+      to: filters.dateRange.to,
+      locationId: filters.locationIds[0],
+    }
+    void Promise.all([
+      fetchReportDashboard(range),
+      fetchRevenueSummary(range),
+      fetchClientInsights(range),
+      fetchTopContacts(10),
+      fetchReferralOverview(range),
+    ])
+      .then(([dashboard, revenue, clients, contacts, referrals]) => {
+        setKpiDashboard(dashboard)
+        setRevenueSummary(revenue)
+        setReportClientInsights(clients)
+        setTopContacts(contacts)
+        setReferralOverview(referrals)
+      })
+      .catch(() => {})
+  }, [filters.dateRange.from, filters.dateRange.to, filters.locationIds])
+
   const setPreset = useCallback((preset: DateRangePreset) => {
     setFilters((prev) => ({
       ...prev,
@@ -167,12 +207,12 @@ export function ReportsProvider({ children }: Readonly<{ children: React.ReactNo
       setPreset,
       setCustomDateRange,
       setLocationIds,
-      kpiDashboard: kpiDashboardMock,
-      revenueSummary: revenueSummaryMock,
-      reportClientInsights: reportClientInsightsMock,
-      topContacts: topContactsMock,
+      kpiDashboard,
+      revenueSummary,
+      reportClientInsights,
+      topContacts,
       cohortMatrix: cohortMatrixMock,
-      referralOverview: referralOverviewMock,
+      referralOverview,
       payroll: payrollMock,
       instructorStats: instructorStatsMock,
       invoices: invoiceList,
@@ -185,6 +225,11 @@ export function ReportsProvider({ children }: Readonly<{ children: React.ReactNo
     [
       filters,
       invoiceList,
+      kpiDashboard,
+      revenueSummary,
+      reportClientInsights,
+      topContacts,
+      referralOverview,
       setPreset,
       setCustomDateRange,
       setLocationIds,

@@ -4,10 +4,11 @@
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 
-export type ScallopFill = "cream" | "teal" | "white" | "background";
+export type ScallopFill = "cream" | "homeCream" | "teal" | "white" | "background";
 
 const FILL_CLASS: Record<ScallopFill, string> = {
-  cream: "fill-[#FDFBF7]",
+  cream: "fill-brand-cream",
+  homeCream: "fill-home-cream",
   teal: "fill-[#238F8A]",
   white: "fill-white",
   background: "fill-background",
@@ -46,7 +47,7 @@ export function ScallopDivider({
   const waveWidth = windowWidth / targetWaveCount;
 
   const waveHeight = 16;
-  const count = Math.ceil(windowWidth / waveWidth) + 1;
+  const count = Math.ceil(windowWidth / waveWidth);
   const totalWidth = count * waveWidth;
 
   // Start perfectly flat halfway up the canvas boundary coordinate
@@ -80,7 +81,7 @@ export function ScallopDivider({
       aria-hidden
     >
       <svg
-        viewBox={`0 0 ${windowWidth} ${waveHeight}`}
+        viewBox={`0 0 ${totalWidth} ${waveHeight}`}
         preserveAspectRatio="none"
         className={cn("block w-full", SIZE_CLASS[size])}
       >

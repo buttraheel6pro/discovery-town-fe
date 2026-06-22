@@ -26,6 +26,8 @@ import { BookingHouseholdFields } from '@/components/customer/booking-household-
 import { useBookingForm } from '@/hooks/use-booking-form'
 import { getBookingPrimaryGuardianId } from '@/lib/booking-household'
 import { useClients } from '@/lib/client-store'
+import { fetchOpenAvailability } from '@/lib/api/bookings.api'
+import { isApiEnabled } from '@/lib/api/client'
 import { generateOpenAvailability } from '@/lib/mock-data'
 import {
   areAvailableWindowsEqual,
@@ -41,6 +43,7 @@ import {
 } from '@/lib/utils'
 import type {
   AvailableWindow,
+  AvailableWindowsResponse,
   SchedulingBooking,
   SchedulingService,
   SchedulingSlot,
@@ -155,10 +158,33 @@ export function BookingWidget({
     service.requiresWaiver,
   ])
 
-  const availability = useMemo(() => {
-    if (!selectedDate) return null
-    return generateOpenAvailability(service, selectedDate)
-  }, [service, selectedDate])
+  const [submitting, setSubmitting] = useState(false)
+  const [availability, setAvailability] = useState<AvailableWindowsResponse | null>(null)
+
+  useEffect(() => {
+    if (!selectedDate || isScheduled) {
+      setAvailability(null)
+      return
+    }
+
+    if (!isApiEnabled) {
+      setAvailability(generateOpenAvailability(service, selectedDate))
+      return
+    }
+
+    let cancelled = false
+    fetchOpenAvailability(service.id, selectedDate)
+      .then((response) => {
+        if (!cancelled) setAvailability(response)
+      })
+      .catch(() => {
+        if (!cancelled) setAvailability(generateOpenAvailability(service, selectedDate))
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [isScheduled, selectedDate, service])
 
   const openTotalPreview = useMemo(() => {
     if (!selectedWindow) return null
@@ -223,10 +249,15 @@ export function BookingWidget({
     )
   }
 
-  function handleConfirm() {
-    const booking = bookingForm.submitBooking()
-    onBooked(booking)
-    setStep('success')
+  async function handleConfirm() {
+    setSubmitting(true)
+    try {
+      const booking = await bookingForm.persistBooking()
+      onBooked(booking)
+      setStep('success')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (

@@ -47,6 +47,13 @@ import type {
   ModifierGroup,
   RotationGroup,
 } from '@/lib/types'
+import { isAdminApiReady } from '@/lib/api/client'
+import {
+  createAttributeGroup,
+  deleteAttributeGroupById,
+  listAttributeGroups,
+  updateAttributeGroup,
+} from '@/lib/services/attribute-groups'
 
 const CAFE_STORAGE_KEY = 'dt_cafe_state_v1'
 
@@ -356,6 +363,41 @@ export function CafeProvider({ children }: Readonly<{ children: ReactNode }>) {
   const [kitchenOrders, setKitchenOrders] = useState<CafeKitchenOrder[]>(initial.kitchenOrders)
 
   useEffect(() => {
+    let cancelled = false
+    let attempts = 0
+    let timer: ReturnType<typeof window.setTimeout> | undefined
+
+    const loadAttributeGroups = async () => {
+      attempts += 1
+      if (!isAdminApiReady()) {
+        if (!cancelled && attempts < 10) {
+          timer = window.setTimeout(loadAttributeGroups, 500)
+        }
+        return
+      }
+      try {
+        const rows = await listAttributeGroups()
+        if (!cancelled && rows.length > 0) {
+          setAttributeGroups(rows)
+          return
+        }
+      } catch {
+        // Keep local/mock catalog if the admin API is not ready yet.
+      }
+      if (!cancelled && attempts < 10) {
+        timer = window.setTimeout(loadAttributeGroups, 500)
+      }
+    }
+
+    loadAttributeGroups()
+
+    return () => {
+      cancelled = true
+      if (timer) window.clearTimeout(timer)
+    }
+  }, [])
+
+  useEffect(() => {
     const payload: CafePersistedShape = {
       cafeProducts,
       modifierGroups,
@@ -398,6 +440,7 @@ export function CafeProvider({ children }: Readonly<{ children: ReactNode }>) {
 
   const upsertAttributeGroup = useCallback((group: AttributeGroup) => {
     const validated = attributeGroupSchema.parse(group)
+    const exists = attributeGroups.some((entry) => entry.id === validated.id)
     setAttributeGroups((prev) => {
       const idx = prev.findIndex((g) => g.id === validated.id)
       if (idx === -1) return [...prev, validated]
@@ -405,10 +448,24 @@ export function CafeProvider({ children }: Readonly<{ children: ReactNode }>) {
       next[idx] = validated
       return next
     })
-  }, [])
+    const persist = exists ? updateAttributeGroup : createAttributeGroup
+    persist(validated)
+      .then((saved) => {
+        setAttributeGroups((prev) => {
+          const withoutDraft = prev.filter((entry) => entry.id !== validated.id && entry.id !== saved.id)
+          return [...withoutDraft, saved]
+        })
+      })
+      .catch(() => {
+        // Local state remains usable when API auth is not available.
+      })
+  }, [attributeGroups])
 
   const deleteAttributeGroup = useCallback((id: string) => {
     setAttributeGroups((prev) => prev.filter((g) => g.id !== id))
+    deleteAttributeGroupById(id).catch(() => {
+      // Keep the optimistic local delete for offline/mock usage.
+    })
   }, [])
 
   const upsertRotationGroup = useCallback((group: RotationGroup) => {

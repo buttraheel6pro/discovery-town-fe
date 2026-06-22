@@ -2,7 +2,9 @@
 'use client'
 
 import { use, useMemo } from 'react'
-import { notFound, redirect } from 'next/navigation'
+import { redirect } from 'next/navigation'
+
+import { CatalogEmptyState } from '@/components/customer/catalog-empty-state'
 
 import { CustomerFooter } from '@/components/customer/footer'
 import { HorizontalScrollSection } from '@/components/customer/horizontal-scroll-section'
@@ -24,7 +26,6 @@ import { useInventory } from '@/lib/inventory-store'
 import {
   buildProductCategoryById,
   filterConsumerVisibleCategoriesForMenu,
-  hasConsumerVisibleProductType,
   isConsumerVisibleProduct,
   isConsumerVisibleProductCategory,
   isShopCatalogVisibleProduct,
@@ -36,7 +37,6 @@ import {
   schedulingProductMenuRailsCrumbs,
 } from '@/lib/scheduling-menu-browse'
 import type { SchedulingMenuBrowseCrumb } from '@/lib/scheduling-menu-browse'
-import { hasConsumerSchedulingOnProductMenu } from '@/lib/scheduling-visibility'
 import { useScheduling } from '@/lib/scheduling-store'
 import type { ProductCategory } from '@/lib/types'
 
@@ -63,7 +63,7 @@ const CAFE_SERVICE_LINK_ITEMS = [
     id: 'cafe-take-out',
     title: 'Take Out',
     imageUrl: 'https://images.unsplash.com/photo-1482049016688-2d3e1b311543?w=1200&q=80',
-    href: '/store/cafe-food#take-out-party',
+    href: '/cafe/order-ahead',
   },
   {
     id: 'cafe-delivery-catering',
@@ -90,20 +90,16 @@ export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) 
   if (productType === 'rentals') {
     redirect('/rentals')
   }
+  if (productType === 'cafe&food') {
+    redirect('/cafe')
+  }
+  if (productType === 'shop') {
+    redirect('/shop')
+  }
   const categoryById = useMemo(
     () => buildProductCategoryById(productCategories),
     [productCategories],
   )
-
-  const hasProducts = hasConsumerVisibleProductType(productType, productCategories)
-  const hasScheduling = hasConsumerSchedulingOnProductMenu(
-    productType,
-    schedulingCategories,
-    productCategories,
-  )
-  if (!hasProducts && !hasScheduling) {
-    notFound()
-  }
 
   const isShopStore = productType === 'shop'
   const isCategoryVisible = isShopStore
@@ -317,12 +313,13 @@ export default function StoreTypePage({ params }: Readonly<StoreTypePageProps>) 
         <section className="bg-background py-10">
           <div className="mx-auto max-w-7xl space-y-10 px-4 sm:px-6 lg:px-8">
             {!hasStoreContent ? (
-                  <div className="rounded-xl border border-border bg-card p-10 text-center">
-                    <p className="text-sm font-semibold text-foreground">
-                      No products available right now.
-                    </p>
-                  </div>
-                ) : isCafeAndFood ? (
+              <CatalogEmptyState
+                title={`No ${title.toLowerCase()} listings yet`}
+                description="We don't have any items in this section right now. Please check back later or explore another part of Discovery Town."
+                backHref="/"
+                backLabel="Back to home"
+              />
+            ) : isCafeAndFood ? (
                   <>
                     <section className="space-y-4">
                       <h2 className="text-2xl font-black text-foreground">

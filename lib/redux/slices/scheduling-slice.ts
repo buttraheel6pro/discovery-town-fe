@@ -1,5 +1,5 @@
 /** Centralized Redux slice for scheduling domain state. */
-import { createSlice, type PayloadAction } from '@reduxjs/toolkit'
+import { createAsyncThunk, createSlice, type PayloadAction } from '@reduxjs/toolkit'
 
 import {
   eventPackagesMock,
@@ -23,6 +23,7 @@ import {
   WE_BRING_PLAY_SERVICE_IDS,
 } from '@/lib/we-bring-play-offerings'
 import { enrichSchedulingCategories } from '@/lib/catalog-placement'
+import { isApiEnabled, isMockDataEnabled } from '@/lib/config/data-source'
 import type { RootState } from '@/lib/redux/store'
 import {
   EventBookingScheduleModeEnum,
@@ -523,11 +524,38 @@ function cloneInitialState(): SchedulingState {
   return initial
 }
 
+function emptySchedulingState(): SchedulingState {
+  return {
+    categories: [],
+    services: [],
+    slots: [],
+    bookings: [],
+    waitlist: [],
+    packages: [],
+    occasions: [],
+  }
+}
+
+function buildInitialSchedulingState(): SchedulingState {
+  if (isApiEnabled) {
+    return emptySchedulingState()
+  }
+  return cloneInitialState()
+}
+
+function hasPersistedSchedulingCatalog(state: SchedulingState): boolean {
+  return state.categories.length > 0 && state.services.length > 0
+}
+
 const schedulingSlice = createSlice({
   name: 'scheduling',
-  initialState: cloneInitialState(),
+  initialState: buildInitialSchedulingState(),
   reducers: {
     hydrateSchedulingState(_state, action: PayloadAction<SchedulingState>) {
+      if (isMockDataEnabled() && !hasPersistedSchedulingCatalog(action.payload)) {
+        return buildInitialSchedulingState()
+      }
+
       const merged = mergeSchedulingWithCatalogDefaults(action.payload)
       const persistedOccasions = merged.occasions?.map((occasion) => ({
         ...occasion,
@@ -540,6 +568,41 @@ const schedulingSlice = createSlice({
         ...merged,
         occasions,
       }
+    },
+    hydrateSchedulingSessionState(
+      state,
+      action: PayloadAction<
+        Pick<SchedulingState, 'bookings' | 'slots' | 'waitlist'>
+      >,
+    ) {
+      state.bookings = action.payload.bookings.map((booking) => ({
+        ...booking,
+        service: { ...booking.service },
+        serviceSlot: booking.serviceSlot
+          ? { ...booking.serviceSlot, service: { ...booking.serviceSlot.service } }
+          : null,
+      }))
+      state.slots = action.payload.slots.map((slot) => ({
+        ...slot,
+        service: { ...slot.service },
+        isActive: slot.isActive ?? true,
+        checkInCount: slot.checkInCount ?? 0,
+      }))
+      state.waitlist = action.payload.waitlist.map((entry) => ({ ...entry }))
+    },
+    upsertSchedulingServices(state, action: PayloadAction<SchedulingService[]>) {
+      const categoryById = new Map(state.categories.map((category) => [category.id, category]))
+      for (const service of action.payload) {
+        if (service.category && !categoryById.has(service.categoryId)) {
+          state.categories.push(service.category)
+          categoryById.set(service.categoryId, service.category)
+        }
+      }
+      const byId = new Map(state.services.map((service) => [service.id, service]))
+      for (const service of action.payload) {
+        byId.set(service.id, service)
+      }
+      state.services = Array.from(byId.values())
     },
     addCategory(state, action: PayloadAction<SchedulingCategory>) {
       state.categories.unshift(action.payload)
@@ -905,11 +968,42 @@ const schedulingSlice = createSlice({
       const occasionId = action.payload
       state.occasions = state.occasions.filter((occasion) => occasion.id !== occasionId)
     },
+    setBookingsFromApi(state, action: PayloadAction<SchedulingBooking[]>) {
+      if (action.payload.length > 0) {
+        state.bookings = action.payload
+      }
+    },
+  },
+  extraReducers: (builder) => {
+    builder.addCase(
+      // loadSchedulingCatalog is defined after this slice, so we reference it by
+      // action type string to avoid a circular reference.
+      // The actual thunk is exported below and registered here via addCase.
+      // Because TypeScript evaluates this at runtime, the late binding is fine.
+      'scheduling/loadCatalog/fulfilled' as any,
+      (state, action: PayloadAction<import('@/lib/api/scheduling.api').SchedulingCatalogResult>) => {
+        const { categories, services, packages, occasions } = action.payload
+        if (categories.length > 0) {
+          state.categories = categories
+        }
+        if (services.length > 0) {
+          state.services = services
+        }
+        if (packages.length > 0) {
+          state.packages = packages
+        }
+        if (occasions.length > 0) {
+          state.occasions = occasions
+        }
+      },
+    )
   },
 })
 
 export const {
   hydrateSchedulingState,
+  hydrateSchedulingSessionState,
+  upsertSchedulingServices,
   addCategory,
   removeCategory,
   updateCategory,
@@ -937,6 +1031,7 @@ export const {
   addOccasion,
   updateOccasion,
   removeOccasion,
+  setBookingsFromApi,
 } = schedulingSlice.actions
 
 export const schedulingReducer = schedulingSlice.reducer
@@ -961,3 +1056,24 @@ export const selectSchedulingPackages = (state: RootState): EventPackage[] => st
 export const selectSchedulingOccasions = (
   state: RootState,
 ): SchedulingOccasion[] => state.scheduling.occasions
+
+// ─── Async thunk: load catalog data from the real API ─────────────────────────
+//
+// Import is deferred (dynamic-like via a lazy import) so this module has no
+// hard dependency on the API layer when running in mock mode.
+//
+// The thunk replaces catalog data (categories / services / packages / occasions)
+// while leaving user-generated state (bookings, slots, waitlist) unchanged so
+// admin actions performed during a session are not wiped.
+
+import type { SchedulingCatalogResult } from '@/lib/api/scheduling.api'
+
+export const loadSchedulingCatalog = createAsyncThunk<SchedulingCatalogResult>(
+  'scheduling/loadCatalog',
+  async () => {
+    // Dynamic import avoids pulling the API layer into SSR bundles when mocks
+    // are active.
+    const { fetchSchedulingCatalog } = await import('@/lib/api/scheduling.api')
+    return fetchSchedulingCatalog()
+  },
+)

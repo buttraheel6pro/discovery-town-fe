@@ -1,11 +1,10 @@
 /** Locations API service for listing available tenant locations. */
 import { apiClient } from '@/lib/api/client'
+import { extractListRows, extractPaginationMeta } from '@/lib/api/pagination'
 import { API_PATHS } from '@/lib/constants/api'
 import {
   apiLocationSchema,
-  locationsListSchema,
   operatingHoursSchema,
-  type LocationsListResponse,
 } from '@/lib/schemas/locations/list'
 import type {
   CreateLocationPayload,
@@ -33,28 +32,31 @@ function toOperatingHours(value: unknown): OperatingHours[] {
   return parsed.success ? parsed.data : []
 }
 
-function mapResponseToLocations(parsed: LocationsListResponse): Location[] {
-  const rows = Array.isArray(parsed) ? parsed : parsed.data
+function mapResponseToLocations(payload: unknown): Location[] {
+  const rows = extractListRows<unknown>(payload)
 
-  return rows.map((row) => ({
-    id: row.id,
-    tenantId: row.tenantId,
-    name: row.name,
-    address: row.address,
-    city: row.city,
-    country: row.country,
-    postcode: row.postcode ?? '',
-    timezone: row.timezone,
-    isActive: row.isActive ?? true,
-    phone: row.phone,
-    email: row.email,
-    settings: {
-      operatingHours: toOperatingHours(row.settings?.operatingHours),
-    },
-    imageUrl: row.imageUrl ?? undefined,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-  }))
+  return rows.map((row) => {
+    const parsed = apiLocationSchema.parse(row)
+    return {
+      id: parsed.id,
+      tenantId: parsed.tenantId,
+      name: parsed.name,
+      address: parsed.address,
+      city: parsed.city,
+      country: parsed.country,
+      postcode: parsed.postcode ?? '',
+      timezone: parsed.timezone,
+      isActive: parsed.isActive ?? true,
+      phone: parsed.phone,
+      email: parsed.email,
+      settings: {
+        operatingHours: toOperatingHours(parsed.settings?.operatingHours),
+      },
+      imageUrl: parsed.imageUrl ?? undefined,
+      createdAt: parsed.createdAt,
+      updatedAt: parsed.updatedAt,
+    }
+  })
 }
 
 function mapApiLocationToLocation(row: {
@@ -105,12 +107,11 @@ export async function listLocations(
     params: normalized,
   })
 
-  const parsed = locationsListSchema.parse(response.data)
-  const locations = mapResponseToLocations(parsed)
+  const locations = mapResponseToLocations(response.data)
 
   return {
     locations,
-    meta: Array.isArray(parsed) ? null : (parsed.meta ?? null),
+    meta: extractPaginationMeta(response.data),
   }
 }
 

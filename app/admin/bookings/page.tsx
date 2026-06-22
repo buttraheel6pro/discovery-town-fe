@@ -1,60 +1,84 @@
 'use client'
 
+import { useEffect, useMemo, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Calendar, CheckCircle, Clock, User } from 'lucide-react'
+import { isAdminApiReady } from '@/lib/api/client'
+import { listBookings, mapApiBooking, type ApiBookingRow } from '@/lib/api/bookings.api'
+
+type BookingRow = {
+  id: string
+  customer: string
+  facility: string
+  date: string
+  time: string
+  status: string
+  amount: number
+}
+
+function formatTimeRange(startAt: string, endAt: string): string {
+  const options: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' }
+  return `${new Date(startAt).toLocaleTimeString([], options)} - ${new Date(endAt).toLocaleTimeString([], options)}`
+}
+
+function toBookingRow(row: ApiBookingRow): BookingRow {
+  const booking = mapApiBooking(row)
+  return {
+    id: booking.id,
+    customer: booking.contactName || row.contactId || 'Guest',
+    facility: booking.service?.name ?? row.service?.name ?? row.serviceId,
+    date: booking.startAt,
+    time: formatTimeRange(booking.startAt, booking.endAt),
+    status: booking.status.toLowerCase(),
+    amount: booking.totalAmount,
+  }
+}
+
 export default function BookingsManagement() {
-  const bookings = [
-    {
-      id: 'BK-001',
-      customer: 'John Smith',
-      facility: 'Basketball Court',
-      date: '2025-04-05',
-      time: '10:00 AM - 12:00 PM',
-      status: 'confirmed',
-      amount: 60,
-    },
-    {
-      id: 'BK-002',
-      customer: 'Sarah Johnson',
-      facility: 'Swimming Pool',
-      date: '2025-04-06',
-      time: '2:00 PM - 3:30 PM',
-      status: 'confirmed',
-      amount: 45,
-    },
-    {
-      id: 'BK-003',
-      customer: 'Michael Brown',
-      facility: 'Tennis Court',
-      date: '2025-04-07',
-      time: '9:00 AM - 11:00 AM',
-      status: 'pending',
-      amount: 80,
-    },
-    {
-      id: 'BK-004',
-      customer: 'Emily Davis',
-      facility: 'Gym - Weight Room',
-      date: '2025-04-05',
-      time: '6:00 PM - 7:30 PM',
-      status: 'confirmed',
-      amount: 35,
-    },
-    {
-      id: 'BK-005',
-      customer: 'James Wilson',
-      facility: 'Basketball Court',
-      date: '2025-04-08',
-      time: '7:00 PM - 9:00 PM',
-      status: 'cancelled',
-      amount: 60,
-    },
-  ]
+  const [bookings, setBookings] = useState<BookingRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadBookings() {
+      if (!isAdminApiReady()) {
+        setLoading(false)
+        setError('Sign in as an admin to view bookings.')
+        return
+      }
+
+      try {
+        setLoading(true)
+        setError(null)
+        const rows = await listBookings({ limit: 100 })
+        if (!cancelled) {
+          setBookings(rows.map(toBookingRow))
+        }
+      } catch {
+        if (!cancelled) {
+          setError('Unable to load bookings from the API.')
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      }
+    }
+
+    loadBookings()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'confirmed':
+      case 'checked_in':
         return 'bg-green-100 text-green-700'
       case 'pending':
         return 'bg-yellow-100 text-yellow-700'
@@ -65,9 +89,21 @@ export default function BookingsManagement() {
     }
   }
 
-  const confirmedBookings = bookings.filter(b => b.status === 'confirmed').length
-  const pendingBookings = bookings.filter(b => b.status === 'pending').length
-  const totalRevenue = bookings.filter(b => b.status !== 'cancelled').reduce((sum, b) => sum + b.amount, 0)
+  const confirmedBookings = useMemo(
+    () => bookings.filter((b) => b.status === 'confirmed' || b.status === 'checked_in').length,
+    [bookings],
+  )
+  const pendingBookings = useMemo(
+    () => bookings.filter((b) => b.status === 'pending').length,
+    [bookings],
+  )
+  const totalRevenue = useMemo(
+    () =>
+      bookings
+        .filter((b) => b.status !== 'cancelled')
+        .reduce((sum, b) => sum + b.amount, 0),
+    [bookings],
+  )
 
   return (
     <div className="space-y-6">
@@ -155,10 +191,10 @@ export default function BookingsManagement() {
                       {new Date(booking.date).toLocaleDateString()}
                     </td>
                     <td className="py-3 px-4 text-muted-foreground text-sm">{booking.time}</td>
-                    <td className="py-3 px-4 font-semibold text-accent">${booking.amount}</td>
+                    <td className="py-3 px-4 font-semibold text-accent">${booking.amount.toFixed(2)}</td>
                     <td className="py-3 px-4">
                       <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(booking.status)}`}>
-                        {booking.status.charAt(0).toUpperCase() + booking.status.slice(1)}
+                        {booking.status.replaceAll('_', ' ').replace(/^\w/, (c) => c.toUpperCase())}
                       </span>
                     </td>
                     <td className="py-3 px-4">
@@ -170,6 +206,17 @@ export default function BookingsManagement() {
                 ))}
               </tbody>
             </table>
+            {loading ? (
+              <div className="py-8 text-center text-sm text-muted-foreground">Loading bookings…</div>
+            ) : null}
+            {!loading && error ? (
+              <div className="py-8 text-center text-sm text-destructive">{error}</div>
+            ) : null}
+            {!loading && !error && bookings.length === 0 ? (
+              <div className="py-8 text-center text-sm text-muted-foreground">
+                No bookings found for this tenant yet.
+              </div>
+            ) : null}
           </div>
         </CardContent>
       </Card>

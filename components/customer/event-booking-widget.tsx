@@ -4,6 +4,7 @@
 import Image from 'next/image'
 import { useMemo, useState } from 'react'
 import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import type { ComponentType } from 'react'
 import Link from 'next/link'
 import { Building2, Cake, CalendarDays, Church, PartyPopper, School, Ticket, Users } from 'lucide-react'
@@ -53,6 +54,8 @@ import {
   type EventPackageOptionalAddOn,
 } from '@/lib/mock-data'
 import { useScheduling } from '@/lib/scheduling-store'
+import { getSchedulingConsumerBackLink } from '@/lib/scheduling-consumer-categories'
+import { navigateToListingAfterCartAdd } from '@/lib/product-detail-navigation'
 import {
   buildEventCartBookingDescription,
   EVENT_CART_BOOKING_META_KEY,
@@ -161,6 +164,7 @@ export function EventBookingWidget({
   canStart = true,
   onProgressChange,
 }: Readonly<EventBookingWidgetProps>) {
+  const router = useRouter()
   const { toast } = useToast()
   const { addCustomCartItem, bookingAddOns, products: inventoryProducts } = useInventory()
   const { contacts, subscriptions } = useClients()
@@ -174,6 +178,15 @@ export function EventBookingWidget({
     () => services.find((entry) => entry.id === serviceId) ?? null,
     [serviceId, services],
   )
+  const listingBackHref = useMemo(() => {
+    if (bookingService) {
+      return getSchedulingConsumerBackLink(
+        bookingService.categoryId,
+        bookingService.category,
+      ).href
+    }
+    return '/events'
+  }, [bookingService])
   const resolvedPackages = useMemo(() => {
     if (bookingPackagesProp) {
       return [...bookingPackagesProp]
@@ -326,6 +339,9 @@ export function EventBookingWidget({
   }
 
   function submit(): void {
+    if (bookingComplete) {
+      return
+    }
     const booking = form.submitBooking({ persist: false })
     if (!booking) {
       toast({
@@ -355,6 +371,9 @@ export function EventBookingWidget({
       },
     })
     setBookingComplete(true)
+    navigateToListingAfterCartAdd(router, listingBackHref, {
+      itemName: serviceName,
+    })
   }
 
   const progressTimeRange = useMemo(() => {

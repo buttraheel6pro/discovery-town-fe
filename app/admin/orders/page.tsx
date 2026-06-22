@@ -17,6 +17,8 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { formatPrice } from '@/lib/utils'
 import { useInventory } from '@/lib/inventory-store'
+import { isAdminApiReady } from '@/lib/api/client'
+import { listOrders } from '@/lib/api/orders.api'
 import type { Order, OrderStatus } from '@/lib/types'
 
 type StatusTab = 'ALL' | 'RENTALS' | 'PENDING' | 'PROCESSING' | 'DELIVERED' | 'REFUNDED' | 'CANCELLED'
@@ -24,10 +26,17 @@ type StatusTab = 'ALL' | 'RENTALS' | 'PENDING' | 'PROCESSING' | 'DELIVERED' | 'R
 function OrdersManagementContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
-  const { orders } = useInventory()
+  const { orders: storeOrders } = useInventory()
+  const [apiOrders, setApiOrders] = useState<Order[] | null>(null)
+  const orders = apiOrders ?? storeOrders
   const [tab, setTab] = useState<StatusTab>('ALL')
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<Order | null>(null)
+
+  useEffect(() => {
+    if (!isAdminApiReady()) return
+    void listOrders({ limit: 100 }).then(setApiOrders).catch(() => setApiOrders(null))
+  }, [])
 
   useEffect(() => {
     const orderId = searchParams.get('orderId')

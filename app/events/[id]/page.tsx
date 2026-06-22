@@ -26,6 +26,8 @@ import { EventBookingWidget } from '@/components/customer/event-booking-widget'
 import { EventBookingScheduleSection } from '@/components/customer/event-booking-schedule-section'
 import { CustomerNavbar } from '@/components/customer/navbar'
 import { CustomerFooter } from '@/components/customer/footer'
+import { EventsCategoryRoutePage } from '@/components/customer/events-category-route-page'
+import { EventsProductCategoryRoutePage } from '@/components/customer/events-product-category-route-page'
 import { PackageSelector } from '@/components/customer/package-selector'
 import { PrivatePlayPackageDetail } from '@/components/customer/private-play-package-detail'
 import { Button } from '@/components/ui/button'
@@ -47,6 +49,7 @@ import {
 } from '@/components/ui/select'
 import { useBookingForm } from '@/hooks/use-booking-form'
 import { useClients } from '@/lib/client-store'
+import { resolveEventsPlacedProductCategoryForRoute } from '@/lib/events-product-consumer-categories'
 import { useInventory } from '@/lib/inventory-store'
 import {
   buildEventCartBookingDescription,
@@ -93,6 +96,8 @@ import {
   isConsumerVisibleSchedulingService,
 } from '@/lib/scheduling-visibility'
 import { getSchedulingConsumerBackLink } from '@/lib/scheduling-consumer-categories'
+import { navigateToListingAfterCartAdd } from '@/lib/product-detail-navigation'
+import { isEventsCategoryRouteParam } from '@/lib/events-category-routes'
 import { formatPrice, formatSlotTime, isDocumentSignedAndValid } from '@/lib/utils'
 import type { EventOccasion, SchedulingService, SchedulingSlot, AvailableWindow } from '@/lib/types'
 
@@ -143,6 +148,7 @@ function EventDetailContent({
   service,
   eventSlotBase,
 }: Readonly<{ service: SchedulingService; eventSlotBase: SchedulingSlot | undefined }>) {
+  const router = useRouter()
   const searchParams = useSearchParams()
   const { slots, packages, categories } = useScheduling()
   const categoryById = useMemo(
@@ -458,6 +464,9 @@ function EventDetailContent({
   }, [bookingForm.additionalAdultCount, bookingForm.additionalAdultUnitPrice])
 
   function handleRegister() {
+    if (registered || addedEventToCart) {
+      return
+    }
     if (showCustomerEventSchedule) {
       if (!scheduleWindow) {
         return
@@ -487,6 +496,9 @@ function EventDetailContent({
         },
       })
       setAddedEventToCart(true)
+      navigateToListingAfterCartAdd(router, consumerBackLink.href, {
+        itemName: service.name,
+      })
       return
     }
     bookingForm.submitBooking()
@@ -934,7 +946,9 @@ function EventDetailContent({
                             spotsLeft === 0 ||
                             !published ||
                             !bookingForm.canSubmitDetails ||
-                            !waiversOk
+                            !waiversOk ||
+                            registered ||
+                            addedEventToCart
                           }
                           onClick={handleRegister}
                         >
@@ -1435,7 +1449,9 @@ function EventDetailContent({
                         spotsLeft === 0 ||
                         !published ||
                         !bookingForm.canSubmitDetails ||
-                        !waiversOk
+                        !waiversOk ||
+                        registered ||
+                        addedEventToCart
                       }
                       type="button"
                       onClick={handleRegister}
@@ -1495,10 +1511,7 @@ function EventDetailContent({
   )
 }
 
-export default function EventDetailPage({
-  params,
-}: Readonly<{ params: Promise<{ id: string }> }>) {
-  const { id } = use(params)
+function EventServiceDetailPage({ id }: Readonly<{ id: string }>) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { services, slots, categories, packages } = useScheduling()
@@ -1581,4 +1594,30 @@ export default function EventDetailPage({
       <CustomerFooter />
     </>
   )
+}
+
+function EventsDynamicRoutePage({ routeParam }: Readonly<{ routeParam: string }>) {
+  const { productCategories } = useInventory()
+  const placedProductCategory = useMemo(
+    () => resolveEventsPlacedProductCategoryForRoute(routeParam, productCategories),
+    [productCategories, routeParam],
+  )
+
+  if (placedProductCategory) {
+    return <EventsProductCategoryRoutePage categorySlug={routeParam} />
+  }
+
+  return <EventServiceDetailPage id={routeParam} />
+}
+
+export default function EventDetailPage({
+  params,
+}: Readonly<{ params: Promise<{ id: string }> }>) {
+  const { id } = use(params)
+
+  if (isEventsCategoryRouteParam(id)) {
+    return <EventsCategoryRoutePage categoryId={id} />
+  }
+
+  return <EventsDynamicRoutePage routeParam={id} />
 }

@@ -35,6 +35,10 @@ import { PrivatePlayDetail } from '@/components/customer/private-play-detail'
 import { OpenBookingAvailabilitySection } from '@/components/customer/open-booking-availability-section'
 import { PackageSelector } from '@/components/customer/package-selector'
 import { useBookingForm } from '@/hooks/use-booking-form'
+import {
+  resolveConsumerDetailSchedulingService,
+  useFetchedSchedulingService,
+} from '@/lib/hooks/use-fetched-scheduling-service'
 import { resolveServiceChildAgeRules } from '@/lib/booking-child-age'
 import { getBookingPrimaryGuardianId } from '@/lib/booking-household'
 import { useClients } from '@/lib/client-store'
@@ -45,6 +49,8 @@ import {
   resolveOfferDisplayPrice,
 } from '@/lib/open-play-membership-offers'
 import { isOpenPlayPassCatalogService } from '@/lib/open-play-pass-catalog'
+import { isOpenPlaySessionPassOffering } from '@/lib/open-play-session-pass'
+import { isOpenPlaySchedulingCategory } from '@/lib/open-play-consumer-section'
 import { resolvePackagesForSchedulingService } from '@/lib/event-package-catalog'
 import { shouldUsePrivatePlayDetailLayout } from '@/lib/private-play-packages'
 import { isPackageServiceOffering, isPassOffering } from '@/lib/scheduling-listing-kind'
@@ -62,12 +68,14 @@ import {
   PLAY_CART_BOOKING_META_KEY,
 } from '@/lib/play-cart'
 import { usesBuyNowListingCta } from '@/lib/play-cart'
+import { navigateToListingAfterCartAdd } from '@/lib/product-detail-navigation'
 import { useScheduling } from '@/lib/scheduling-store'
 import {
   buildSchedulingCategoryById,
   isConsumerVisibleSchedulingService,
 } from '@/lib/scheduling-visibility'
 import { getCustomerEventScheduleDetailHref } from '@/lib/event-booking-schedule'
+import { getCustomerSchedulingMenuSlug } from '@/lib/catalog-placement'
 import { usesEventTicketBookingSidebar } from '@/lib/scheduling-slot-availability'
 import { resolveSlotIncrementMinutes } from '@/lib/open-booking-slot-windows'
 import {
@@ -108,13 +116,23 @@ function getFacilityCartCheckoutKind(
   return null
 }
 
+function isPlayFacilityService(service: SchedulingService): boolean {
+  if (service.category != null && getCustomerSchedulingMenuSlug(service.category) === 'play') {
+    return true
+  }
+  if (isOpenPlaySchedulingCategory(service.category ?? { id: service.categoryId, name: '' })) {
+    return true
+  }
+  return getSchedulingTopLevelId(service.categoryId) === 'PLAY'
+}
+
 function getFacilityConfirmButtonLabel(
-  categoryId: string,
+  service: SchedulingService,
   hasSelectedWindow: boolean,
   buyNowListing: boolean,
   isPassOffering: boolean,
 ): string {
-  const isPlayCategory = getSchedulingTopLevelId(categoryId) === 'PLAY'
+  const isPlayCategory = isPlayFacilityService(service)
 
   if (buyNowListing) {
     return 'Buy now'
@@ -132,6 +150,7 @@ function getFacilityConfirmButtonLabel(
 }
 
 function FacilityDetailContent({ service }: Readonly<{ service: SchedulingService }>) {
+  const router = useRouter()
   const { contacts, subscriptions, documents, addContact, addRelationship } = useClients()
   const { packages } = useScheduling()
   const { addCustomCartItem } = useInventory()
@@ -301,7 +320,8 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
   const sportLabel = service.sport ?? service.serviceType
 
   function handleConfirmBooking() {
-    if (!selectedWindow && service.bookingOfferingKind !== 'PASS') return
+    if (bookedOk || addedToCartKind !== null) return
+    if (!selectedWindow && !isOpenPlaySessionPassOffering(service)) return
     if (!bookingForm.canSubmitDetails) return
     if (facilityCartCheckoutKind === 'play') {
       const booking = bookingForm.submitBooking({ persist: false })
@@ -320,6 +340,9 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
         },
       })
       setAddedToCartKind('play')
+      navigateToListingAfterCartAdd(router, consumerBackLink.href, {
+        itemName: service.name,
+      })
       return
     }
     if (facilityCartCheckoutKind === 'gym') {
@@ -339,6 +362,9 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
         },
       })
       setAddedToCartKind('gym')
+      navigateToListingAfterCartAdd(router, consumerBackLink.href, {
+        itemName: service.name,
+      })
       return
     }
     bookingForm.submitBooking()
@@ -346,7 +372,7 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
   }
 
   const openMode = service.bookingMode === 'OPEN'
-  const isPassOffering = service.bookingOfferingKind === 'PASS'
+  const isPassOffering = isOpenPlaySessionPassOffering(service)
   const showBookingDetailsForm = isPassOffering || selectedWindow != null
 
   return (
@@ -537,12 +563,14 @@ function FacilityDetailContent({ service }: Readonly<{ service: SchedulingServic
                     disabled={
                       !showBookingDetailsForm ||
                       !bookingForm.canSubmitDetails ||
-                      !waiversOk
+                      !waiversOk ||
+                      bookedOk ||
+                      addedToCartKind !== null
                     }
                     onClick={handleConfirmBooking}
                   >
                     {getFacilityConfirmButtonLabel(
-                      service.categoryId,
+                      service,
                       Boolean(selectedWindow),
                       usesBuyNowListingCta(service),
                       isPassOffering,
@@ -830,6 +858,7 @@ export default function FacilityDetailPage({
   const searchParams = useSearchParams()
   const { services, categories, packages } = useScheduling()
   const { membershipPlans } = useClients()
+  const { fetchedService, isFetching } = useFetchedSchedulingService(id)
 
   const passOffer = getOpenPlayMembershipOffer(id)
 
@@ -837,15 +866,16 @@ export default function FacilityDetailPage({
 
   const service = useMemo(() => {
     const fromStore = services.find((entry) => entry.id === id)
+    const resolvedService = resolveConsumerDetailSchedulingService(fromStore, fetchedService)
     let candidate: SchedulingService | undefined
-    if (fromStore?.isActive && isOpenPlayPassCatalogService(fromStore)) {
-      candidate = fromStore
+    if (resolvedService?.isActive && isOpenPlayPassCatalogService(resolvedService)) {
+      candidate = resolvedService
     } else if (!passOffer) {
-      candidate = fromStore
+      candidate = resolvedService
     } else {
       const category = categories.find((entry) => entry.id === passOffer.categoryId)
       if (!category) {
-        candidate = fromStore
+        candidate = resolvedService
       } else {
         const { price } = resolveOfferDisplayPrice(membershipPlans, passOffer.kind)
         candidate = buildPassCatalogSchedulingService(passOffer, category, price)
@@ -857,7 +887,9 @@ export default function FacilityDetailPage({
     return isConsumerVisibleSchedulingService(candidate, categoryById)
       ? candidate
       : undefined
-  }, [categories, categoryById, id, membershipPlans, passOffer, services])
+  }, [categories, categoryById, fetchedService, id, membershipPlans, passOffer, services])
+
+  const isLoading = isFetching && service == null
 
   const isPassCatalog =
     passOffer != null || (service != null && isOpenPlayPassCatalogService(service))
@@ -907,6 +939,20 @@ export default function FacilityDetailPage({
     searchParams,
     service,
   ])
+
+  if (isLoading) {
+    return (
+      <>
+        <CustomerNavbar />
+        <main className="py-16">
+          <div className="max-w-3xl mx-auto px-4 text-center text-muted-foreground">
+            Loading…
+          </div>
+        </main>
+        <CustomerFooter />
+      </>
+    )
+  }
 
   if (!service) {
     return (

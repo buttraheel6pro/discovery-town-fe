@@ -1,4 +1,4 @@
-/** Learn program detail — gym-style availability calendar, enroll form, and add-to-cart. */
+/** Learn program detail or category listing — routes `cat-*` to category pages. */
 'use client'
 
 import { use, useEffect, useMemo } from 'react'
@@ -8,7 +8,9 @@ import { useRouter } from 'next/navigation'
 import { ClassDetailContent } from '@/app/classes/[id]/page'
 import { CustomerFooter } from '@/components/customer/footer'
 import { CustomerNavbar } from '@/components/customer/navbar'
+import { LearnCategoryRoutePage } from '@/components/customer/learn-category-route-page'
 import { isLearnSchedulingService } from '@/lib/learn-catalog'
+import { isLearnCategoryRouteParam } from '@/lib/learn-category-routes'
 import { useScheduling } from '@/lib/scheduling-store'
 import {
   buildSchedulingCategoryById,
@@ -19,8 +21,7 @@ interface LearnDetailPageProps {
   readonly params: Promise<{ readonly id: string }>
 }
 
-export default function LearnDetailPage({ params }: LearnDetailPageProps) {
-  const { id } = use(params)
+function LearnServiceDetailPage({ id }: Readonly<{ id: string }>) {
   const router = useRouter()
   const { services, categories } = useScheduling()
 
@@ -69,4 +70,14 @@ export default function LearnDetailPage({ params }: LearnDetailPageProps) {
       <CustomerFooter />
     </>
   )
+}
+
+export default function LearnDetailPage({ params }: LearnDetailPageProps) {
+  const { id } = use(params)
+
+  if (isLearnCategoryRouteParam(id)) {
+    return <LearnCategoryRoutePage categoryId={id} />
+  }
+
+  return <LearnServiceDetailPage id={id} />
 }

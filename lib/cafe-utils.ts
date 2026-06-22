@@ -401,17 +401,34 @@ export function cafeCategoryFromInventoryCategoryId(
   return cafeCategoryFromInventoryCategory(category)
 }
 
+function inventoryCategoryIdsForCafeLookup(
+  inventoryCategoryId: string,
+  productCategories: readonly ProductCategory[],
+): Set<string> {
+  if (inventoryCategoryId === TAKE_OUT_PARTY_ROOT_CATEGORY_ID) {
+    return collectTakeOutPartyCategoryIds(productCategories)
+  }
+  return new Set([inventoryCategoryId])
+}
+
 /** Cafe-store product ids for an inventory sub-category (mock + admin-created). */
 export function cafeProductIdsForInventoryCategory(
   inventoryCategoryId: string,
   cafeProducts: readonly CafeProduct[],
   productCategories: readonly ProductCategory[],
 ): string[] {
+  const targetCategoryIds = inventoryCategoryIdsForCafeLookup(
+    inventoryCategoryId,
+    productCategories,
+  )
   return cafeProducts
-    .filter(
-      (product) =>
-        resolveInventoryCategoryId(product.category, productCategories) === inventoryCategoryId,
-    )
+    .filter((product) => {
+      const resolvedCategoryId = resolveInventoryCategoryId(
+        product.category,
+        productCategories,
+      )
+      return targetCategoryIds.has(resolvedCategoryId)
+    })
     .map((product) => product.id)
 }
 

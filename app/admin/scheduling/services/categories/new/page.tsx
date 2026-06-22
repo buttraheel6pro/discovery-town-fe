@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { CrudModal } from '@/components/admin/crud-modal'
+import { SchedulingCategoryImageField } from '@/components/admin/scheduling-category-image-field'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -50,6 +51,7 @@ interface CategoryDraft {
   readonly menuCatalogSlug: CatalogSlug
   readonly name: string
   readonly icon: string
+  readonly imageUrl: string
   readonly displayOrder: string
   readonly isActive: boolean
   readonly description: string
@@ -138,6 +140,7 @@ function AdminSchedulingCategoryNewPageInner() {
     menuCatalogSlug: schedulingSlugForTopLevel(initialTopLevelId),
     name: '',
     icon: '',
+    imageUrl: '',
     displayOrder: String(nextDisplayOrder),
     isActive: true,
     description: '',
@@ -266,6 +269,7 @@ function AdminSchedulingCategoryNewPageInner() {
       id: categoryId,
       name: draft.name.trim(),
       icon: draft.icon.trim() || null,
+      imageUrl: draft.imageUrl.trim() || undefined,
       displayOrder,
       isActive: draft.isActive,
       description: draft.description.trim() || undefined,
@@ -401,6 +405,11 @@ function AdminSchedulingCategoryNewPageInner() {
               />
             </div>
           </div>
+
+          <SchedulingCategoryImageField
+            value={draft.imageUrl}
+            onChange={(imageUrl) => setDraft((previous) => ({ ...previous, imageUrl }))}
+          />
 
           <div className="flex items-center justify-between">
             <Label htmlFor="cat-active">Active</Label>

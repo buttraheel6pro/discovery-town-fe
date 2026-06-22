@@ -1,18 +1,21 @@
-/** Shop checkout page — mock payment and order creation. */
+/** Shop checkout page — Stripe checkout when API is enabled, mock payment otherwise. */
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { CreditCard, Lock } from 'lucide-react'
 
 import { CustomerFooter } from '@/components/customer/footer'
 import { CustomerNavbar } from '@/components/customer/navbar'
+import { isStripeCheckoutEnabled, StripeCheckoutForm } from '@/components/customer/stripe-checkout-form'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { useToast } from '@/hooks/use-toast'
+import { isApiEnabled } from '@/lib/api/client'
+import { checkoutOrder, getOrder } from '@/lib/api/orders.api'
 import { calcCartTotals, formatPrice } from '@/lib/utils'
 import { useInventory } from '@/lib/inventory-store'
 import type { Order } from '@/lib/types'
@@ -25,15 +28,74 @@ export default function ShopCheckoutPage() {
   const [cardNumber, setCardNumber] = useState('')
   const [expiry, setExpiry] = useState('')
   const [cvv, setCvv] = useState('')
+  const [clientSecret, setClientSecret] = useState<string | null>(null)
+  const [pendingOrderId, setPendingOrderId] = useState<string | null>(null)
+  const [checkoutError, setCheckoutError] = useState<string | null>(null)
+
+  const useStripe = isApiEnabled && isStripeCheckoutEnabled()
 
   const { subtotal, tax, total } = useMemo(() => {
     return calcCartTotals(cart.items, cart.couponDiscount, 20)
   }, [cart.couponDiscount, cart.items])
 
-  const canPlace = cart.items.length > 0 && cardNumber.trim().length >= 8 && expiry.trim() && cvv.trim().length >= 3
+  const orderItems = useMemo(
+    () =>
+      cart.items
+        .filter((i) => i.type === 'product')
+        .map((i) => ({
+          productId: String(i.metadata?.productId ?? ''),
+          quantity: i.quantity,
+        }))
+        .filter((i) => i.productId.length > 0),
+    [cart.items],
+  )
 
-  function placeOrder() {
-    if (!canPlace) return
+  useEffect(() => {
+    if (!useStripe || orderItems.length === 0) {
+      setClientSecret(null)
+      setPendingOrderId(null)
+      return
+    }
+
+    let cancelled = false
+    setCheckoutError(null)
+
+    checkoutOrder({
+      contactId: cart.contactId ?? undefined,
+      channel: 'ONLINE',
+      items: orderItems,
+      couponCode: cart.couponCode ?? undefined,
+    })
+      .then((session) => {
+        if (cancelled) return
+        setClientSecret(session.clientSecret)
+        setPendingOrderId(session.orderId)
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return
+        const message = error instanceof Error ? error.message : 'Checkout failed'
+        setCheckoutError(message)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [cart.contactId, cart.couponCode, orderItems, useStripe])
+
+  const canPlaceMock =
+    cart.items.length > 0 && cardNumber.trim().length >= 8 && expiry.trim() && cvv.trim().length >= 3
+
+  async function completeStripeOrder() {
+    if (!pendingOrderId) return
+    const order = await getOrder(pendingOrderId)
+    addOrder(order)
+    clearCart()
+    toast({ title: 'Order placed', description: `Order ${order.orderNumber} confirmed.` })
+    router.push(`/shop/order-confirmation?orderId=${encodeURIComponent(order.id)}`)
+  }
+
+  function placeMockOrder() {
+    if (!canPlaceMock) return
 
     const nowIso = new Date().toISOString()
     const orderId = `order-online-${Date.now()}`
@@ -122,7 +184,9 @@ export default function ShopCheckoutPage() {
               <h1 className="text-3xl font-black text-foreground" style={{ fontFamily: 'var(--font-barlow)' }}>
                 Checkout
               </h1>
-              <p className="mt-2 text-sm text-muted-foreground">Secure payment (mock).</p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {useStripe ? 'Secure payment via Stripe.' : 'Secure payment (mock).'}
+              </p>
             </div>
             <Link href="/cart" className="text-sm font-semibold text-muted-foreground hover:text-foreground">
               Back to cart
@@ -148,28 +212,44 @@ export default function ShopCheckoutPage() {
                     Payment
                   </h2>
                 </div>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div className="space-y-2 sm:col-span-2">
-                    <Label htmlFor="cc-number">Card number</Label>
-                    <Input id="cc-number" value={cardNumber} onChange={(e) => setCardNumber(e.target.value)} placeholder="1234 5678 9012 3456" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="cc-exp">Expiry</Label>
-                    <Input id="cc-exp" value={expiry} onChange={(e) => setExpiry(e.target.value)} placeholder="MM/YY" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="cc-cvv">CVV</Label>
-                    <Input id="cc-cvv" value={cvv} onChange={(e) => setCvv(e.target.value)} placeholder="123" />
-                  </div>
-                </div>
 
-                <Button className="w-full bg-accent text-accent-foreground hover:bg-accent/90 font-semibold h-11" onClick={placeOrder} disabled={!canPlace}>
-                  <Lock className="mr-2 h-4 w-4" />
-                  Place order {formatPrice(total)}
-                </Button>
-                <p className="text-xs text-muted-foreground text-center">
-                  This is a mock checkout for demo purposes.
-                </p>
+                {useStripe ? (
+                  <div className="space-y-4">
+                    {checkoutError ? (
+                      <p className="text-sm text-destructive">{checkoutError}</p>
+                    ) : null}
+                    {clientSecret ? (
+                      <StripeCheckoutForm clientSecret={clientSecret} onSuccess={() => void completeStripeOrder()} />
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Preparing secure checkout…</p>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div className="space-y-2 sm:col-span-2">
+                        <Label htmlFor="cc-number">Card number</Label>
+                        <Input id="cc-number" value={cardNumber} onChange={(e) => setCardNumber(e.target.value)} placeholder="1234 5678 9012 3456" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="cc-exp">Expiry</Label>
+                        <Input id="cc-exp" value={expiry} onChange={(e) => setExpiry(e.target.value)} placeholder="MM/YY" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="cc-cvv">CVV</Label>
+                        <Input id="cc-cvv" value={cvv} onChange={(e) => setCvv(e.target.value)} placeholder="123" />
+                      </div>
+                    </div>
+
+                    <Button className="w-full bg-accent text-accent-foreground hover:bg-accent/90 font-semibold h-11" onClick={placeMockOrder} disabled={!canPlaceMock}>
+                      <Lock className="mr-2 h-4 w-4" />
+                      Place order {formatPrice(total)}
+                    </Button>
+                    <p className="text-xs text-muted-foreground text-center">
+                      This is a mock checkout for demo purposes.
+                    </p>
+                  </>
+                )}
               </section>
 
               <aside className="lg:col-span-5 space-y-4 rounded-xl border border-border bg-card p-6">
@@ -206,4 +286,3 @@ export default function ShopCheckoutPage() {
     </>
   )
 }
-

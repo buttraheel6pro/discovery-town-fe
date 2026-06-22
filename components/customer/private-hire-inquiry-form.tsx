@@ -21,6 +21,11 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useCalendar } from '@/lib/calendar-store'
+import {
+  mapApiPrivateHireInquiry,
+  submitPrivateHireInquiry,
+} from '@/lib/api/private-hire.api'
+import { isApiEnabled } from '@/lib/api/client'
 import { useLocations } from '@/lib/location-store'
 import { useScheduling } from '@/lib/scheduling-store'
 import { cn, privateHireInquirySchema } from '@/lib/utils'
@@ -85,6 +90,7 @@ export function PrivateHireInquiryForm({
   const [agreedToTerms, setAgreedToTerms] = useState(false)
 
   const [formError, setFormError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
     if (prefilledStartAt) {
@@ -135,7 +141,7 @@ export function PrivateHireInquiryForm({
     setStep(2)
   }
 
-  function handleSubmit(event: React.FormEvent) {
+  async function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
     setFormError(null)
 
@@ -168,31 +174,63 @@ export function PrivateHireInquiryForm({
       return
     }
 
-    const inquiry: PrivateHireInquiry = {
-      id: `hire-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
-      contactName: `${parsed.data.firstName} ${parsed.data.lastName}`.trim(),
-      contactEmail: parsed.data.email,
-      contactPhone: parsed.data.phone,
-      eventType: parsed.data.eventType,
-      serviceId: parsed.data.serviceId,
-      service: { ...service },
-      locationId: parsed.data.locationId,
-      locationName,
-      preferredDate: parsed.data.preferredDate,
-      alternateDate: parsed.data.alternateDate ?? null,
-      guestCount: parsed.data.guestCount,
-      notes: parsed.data.notes ?? null,
-      status: 'PENDING',
-      depositAmount: null,
-      internalNotes: null,
-      submittedAt: new Date().toISOString(),
-      reviewedAt: null,
-      reviewedBy: null,
-    }
+    const contactName = `${parsed.data.firstName} ${parsed.data.lastName}`.trim()
 
-    addInquiry(inquiry)
-    setSubmitted(inquiry)
-    onSubmitted?.(inquiry)
+    setIsSubmitting(true)
+    try {
+      if (isApiEnabled) {
+        const created = await submitPrivateHireInquiry({
+          contactName,
+          contactEmail: parsed.data.email,
+          contactPhone: parsed.data.phone,
+          eventType: parsed.data.eventType,
+          serviceId: parsed.data.serviceId,
+          locationId: parsed.data.locationId,
+          preferredDate: parsed.data.preferredDate,
+          alternateDate: parsed.data.alternateDate,
+          guestCount: parsed.data.guestCount,
+          notes: parsed.data.notes,
+        })
+        const inquiry = mapApiPrivateHireInquiry(created, {
+          service: { ...service },
+          locationName,
+        })
+        addInquiry(inquiry)
+        setSubmitted(inquiry)
+        onSubmitted?.(inquiry)
+        return
+      }
+
+      const inquiry: PrivateHireInquiry = {
+        id: `hire-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+        contactName,
+        contactEmail: parsed.data.email,
+        contactPhone: parsed.data.phone,
+        eventType: parsed.data.eventType,
+        serviceId: parsed.data.serviceId,
+        service: { ...service },
+        locationId: parsed.data.locationId,
+        locationName,
+        preferredDate: parsed.data.preferredDate,
+        alternateDate: parsed.data.alternateDate ?? null,
+        guestCount: parsed.data.guestCount,
+        notes: parsed.data.notes ?? null,
+        status: 'PENDING',
+        depositAmount: null,
+        internalNotes: null,
+        submittedAt: new Date().toISOString(),
+        reviewedAt: null,
+        reviewedBy: null,
+      }
+
+      addInquiry(inquiry)
+      setSubmitted(inquiry)
+      onSubmitted?.(inquiry)
+    } catch {
+      setFormError('Could not submit your enquiry. Please try again.')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   if (submitted) {
@@ -424,8 +462,9 @@ export function PrivateHireInquiryForm({
             <Button
               type="submit"
               className="flex-1 bg-accent text-accent-foreground hover:bg-accent/90 font-bold h-11"
+              disabled={isSubmitting}
             >
-              Submit enquiry
+              {isSubmitting ? 'Submitting…' : 'Submit enquiry'}
             </Button>
           </div>
         </div>

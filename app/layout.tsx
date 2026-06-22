@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { Barlow, Fredoka, Inter } from 'next/font/google'
+import { Barlow, Fredoka, Inter, Mukta, Roboto } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { Toaster } from '@/components/ui/toaster'
 import { CalendarProvider } from '@/lib/calendar-store'
@@ -34,6 +34,20 @@ const fredoka = Fredoka({
   display: 'swap',
 })
 
+const mukta = Mukta({
+  subsets: ['latin'],
+  weight: ['700'],
+  variable: '--font-mukta',
+  display: 'swap',
+})
+
+const roboto = Roboto({
+  subsets: ['latin'],
+  weight: ['400'],
+  variable: '--font-roboto',
+  display: 'swap',
+})
+
 export const metadata: Metadata = {
   title: {
     default: 'Discovery Town',
@@ -61,7 +75,10 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className={`${inter.variable} ${barlow.variable} ${fredoka.variable}`}>
+    <html
+      lang="en"
+      className={`${inter.variable} ${barlow.variable} ${fredoka.variable} ${mukta.variable} ${roboto.variable}`}
+    >
       <body suppressHydrationWarning className="font-sans antialiased">
         <AppStoreProvider>
           <SchedulingProvider>

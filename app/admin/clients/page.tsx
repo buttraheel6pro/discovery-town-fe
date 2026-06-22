@@ -44,6 +44,12 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useClients } from '@/lib/client-store'
+import { isAdminApiReady } from '@/lib/api/client'
+import {
+  updateContact,
+  assignTagToContact,
+  addContactCredit,
+} from '@/lib/services/contacts'
 import type { ContactFilters, ContactType, SubscriptionStatus } from '@/lib/types'
 import { MoreHorizontal, Plus, Search } from 'lucide-react'
 
@@ -110,7 +116,12 @@ export default function AdminClientsPage() {
 
   function applyBulkTag() {
     if (!bulkTagId) return
-    selected.forEach((id) => assignTag(id, bulkTagId))
+    selected.forEach((id) => {
+      assignTag(id, bulkTagId)
+      if (isAdminApiReady()) {
+        assignTagToContact(id, bulkTagId).catch(() => {})
+      }
+    })
     setBulkTagOpen(false)
     setBulkTagId('')
     setSelected(new Set())
@@ -320,7 +331,12 @@ export default function AdminClientsPage() {
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             className="text-destructive"
-                            onClick={() => deactivateContact(c.id)}
+                            onClick={() => {
+                              deactivateContact(c.id)
+                              if (isAdminApiReady()) {
+                                updateContact(c.id, { isActive: false }).catch(() => {})
+                              }
+                            }}
                           >
                             Deactivate
                           </DropdownMenuItem>
@@ -386,6 +402,9 @@ export default function AdminClientsPage() {
             createdAt: new Date().toISOString(),
           }
           addCredit(creditContactId, entry)
+          if (isAdminApiReady()) {
+            addContactCredit(creditContactId, { amount, reason: reason || 'Manual credit' }).catch(() => {})
+          }
           setCreditContactId(null)
         }}
       />

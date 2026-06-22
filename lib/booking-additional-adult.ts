@@ -31,7 +31,7 @@ export function resolveFreeAdultCount(service: SchedulingService): number {
   if (count != null && Number.isFinite(count) && count >= 0) {
     return count
   }
-  if (isOpenPlaySessionBookingService(service.id)) {
+  if (isOpenPlaySessionBookingService(service)) {
     return 2
   }
   return 0

@@ -39,10 +39,10 @@ export const CUSTOMER_NAV_LABEL_ROUTES: Record<CustomerNavLabelKey, string> = {
   gym: '/gym',
   learn: '/learn',
   events: '/events',
-  shop: '/store/shop',
-  gifts: '/store/gifts',
+  shop: '/shop',
+  gifts: '/gifts',
   rentals: '/rentals',
-  cafeFood: '/store/cafe-food',
+  cafeFood: '/cafe',
 }
 
 export function isCustomerNavLabelKey(value: string): value is CustomerNavLabelKey {

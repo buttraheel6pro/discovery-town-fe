@@ -1,6 +1,7 @@
 /** Household guardians & children for open-play session booking (mock + bypass user). */
 import { isLoginBypassEnabled } from '@/lib/config/auth'
-import type { CmContact, CmContactRelationship } from '@/lib/types'
+import { isOpenPlaySessionPassOffering } from '@/lib/open-play-session-pass'
+import type { CmContact, CmContactRelationship, SchedulingService } from '@/lib/types'
 
 export const BYPASS_PRIMARY_GUARDIAN_CONTACT_ID = 'cm-bypass-primary' as const
 export const SECONDARY_GUARDIAN_CONTACT_ID = 'cm-secondary-guardian' as const
@@ -18,8 +19,27 @@ export const OPEN_PLAY_SESSION_SERVICE_IDS = new Set<string>([
 
 export const SIBLING_PASS_SERVICE_ID = 'svc-open-play-sibling-pass' as const
 
-export function isOpenPlaySessionBookingService(serviceId: string): boolean {
-  return OPEN_PLAY_SESSION_SERVICE_IDS.has(serviceId)
+type OpenPlaySessionPassFields = Pick<
+  SchedulingService,
+  | 'id'
+  | 'serviceType'
+  | 'bookingMode'
+  | 'bookingOfferingKind'
+  | 'category'
+  | 'categoryId'
+  | 'isPackageService'
+>
+
+export function isOpenPlaySessionBookingService(
+  serviceOrId: string | OpenPlaySessionPassFields,
+): boolean {
+  if (typeof serviceOrId === 'string') {
+    return OPEN_PLAY_SESSION_SERVICE_IDS.has(serviceOrId)
+  }
+  if (OPEN_PLAY_SESSION_SERVICE_IDS.has(serviceOrId.id)) {
+    return true
+  }
+  return isOpenPlaySessionPassOffering(serviceOrId)
 }
 
 /** Sibling Pass books siblings via pass count — no extra adult/sibling quantity fields. */

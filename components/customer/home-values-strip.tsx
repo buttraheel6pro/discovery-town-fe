@@ -36,9 +36,9 @@ const VALUES = [
 export function HomeValuesStrip() {
   return (
     <section aria-labelledby="home-values-heading">
-      <ScallopDivider fill="cream" direction="up" />
+      <ScallopDivider fill="white" direction="up" />
 
-      <div className="bg-brand-cream">
+      <div className="bg-white">
         <div className="mx-auto w-full max-w-[96rem] px-2 py-10 sm:px-4 sm:py-12 md:py-14">
           <h2 id="home-values-heading" className="sr-only">
             Why families love Discovery Town

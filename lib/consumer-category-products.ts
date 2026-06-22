@@ -2,10 +2,13 @@
 
 import {
   cafeProductIdsForInventoryCategory,
+  cafeProductToInventoryProduct,
   filterCafeProducts,
   isCafeCatalogProductId,
   mergedCafeProductsForCustomer,
+  resolveInventoryCategoryId,
 } from '@/lib/cafe-utils'
+import { collectTakeOutPartyCategoryIds, TAKE_OUT_PARTY_ROOT_CATEGORY_ID } from '@/lib/take-out-party-catalog'
 import {
   buildProductCategoryById,
   isConsumerVisibleProduct,
@@ -58,6 +61,11 @@ export function consumerCafeProductIdsForInventoryCategory(
     [...eligible.visible, ...eligible.soldOut].map((product) => product.id),
   )
 
+  const takeOutTreeIds =
+    inventoryCategoryId === TAKE_OUT_PARTY_ROOT_CATEGORY_ID
+      ? collectTakeOutPartyCategoryIds(params.productCategories)
+      : null
+
   const directProducts = params.products
     .filter(
       (product) =>
@@ -73,6 +81,9 @@ export function consumerCafeProductIdsForInventoryCategory(
       }
       if (!isCafeCatalogProductId(product.id)) {
         return false
+      }
+      if (takeOutTreeIds?.has(product.categoryId)) {
+        return true
       }
       const childCategory = categoriesById.get(product.categoryId)
       return childCategory?.parentId === inventoryCategoryId
@@ -162,5 +173,32 @@ export function consumerProductsForCategory(
   params: ConsumerProductsForCategoryParams,
 ): Product[] {
   const idSet = new Set(consumerProductIdsForCategory(params))
-  return params.products.filter((product) => idSet.has(product.id))
+  const fromInventory = params.products.filter((product) => idSet.has(product.id))
+  if (params.category.productType !== 'cafe&food' || (params.cafeProducts?.length ?? 0) === 0) {
+    return fromInventory
+  }
+
+  const foundIds = new Set(fromInventory.map((product) => product.id))
+  const missingIds = [...idSet].filter((id) => !foundIds.has(id))
+  if (missingIds.length === 0) {
+    return fromInventory
+  }
+
+  const customerCafeProducts = mergedCafeProductsForCustomer(
+    [...(params.cafeProducts ?? [])],
+    [...params.products],
+    [...params.productCategories],
+  )
+  const tenantId = params.products[0]?.tenantId ?? 'tenant-1'
+  const cafeAsProducts = customerCafeProducts
+    .filter((cafeProduct) => missingIds.includes(cafeProduct.id))
+    .map((cafeProduct) =>
+      cafeProductToInventoryProduct(
+        cafeProduct,
+        resolveInventoryCategoryId(cafeProduct.category, params.productCategories),
+        tenantId,
+      ),
+    )
+
+  return [...fromInventory, ...cafeAsProducts]
 }

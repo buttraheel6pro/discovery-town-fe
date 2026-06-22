@@ -37,6 +37,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/hooks/use-toast'
 import { formatPrice } from '@/lib/utils'
 import { useInventory } from '@/lib/inventory-store'
+import { isAdminApiReady } from '@/lib/api/client'
+import {
+  createProductCategory as createProductCategoryApi,
+  updateProductCategory as updateProductCategoryApi,
+  deleteProductCategory as deleteProductCategoryApi,
+} from '@/lib/services/inventory'
 import type { Product, ProductCategory } from '@/lib/types'
 
 function toDisplayType(value: string): string {
@@ -211,7 +217,7 @@ export default function AdminInventoryProductsPage() {
     setCategoryFormOpen(true)
   }
 
-  function persistCategory() {
+  async function persistCategory() {
     const trimmedName = categoryName.trim()
     if (!trimmedName || !categoryParentId) {
       return
@@ -226,8 +232,29 @@ export default function AdminInventoryProductsPage() {
         name: trimmedName,
         isActive: categoryIsActive,
       })
+      if (isAdminApiReady()) {
+        updateProductCategoryApi(editingCategory.id, { name: trimmedName, isActive: categoryIsActive }).catch(() => {
+          toast({ title: 'Sync error', description: 'Category update failed to save.', variant: 'destructive' })
+        })
+      }
     } else {
+      let catId: string | undefined
+      if (isAdminApiReady()) {
+        try {
+          const saved = await createProductCategoryApi({
+            name: trimmedName,
+            parentId: categoryParentId,
+            isActive: categoryIsActive,
+            productType: parent.productType ?? 'shop',
+          })
+          catId = saved.id
+        } catch {
+          toast({ title: 'Save failed', description: 'Could not create category.', variant: 'destructive' })
+          return
+        }
+      }
       addProductCategory({
+        ...(catId ? { id: catId } : {}),
         name: trimmedName,
         productType: parent.productType ?? 'shop',
         parentId: categoryParentId,
@@ -238,8 +265,17 @@ export default function AdminInventoryProductsPage() {
     setEditingCategory(null)
   }
 
-  function confirmDeleteCategory() {
+  async function confirmDeleteCategory() {
     if (!deleteCategoryTarget) return
+    if (isAdminApiReady()) {
+      try {
+        await deleteProductCategoryApi(deleteCategoryTarget.id)
+      } catch {
+        toast({ title: 'Delete failed', description: 'Could not delete category.', variant: 'destructive' })
+        setDeleteCategoryTarget(null)
+        return
+      }
+    }
     const result = deleteProductCategory(deleteCategoryTarget.id)
     if (!result.ok) {
       toast({ title: 'Cannot delete', description: result.message, variant: 'destructive' })

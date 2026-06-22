@@ -27,6 +27,7 @@ import {
   loadInitialMembershipPlans,
   persistMembershipPlans,
 } from '@/lib/client-membership-plans-storage'
+import { isApiEnabled } from '@/lib/config/data-source'
 import type {
   ClientDocument,
   CmContact,
@@ -133,13 +134,33 @@ export function ClientProvider({
     initialTags.map((t) => ({ ...t })),
   )
   const [membershipPlans, setMembershipPlans] = useState<MembershipPlan[]>(() =>
-    initialMembershipPlans.map((p) => ({
-      ...p,
-      benefits: [...p.benefits],
-    })),
+    isApiEnabled
+      ? []
+      : initialMembershipPlans.map((p) => ({
+          ...p,
+          benefits: [...p.benefits],
+        })),
   )
   useLayoutEffect(() => {
+    if (isApiEnabled) {
+      return
+    }
     setMembershipPlans(loadInitialMembershipPlans(initialMembershipPlans))
+  }, [])
+
+  useEffect(() => {
+    if (!isApiEnabled) {
+      return
+    }
+
+    import('@/lib/api/plans.api')
+      .then(({ fetchPlans }) => fetchPlans({ isActive: true }))
+      .then((plans) => {
+        setMembershipPlans(plans)
+      })
+      .catch(() => {
+        setMembershipPlans([])
+      })
   }, [])
   const [planAddOns, setPlanAddOns] = useState<PlanAddOn[]>(() =>
     initialPlanAddOns.map((r) => ({ ...r })),
