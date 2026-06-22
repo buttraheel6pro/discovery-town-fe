@@ -1,13 +1,15 @@
-/** Menu landing hero — unified SVG background with category grid overlapping below. */
+/** Menu landing hero — image background with category grid overlapping below. */
 'use client'
 
 import type { ReactNode } from 'react'
 
-import { MenuLandingHeroArt } from '@/components/customer/menu-landing-hero-art'
-import { MenuLandingHeroIllustration } from '@/components/customer/menu-landing-hero-illustrations'
 import { CatalogListingHighlightCards } from '@/components/customer/catalog-listing-highlight-cards'
+import { LazyFadeImage } from '@/components/customer/lazy-fade-image'
 import { MenuLandingPartyCta } from '@/components/customer/menu-landing-party-cta'
-import type { MenuLandingHeroKey } from '@/lib/menu-landing-hero-config'
+import {
+  MENU_LANDING_HERO_IMAGES,
+  type MenuLandingHeroKey,
+} from '@/lib/menu-landing-hero-config'
 import { cn } from '@/lib/utils'
 
 export interface MenuLandingHeroProps {
@@ -15,6 +17,7 @@ export interface MenuLandingHeroProps {
   readonly overline: string
   readonly title: string
   readonly description: string
+  readonly imageAlt: string
   readonly children: ReactNode
   readonly heroExtra?: ReactNode
   readonly className?: string
@@ -25,37 +28,46 @@ export function MenuLandingHero({
   overline,
   title,
   description,
+  imageAlt,
   children,
   heroExtra,
   className,
 }: Readonly<MenuLandingHeroProps>) {
+  const imageSrc = MENU_LANDING_HERO_IMAGES[menuKey]
+
   return (
     <div className={cn('relative bg-brand-cream', className)}>
       <section className="relative isolate min-h-[12rem] overflow-hidden sm:min-h-[14rem] lg:min-h-[16rem]">
         <div className="absolute inset-0">
-          <MenuLandingHeroArt />
+          <LazyFadeImage
+            src={imageSrc}
+            alt={imageAlt}
+            fill
+            priority
+            sizes="100vw"
+            className="object-cover object-center"
+          />
+          <div
+            className="absolute inset-0 bg-gradient-to-r from-brand-navy/80 via-brand-navy/45 to-brand-navy/15"
+            aria-hidden
+          />
+          <div className="absolute inset-0 bg-black/15" aria-hidden />
         </div>
 
-        <div className="relative mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 pb-14 pt-8 sm:gap-6 sm:px-6 sm:pb-16 sm:pt-10 lg:gap-8 lg:px-8 lg:pb-20 lg:pt-12">
-          <div className="min-w-0 flex-1">
-            <p className="mb-3 text-xs font-bold uppercase tracking-widest text-accent">
-              {overline}
-            </p>
-            <h1
-              className="text-4xl font-black tracking-tight text-primary-foreground sm:text-5xl"
-              style={{ fontFamily: 'var(--font-barlow)' }}
-            >
-              {title}
-            </h1>
-            <p className="mt-3 max-w-2xl text-sm text-primary-foreground/90 md:text-base">
-              {description}
-            </p>
-            {heroExtra ? <div className="mt-4">{heroExtra}</div> : null}
-          </div>
-
-          <div className="shrink-0 self-center">
-            <MenuLandingHeroIllustration menuKey={menuKey} />
-          </div>
+        <div className="relative mx-auto max-w-7xl px-4 pb-14 pt-8 sm:px-6 sm:pb-16 sm:pt-10 lg:px-8 lg:pb-20 lg:pt-12">
+          <p className="mb-3 text-xs font-bold uppercase tracking-widest text-accent">
+            {overline}
+          </p>
+          <h1
+            className="text-4xl font-black tracking-tight text-primary-foreground sm:text-5xl"
+            style={{ fontFamily: 'var(--font-barlow)' }}
+          >
+            {title}
+          </h1>
+          <p className="mt-3 max-w-2xl text-sm text-primary-foreground/90 md:text-base">
+            {description}
+          </p>
+          {heroExtra ? <div className="mt-4">{heroExtra}</div> : null}
         </div>
       </section>
 

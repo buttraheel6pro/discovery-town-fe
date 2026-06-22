@@ -57,8 +57,8 @@ export function HomeHeroSection({
         />
         <div className="absolute inset-0 bg-black/20" aria-hidden />
 
-        <div className="relative z-10 flex h-full min-h-svh flex-col items-center justify-center overflow-visible px-4 pb-16 pt-12 sm:px-6 sm:pb-24">
-          <div className="flex w-full -translate-y-6 flex-col items-center gap-8 sm:-translate-y-10 sm:gap-10">
+        <div className="relative z-10 flex h-full min-h-svh flex-col items-center justify-center overflow-visible px-4 pb-12 pt-14 sm:px-6 sm:pb-16 sm:pt-16">
+          <div className="flex w-full translate-y-2 flex-col items-center gap-8 sm:translate-y-4 sm:gap-10">
             <div className="home-hero-enter w-full max-w-[56rem] px-4 text-center">
               <h1 id="hero-heading" className="home-hero-title m-0">
                 <span className="home-hero-title-line home-hero-title-line-sm text-[#3C918C]">
@@ -80,7 +80,7 @@ export function HomeHeroSection({
               </p>
             </div>
 
-            <div className="mx-auto flex w-full max-w-[40rem] flex-col items-center gap-4 px-4 sm:flex-row sm:justify-center sm:gap-5">
+            <div className="mx-auto mt-8 flex w-full max-w-[40rem] flex-col items-center gap-4 px-4 sm:mt-10 sm:flex-row sm:justify-center sm:gap-5">
               {showPlayCta ? (
                 <HeroCtaButton
                   href="/play"

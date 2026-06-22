@@ -27,6 +27,8 @@ const ACCENT_RING_CLASSES: Record<HomeExploreCardAccent, string> = {
   'chart-5': 'hover:ring-chart-5/40',
 }
 
+const EXPLORE_CARD_IMAGE_OVERLAY_CLASS = 'bg-[#DA7C35]/30'
+
 const SIZE_CLASSES: Record<HomeExploreCardSize, string> = {
   tile: 'min-h-[13.5rem] sm:min-h-[15rem] md:min-h-[17.5rem]',
   wide: 'min-h-[13.5rem] sm:min-h-[15rem]',
@@ -131,6 +133,7 @@ export function HomeExploreCard({
           sizes={imageSizes}
           className="object-cover transition-transform duration-700 ease-out group-hover:scale-110"
         />
+        <div className={cn('absolute inset-0', EXPLORE_CARD_IMAGE_OVERLAY_CLASS)} aria-hidden />
         <div
           className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/35 to-black/10 transition-all duration-500 group-hover:from-black/90 group-hover:via-black/45"
           aria-hidden
