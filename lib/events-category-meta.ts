@@ -17,6 +17,10 @@ export const EVENTS_CATEGORY_DESCRIPTIONS: Record<string, string> = {
     'Private party room packages with open play — Silver, Gold, and Platinum tiers.',
   'cat-event-whole-place-private-party-open-play':
     'Whole-venue private party packages with open play for larger celebrations.',
+  'cat-special-play-events':
+    'Character, holiday, fall/winter/spring seasonal festivals, and skill-building programmes.',
+  'cat-summer-camp-play':
+    'Themed summer camp weeks — register for a full week of supervised play and activities.',
 }
 
 export const EVENTS_CATEGORY_CARD_META: Record<
@@ -39,6 +43,18 @@ export const EVENTS_CATEGORY_CARD_META: Record<
     imageSrc:
       'https://images.unsplash.com/photo-1511795409834-ef04bbd61622?w=900&q=80',
     accent: 'chart-4',
+  },
+  'cat-special-play-events': {
+    description: EVENTS_CATEGORY_DESCRIPTIONS['cat-special-play-events'],
+    imageSrc:
+      'https://images.unsplash.com/photo-1464366400600-7168b8af9bc3?w=900&q=80',
+    accent: 'chart-4',
+  },
+  'cat-summer-camp-play': {
+    description: EVENTS_CATEGORY_DESCRIPTIONS['cat-summer-camp-play'],
+    imageSrc:
+      'https://images.unsplash.com/photo-1502086223501-7ea6ecd79368?w=900&q=80',
+    accent: 'chart-5',
   },
 }
 

@@ -1,6 +1,7 @@
 /** Category flags that drive household / adult fields on consumer booking flows. */
 import {
   CAMP_PLAY_CATEGORY_ID,
+  SPECIAL_PLAY_EVENTS_CATEGORY_ID,
   SUMMER_CAMP_PLAY_CATEGORY_ID,
 } from '@/lib/scheduling-slot-availability'
 import type { SchedulingCategory } from '@/lib/types'
@@ -14,11 +15,24 @@ export function isCampPlayCategory(
   )
 }
 
-/** Camps and summer camps always require a named participant at checkout. */
+export function isSpecialPlayEventsCategory(
+  category: Pick<SchedulingCategory, 'id'>,
+): boolean {
+  return category.id === SPECIAL_PLAY_EVENTS_CATEGORY_ID
+}
+
+/** Summer camps and special play events share the same registration form. */
+export function usesCampStyleRegistrationForm(
+  category: Pick<SchedulingCategory, 'id'>,
+): boolean {
+  return isCampPlayCategory(category) || isSpecialPlayEventsCategory(category)
+}
+
+/** Camps, summer camps, and special play events require a named participant. */
 export function needsCampParticipantPicker(
   category: Pick<SchedulingCategory, 'id'>,
 ): boolean {
-  return isCampPlayCategory(category)
+  return usesCampStyleRegistrationForm(category)
 }
 
 /** Admin "Child must attend with an adult" (`requiresAttendee` on the subcategory). */

@@ -952,7 +952,7 @@ function EventDetailContent({
                           }
                           onClick={handleRegister}
                         >
-                          {isSpecialPlayEvent ? 'Add to cart' : getPlayBookingConfirmCartLabel()}
+                          {getPlayBookingConfirmCartLabel()}
                         </Button>
                       </div>
                     )}
@@ -970,9 +970,7 @@ function EventDetailContent({
           <aside className="lg:col-span-2">
             <Card className="border-border shadow-xl">
               <CardHeader className="pb-3">
-                <CardTitle className="text-lg font-bold">
-                  {isSpecialPlayEvent ? 'Book this event' : 'Register for this Event'}
-                </CardTitle>
+                <CardTitle className="text-lg font-bold">Register for this Event</CardTitle>
               </CardHeader>
               <CardContent className="space-y-5">
                 <div className="space-y-2">

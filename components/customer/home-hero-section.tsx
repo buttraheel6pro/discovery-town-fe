@@ -26,13 +26,27 @@ function HeroCtaButton({
   backgroundColor,
   animationClass,
 }: HeroCtaButtonProps) {
+  const labelContent =
+    label === "Reserve Open Play" ? (
+      <>
+        Reserve
+        <br />
+        Open Play
+      </>
+    ) : (
+      label
+    );
+
   return (
     <Link
       href={href}
-      className={cn("home-hero-enter-child home-hero-cta-button", animationClass)}
+      className={cn(
+        "home-hero-enter-child home-hero-cta-button",
+        animationClass,
+      )}
       style={{ backgroundColor }}
     >
-      {label}
+      <span className="home-hero-cta-button-label">{labelContent}</span>
     </Link>
   );
 }
@@ -73,9 +87,12 @@ export function HomeHeroSection({
               </h1>
 
               <p className="home-hero-subtitle mx-auto mt-6 max-w-2xl sm:mt-8">
-                <span className="block">An imaginative indoor play café where children</span>
                 <span className="block">
-                  explore, create, and discover while parents relax and recharge.
+                  An imaginative indoor play café where children
+                </span>
+                <span className="block">
+                  explore, create, and discover while parents relax and
+                  recharge.
                 </span>
               </p>
             </div>
@@ -83,19 +100,21 @@ export function HomeHeroSection({
             <div className="mx-auto mt-8 flex w-full max-w-[40rem] flex-col items-center gap-4 px-4 sm:mt-10 sm:flex-row sm:justify-center sm:gap-5">
               {showPlayCta ? (
                 <HeroCtaButton
-                  href="/play"
-                  label="Book Parties"
+                  href="/play/cat-open-play"
+                  label="Reserve Open Play"
                   backgroundColor="#3C918C"
                   animationClass="home-hero-enter-delay-2"
                 />
               ) : null}
 
               <HeroCtaButton
-                href="/events"
-                label="Book Events"
+                href="/play"
+                label="Book Party"
                 backgroundColor="#E87722"
                 animationClass={
-                  showPlayCta ? "home-hero-enter-delay-3" : "home-hero-enter-delay-2"
+                  showPlayCta
+                    ? "home-hero-enter-delay-3"
+                    : "home-hero-enter-delay-2"
                 }
               />
 
@@ -104,7 +123,9 @@ export function HomeHeroSection({
                 label="Membership"
                 backgroundColor="#F1A61A"
                 animationClass={
-                  showPlayCta ? "home-hero-enter-delay-4" : "home-hero-enter-delay-3"
+                  showPlayCta
+                    ? "home-hero-enter-delay-4"
+                    : "home-hero-enter-delay-3"
                 }
               />
             </div>

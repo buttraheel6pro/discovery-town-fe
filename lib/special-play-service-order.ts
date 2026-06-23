@@ -1,4 +1,4 @@
-/** Display order for Special Play Events rails (Play + Events). */
+/** Display order for Special Play Events rails on the Events menu. */
 
 export const SPECIAL_PLAY_SERVICE_ORDER: readonly string[] = [
   'svc-special-character-events',

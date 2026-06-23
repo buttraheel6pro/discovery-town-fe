@@ -59,7 +59,7 @@ export function isParentsNightOutCatalogService(
   return service.categoryId === PARENTS_NIGHT_CATEGORY_ID
 }
 
-/** Play menu special events (`cat-special-play-events`) — workshops and themed days. */
+/** Events menu special events (`cat-special-play-events`) — workshops and themed days. */
 export function isSpecialPlayEventCatalogService(
   service: Pick<SchedulingService, 'categoryId'>,
 ): boolean {

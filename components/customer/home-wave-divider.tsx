@@ -9,7 +9,7 @@ export type ScallopFill = "cream" | "homeCream" | "teal" | "white" | "background
 const FILL_CLASS: Record<ScallopFill, string> = {
   cream: "fill-brand-cream",
   homeCream: "fill-home-cream",
-  teal: "fill-[#238F8A]",
+  teal: 'fill-brand-teal',
   white: "fill-white",
   background: "fill-background",
 };

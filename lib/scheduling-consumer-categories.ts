@@ -40,12 +40,16 @@ const LEARN_CATEGORY_IDS = new Set<string>([
 const PLAY_CATEGORY_IDS = new Set<string>([
   'cat-open-play',
   'cat-private-play',
-  'cat-summer-camp-play',
   'cat-camps-play',
-  'cat-special-play-events',
   'cat-parents-night',
   'cat-field-trips',
   'cat-we-bring-play',
+])
+
+/** Scheduling categories listed under Events (not `cat-event-*` party rows). */
+export const EVENTS_MENU_CATEGORY_IDS = new Set<string>([
+  'cat-summer-camp-play',
+  'cat-special-play-events',
 ])
 
 /** Pre–consumer-catalog ids — admin/seed only, not customer menus. */
@@ -67,8 +71,6 @@ export function isLegacySchedulingCategoryId(categoryId: string): boolean {
 export const CONSUMER_ALIGNED_CATEGORY_IDS = new Set<string>([
   'cat-open-play',
   'cat-private-play',
-  'cat-special-play-events',
-  'cat-summer-camp-play',
   'cat-camps-play',
   'cat-parents-night',
   'cat-field-trips',
@@ -87,6 +89,8 @@ export const CONSUMER_ALIGNED_CATEGORY_IDS = new Set<string>([
   'cat-gym-after-school',
   'cat-event-private-party-room-open-play',
   'cat-event-whole-place-private-party-open-play',
+  'cat-special-play-events',
+  'cat-summer-camp-play',
   'cat-learn-elementary',
   'cat-learn-middle',
   'cat-learn-high-school',
@@ -119,6 +123,12 @@ export function getSchedulingTopLevelId(categoryId: string): SchedulingTopLevelI
   }
   if (PLAY_CATEGORY_IDS.has(categoryId) || categoryId.startsWith('cat-play-')) {
     return 'PLAY'
+  }
+  if (
+    EVENTS_MENU_CATEGORY_IDS.has(categoryId) ||
+    categoryId.startsWith('cat-event-')
+  ) {
+    return 'EVENT'
   }
   if (LEARN_CATEGORY_IDS.has(categoryId) || categoryId.startsWith('cat-learn-')) {
     return 'LEARN'

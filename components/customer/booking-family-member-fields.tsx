@@ -13,10 +13,10 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
-  isCampPlayCategory,
   needsAgeParticipantPicker,
   needsGuardianPicker,
   needsHouseholdChildPicker,
+  usesCampStyleRegistrationForm,
 } from '@/lib/booking-category-rules'
 import type { CmContact, SchedulingService } from '@/lib/types'
 
@@ -105,7 +105,7 @@ export function BookingFamilyMemberFields({
   idPrefix = 'booking',
 }: Readonly<BookingFamilyMemberFieldsProps>) {
   const category = service.category
-  const isCampBooking = isCampPlayCategory(category)
+  const usesCampStyleLabels = usesCampStyleRegistrationForm(category)
   const showGuardian = needsGuardianPicker(category)
   const showChildren = needsHouseholdChildPicker(category)
   const showAgeParticipant = needsAgeParticipantPicker(
@@ -168,8 +168,8 @@ export function BookingFamilyMemberFields({
     return null
   }
 
-  const participatingChildLabel = isCampBooking ? 'Participating child' : 'Participant'
-  const participatingChildPlaceholder = isCampBooking
+  const participatingChildLabel = usesCampStyleLabels ? 'Participating child' : 'Participant'
+  const participatingChildPlaceholder = usesCampStyleLabels
     ? 'Select participating child'
     : 'Select a family member'
 

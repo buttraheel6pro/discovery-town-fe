@@ -7,12 +7,9 @@ import { useClients } from '@/lib/client-store'
 import {
   buildOpenPlayConsumerSection,
   dedupeOpenPlayMenuCategories,
-  isOpenPlaySchedulingCategory,
 } from '@/lib/open-play-consumer-section'
-import {
-  buildSchedulingCategoryById,
-  filterConsumerSchedulingCategoriesForMenu,
-} from '@/lib/scheduling-visibility'
+import { schedulingCategoriesForConsumerMenu } from '@/lib/scheduling-menu-browse'
+import { buildSchedulingCategoryById } from '@/lib/scheduling-visibility'
 import { buildSchedulingMenuExploreCategories } from '@/lib/scheduling-menu-explore-hook-utils'
 import type { SchedulingMenuExploreCategory } from '@/lib/scheduling-menu-explore-categories'
 import { useInventory } from '@/lib/inventory-store'
@@ -58,31 +55,25 @@ export function useEventsCategories(): UseEventsCategoriesResult {
     )
 
     const eventCategories = dedupeOpenPlayMenuCategories(
-      filterConsumerSchedulingCategoriesForMenu('events', categories),
-    )
-      .filter(
-        (category) =>
-          !isOpenPlaySchedulingCategory(category) &&
-          category.id.startsWith('cat-event-'),
-      )
-      .sort((a, b) => {
-        const aPriority = prioritizedCategoryOrder.get(a.name)
-        const bPriority = prioritizedCategoryOrder.get(b.name)
+      schedulingCategoriesForConsumerMenu('events', categories),
+    ).sort((a, b) => {
+      const aPriority = prioritizedCategoryOrder.get(a.name)
+      const bPriority = prioritizedCategoryOrder.get(b.name)
 
-        if (aPriority !== undefined && bPriority !== undefined) {
-          return aPriority - bPriority
-        }
+      if (aPriority !== undefined && bPriority !== undefined) {
+        return aPriority - bPriority
+      }
 
-        if (aPriority !== undefined) {
-          return -1
-        }
+      if (aPriority !== undefined) {
+        return -1
+      }
 
-        if (bPriority !== undefined) {
-          return 1
-        }
+      if (bPriority !== undefined) {
+        return 1
+      }
 
-        return a.displayOrder - b.displayOrder
-      })
+      return a.displayOrder - b.displayOrder
+    })
 
     const openCategory = openPlaySection?.category ?? null
     return openCategory ? [openCategory, ...eventCategories] : eventCategories

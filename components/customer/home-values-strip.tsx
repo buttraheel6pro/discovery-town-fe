@@ -1,13 +1,12 @@
-/** Homepage values strip + teal footer bar — scalloped cream section with four columns. */
+/** Homepage values strip — scalloped cream section with four columns. */
 
-import { BrandFooterBar } from '@/components/customer/brand-footer-bar'
-import { ScallopDivider } from '@/components/customer/home-wave-divider'
 import {
   ValuesCoffeeIcon,
   ValuesHeartIcon,
   ValuesLightbulbIcon,
   ValuesPlayHouseIcon,
 } from '@/components/customer/home-values-icons'
+import { ScallopDivider } from '@/components/customer/home-wave-divider'
 import { cn } from '@/lib/utils'
 
 const VALUES = [
@@ -69,9 +68,6 @@ export function HomeValuesStrip() {
           </div>
         </div>
       </div>
-
-      <ScallopDivider fill="teal" direction="up" />
-      <BrandFooterBar />
     </section>
   )
 }

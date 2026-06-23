@@ -26,10 +26,10 @@ import {
   showsAdditionalSiblingPicker,
 } from '@/lib/booking-additional-sibling'
 import {
-  isCampPlayCategory,
   needsAccompanyingAdultPicker,
   needsAgeParticipantPicker,
   needsHouseholdChildPicker,
+  usesCampStyleRegistrationForm,
 } from '@/lib/booking-category-rules'
 import {
   clampPassCount,
@@ -208,7 +208,7 @@ export function useBookingForm({
   const [checkoutCouponDiscount, setCheckoutCouponDiscount] = useState(0)
 
   const usesTicketBookingSidebar = usesEventTicketBookingSidebar(service)
-  const isCampPlayBooking = isCampPlayCategory(service.category)
+  const usesCampStyleRegistration = usesCampStyleRegistrationForm(service.category)
   const isAdultLearnProgram = learnCartCheckout && service.gradeLevel === 'Adult'
 
   const needsHouseholdChildren =
@@ -219,9 +219,9 @@ export function useBookingForm({
     !usesOpenPlayHouseholdBooking &&
     !learnCartCheckout &&
     needsAccompanyingAdultPicker(service.category) &&
-    (!usesTicketBookingSidebar || isCampPlayBooking)
+    (!usesTicketBookingSidebar || usesCampStyleRegistration)
   const showFamilyMemberFields =
-    !needsHouseholdChildren && (!usesTicketBookingSidebar || isCampPlayBooking)
+    !needsHouseholdChildren && (!usesTicketBookingSidebar || usesCampStyleRegistration)
   const needsAgeParticipant = needsAgeParticipantPicker(
     service.category,
     service.ageMin,
@@ -565,7 +565,7 @@ export function useBookingForm({
       if (guestCount < 1) {
         return false
       }
-      if (isCampPlayBooking) {
+      if (usesCampStyleRegistration) {
         if (needsAgeParticipant && participantName.trim().length === 0) {
           return false
         }
@@ -605,7 +605,7 @@ export function useBookingForm({
     isAdultLearnProgram,
     learnCartCheckout,
     usesTicketBookingSidebar,
-    isCampPlayBooking,
+    usesCampStyleRegistration,
     needsAccompanyingAdult,
     needsAgeParticipant,
     needsHouseholdChildren,

@@ -29,6 +29,8 @@ import {
   EVENTS_CATEGORY_DESCRIPTIONS,
   resolveEventsCategoryCardMeta,
 } from '@/lib/events-category-meta'
+import { SPECIAL_PLAY_EVENTS_CATEGORY_ID } from '@/lib/scheduling-slot-availability'
+import { sortSpecialPlayServices } from '@/lib/special-play-service-order'
 import { useScheduling } from '@/lib/scheduling-store'
 import { useCatalogPageServices, type SectionPageData } from '@/lib/hooks/use-catalog-page-services'
 import type {
@@ -45,7 +47,7 @@ function getMockServicesForCategory(
   packages: readonly EventPackage[],
   categoryById: ReadonlyMap<string, SchedulingCategory>,
 ): SchedulingService[] {
-  return collectServicesForSchedulingConsumerMenu(
+  const matched = collectServicesForSchedulingConsumerMenu(
     category,
     'events',
     services,
@@ -53,6 +55,9 @@ function getMockServicesForCategory(
     packages,
     categoryById,
   )
+  return category.id === SPECIAL_PLAY_EVENTS_CATEGORY_ID
+    ? sortSpecialPlayServices(matched)
+    : matched
 }
 
 function resolveSectionServices(

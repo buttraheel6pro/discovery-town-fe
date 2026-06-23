@@ -3,6 +3,7 @@
 
 import { CustomerNavbar } from '@/components/customer/navbar'
 import { CatalogListingHighlightCards } from '@/components/customer/catalog-listing-highlight-cards'
+import { CustomerFooter } from '@/components/customer/footer'
 import { HomeExploreGrid } from '@/components/customer/home-explore-grid'
 import { HomeHeroSection } from '@/components/customer/home-hero-section'
 import { HomeValuesStrip } from '@/components/customer/home-values-strip'
@@ -30,6 +31,7 @@ export default function HomePage() {
         <HomeExploreGrid />
         <HomeValuesStrip />
       </main>
+      <CustomerFooter />
     </div>
   )
 }
