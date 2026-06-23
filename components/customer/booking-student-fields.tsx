@@ -102,7 +102,7 @@ export function BookingStudentFields({
         Select each student from your household who will attend this program.
       </p>
       {childOptions.length === 0 ? (
-        <div className="space-y-2 rounded-lg border border-border bg-muted/40 p-3">
+        <div className="space-y-2 rounded-lg border border-border bg-white p-3">
           <p className="text-sm text-foreground">
             Add students to your family list before enrolling.
           </p>

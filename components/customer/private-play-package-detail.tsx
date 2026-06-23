@@ -6,19 +6,20 @@ import { CheckCircle2 } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { BOOKING_CART_SURFACE_CLASS } from '@/components/customer/booking-cart-card'
 import { cn, formatPrice } from '@/lib/utils'
 import type { EventPackage } from '@/lib/types'
 
 function tierBadgeClass(tier: EventPackage['tier']): string {
   switch (tier) {
     case 'SILVER':
-      return 'bg-slate-100 text-slate-700'
+      return 'border border-slate-300 bg-white text-slate-700'
     case 'GOLD':
-      return 'bg-amber-100 text-amber-800'
+      return 'border border-amber-300 bg-white text-amber-800'
     case 'PLATINUM':
-      return 'bg-purple-100 text-purple-700'
+      return 'border border-purple-300 bg-white text-purple-700'
     default:
-      return 'bg-muted text-muted-foreground'
+      return 'border border-border bg-white text-muted-foreground'
   }
 }
 
@@ -47,8 +48,14 @@ export function PrivatePlayPackageDetail({
   return (
     <div
       className={cn(
-        embedded ? undefined : 'rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8',
+        embedded
+          ? undefined
+          : cn(
+              'rounded-2xl border border-border p-6 shadow-sm sm:p-8',
+              BOOKING_CART_SURFACE_CLASS,
+            ),
       )}
+      style={embedded ? undefined : { backgroundColor: 'var(--nav-cream)' }}
     >
       <div className="flex flex-col gap-4 border-b border-border pb-6 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 flex-1 space-y-3">
@@ -69,12 +76,12 @@ export function PrivatePlayPackageDetail({
                 Whole venue · approval required
               </Badge>
             ) : (
-              <Badge variant="outline" className="text-xs">
+              <Badge variant="outline" className="bg-white text-xs">
                 Private party room
               </Badge>
             )}
             {pkg.depositAmount != null ? (
-              <Badge variant="outline" className="text-xs">
+              <Badge variant="outline" className="bg-white text-xs">
                 {formatPrice(pkg.depositAmount)} deposit
                 {pkg.depositNonRefundable ? ' (non-refundable)' : ''}
               </Badge>

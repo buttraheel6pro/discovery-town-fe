@@ -32,7 +32,12 @@ import { PackageSelector } from '@/components/customer/package-selector'
 import { PrivatePlayPackageDetail } from '@/components/customer/private-play-package-detail'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  BookingCartCard,
+  BookingCartCardContent,
+  BookingCartCardHeader,
+  BookingCartCardTitle,
+} from '@/components/customer/booking-cart-card'
 import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -829,11 +834,11 @@ function EventDetailContent({
 
         {useCampCheckoutLayout ? (
           <aside className="space-y-4 lg:col-span-1 lg:row-span-2 lg:self-start lg:sticky lg:top-24">
-            <Card className="border-border shadow-xl">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg font-bold">Add to cart</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
+            <BookingCartCard>
+              <BookingCartCardHeader>
+                <BookingCartCardTitle>Add to cart</BookingCartCardTitle>
+              </BookingCartCardHeader>
+              <BookingCartCardContent className="space-y-4">
                 {registered || addedEventToCart ? (
                   <div className="text-center py-6 space-y-3">
                     <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto" />
@@ -958,8 +963,8 @@ function EventDetailContent({
                     )}
                   </>
                 )}
-              </CardContent>
-            </Card>
+              </BookingCartCardContent>
+            </BookingCartCard>
           </aside>
         ) : null}
 
@@ -968,11 +973,11 @@ function EventDetailContent({
         !addedEventToCart &&
         showBookingDetailsForm ? (
           <aside className="lg:col-span-2">
-            <Card className="border-border shadow-xl">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg font-bold">Register for this Event</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-5">
+            <BookingCartCard>
+              <BookingCartCardHeader>
+                <BookingCartCardTitle>Register for this Event</BookingCartCardTitle>
+              </BookingCartCardHeader>
+              <BookingCartCardContent className="space-y-5">
                 <div className="space-y-2">
                   <div className="flex justify-between text-xs text-muted-foreground">
                     <span className="flex items-center gap-1">
@@ -1163,21 +1168,21 @@ function EventDetailContent({
                 <p className="text-xs text-center text-muted-foreground">
                   Complete your selections, then use the Add to cart panel.
                 </p>
-              </CardContent>
-            </Card>
+              </BookingCartCardContent>
+            </BookingCartCard>
           </aside>
         ) : null}
 
         {!useCampCheckoutLayout &&
         (showBookingDetailsForm || registered || addedEventToCart) ? (
         <aside className="min-w-0">
-          <Card className="sticky top-24 min-w-0 shadow-xl">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg font-bold">
+          <BookingCartCard className="sticky top-24 min-w-0">
+            <BookingCartCardHeader>
+              <BookingCartCardTitle>
                 {isPrivateEventJourney ? 'Plan your private event' : 'Register for this Event'}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-5">
+              </BookingCartCardTitle>
+            </BookingCartCardHeader>
+            <BookingCartCardContent className="space-y-5">
               {isPrivateEventJourney ? (
                 <EventBookingWidget
                   key={privateSelectedPackageId ?? 'private-flow'}
@@ -1474,8 +1479,8 @@ function EventDetailContent({
                   ) : null}
                 </>
               )}
-            </CardContent>
-          </Card>
+            </BookingCartCardContent>
+          </BookingCartCard>
         </aside>
         ) : null}
       </div>

@@ -4,6 +4,7 @@
 import { useEffect, useMemo } from 'react'
 
 import { PrivatePlayPackageDetail } from '@/components/customer/private-play-package-detail'
+import { BOOKING_CART_SURFACE_CLASS } from '@/components/customer/booking-cart-card'
 import { cn } from '@/lib/utils'
 import type { EventPackage } from '@/lib/types'
 
@@ -89,7 +90,7 @@ export function PrivatePlayPackageSelector({
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
                   isSelected
                     ? 'relative z-10 bg-primary text-primary-foreground'
-                    : 'bg-muted text-muted-foreground hover:bg-secondary hover:text-foreground',
+                    : 'border border-b-0 border-border bg-white text-muted-foreground hover:bg-secondary hover:text-foreground',
                 )}
               >
                 {formatTierLabel(pkg.tier)}
@@ -105,9 +106,9 @@ export function PrivatePlayPackageSelector({
             role="tabpanel"
             id={`private-play-pkg-panel-${selectedPackage.id}`}
             aria-labelledby={`private-play-pkg-tab-${selectedPackage.id}`}
-            className="border border-border bg-card p-6 sm:p-8"
-          >
-            <PrivatePlayPackageDetail
+            className={cn('border border-border p-6 sm:p-8', BOOKING_CART_SURFACE_CLASS)}
+            style={{ backgroundColor: 'var(--nav-cream)' }}
+          >            <PrivatePlayPackageDetail
               package={selectedPackage}
               defaultDurationMinutes={defaultDurationMinutes}
               embedded

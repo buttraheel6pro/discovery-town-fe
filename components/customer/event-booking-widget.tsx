@@ -10,6 +10,9 @@ import Link from 'next/link'
 import { Building2, Cake, CalendarDays, Church, PartyPopper, School, Ticket, Users } from 'lucide-react'
 
 import { BookingFlowCouponSection } from '@/components/customer/booking-flow-coupon-section'
+import {
+  BOOKING_CART_OPTION_ROW_CLASS,
+} from '@/components/customer/booking-cart-card'
 import { EventAddOnConfiguratorModal } from '@/components/customer/event-add-on-configurator-modal'
 import { EventBookingScheduleSection } from '@/components/customer/event-booking-schedule-section'
 import { PackageSelector } from '@/components/customer/package-selector'
@@ -61,7 +64,7 @@ import {
   EVENT_CART_BOOKING_META_KEY,
   getPlayBookingConfirmCartLabel,
 } from '@/lib/play-cart'
-import { formatPrice } from '@/lib/utils'
+import { cn, formatPrice } from '@/lib/utils'
 import { EventBookingScheduleModeEnum, type EventOccasion, type EventPackage } from '@/lib/types'
 
 type Step = 1 | 2 | 3 | 4 | 5 | 6
@@ -124,6 +127,20 @@ function toIsoDate(date: Date): string {
   const m = String(date.getMonth() + 1).padStart(2, '0')
   const d = String(date.getDate()).padStart(2, '0')
   return `${y}-${m}-${d}`
+}
+
+function embeddedPanelClass(embedded: boolean, className?: string): string {
+  return cn(
+    embedded ? BOOKING_CART_OPTION_ROW_CLASS : 'rounded-md border border-border bg-muted/20',
+    className,
+  )
+}
+
+function embeddedSummaryClass(embedded: boolean, className?: string): string {
+  return cn(
+    embedded ? BOOKING_CART_OPTION_ROW_CLASS : 'rounded-md border border-border',
+    className,
+  )
 }
 
 interface EventBookingWidgetProps {
@@ -520,9 +537,14 @@ export function EventBookingWidget({
                   key={option.id}
                   type="button"
                   onClick={() => form.setOccasion(option.id)}
-                  className={`rounded-lg border p-3 text-left transition ${
-                    selected ? 'border-accent bg-accent/5' : 'border-border hover:bg-muted/40'
-                  }`}
+                  className={cn(
+                    'rounded-lg border p-3 text-left transition',
+                    selected
+                      ? 'border-accent bg-accent/5'
+                      : embedded
+                        ? BOOKING_CART_OPTION_ROW_CLASS
+                        : 'border-border hover:bg-muted/40',
+                  )}
                 >
                   <Icon className="h-4 w-4 text-muted-foreground" />
                   <p className="mt-2 text-sm font-medium text-foreground">{option.label}</p>
@@ -670,7 +692,7 @@ export function EventBookingWidget({
               Extra guest fees apply for guests above package included limits.
             </p>
           ) : null}
-          <div className="rounded-md border border-border p-3 text-sm">
+          <div className={embeddedSummaryClass(embedded, 'p-3 text-sm')}>
             <p>Package: {formatPrice(form.basePrice)}</p>
             <p>
               Extra children ({form.extraChildren}): {formatPrice(form.childrenOverageTotal)}
@@ -690,7 +712,7 @@ export function EventBookingWidget({
               Add optional upgrades from your event add-on catalog. Each selection is configured
               once with a Done button before continuing.
             </p>
-            <div className="rounded-md border border-border bg-muted/20 p-3 text-sm">
+            <div className={embeddedPanelClass(embedded, 'p-3 text-sm')}>
               <p className="font-semibold text-foreground">Selected add-ons</p>
               {selectedOptionalItems.length > 0 ? (
                 <ul className="mt-2 space-y-1">
@@ -730,7 +752,7 @@ export function EventBookingWidget({
               Choose add-ons
             </Button>
           </div>
-          <div className="h-fit rounded-md border border-border p-3 text-sm lg:sticky lg:top-4">
+          <div className={embeddedSummaryClass(embedded, 'h-fit p-3 text-sm lg:sticky lg:top-4')}>
             <p className="font-semibold text-foreground">Running total</p>
             <p className="mt-2">Base package: {formatPrice(form.basePrice)}</p>
             <p>Guest overage: {formatPrice(form.childrenOverageTotal + form.adultsOverageTotal)}</p>
@@ -881,7 +903,7 @@ export function EventBookingWidget({
       {!bookingComplete && step === 6 ? (
         <div className="space-y-4">
           <h3 className="text-lg font-semibold text-foreground">Review & pay</h3>
-          <div className="rounded-md border border-border p-3 text-sm">
+          <div className={embeddedSummaryClass(embedded, 'p-3 text-sm')}>
             <p className="font-medium text-foreground">{form.selectedPackage?.name ?? 'No package selected'}</p>
             <p className="text-muted-foreground">
               {form.selectedDate} ·{' '}
@@ -927,7 +949,7 @@ export function EventBookingWidget({
               rows={3}
             />
           </div>
-          <div className="rounded-md border border-border p-3 text-sm">
+          <div className={embeddedSummaryClass(embedded, 'p-3 text-sm')}>
             <p className="flex items-center justify-between">
               <span className="text-muted-foreground">Subtotal</span>
               <span>{formatPrice(form.totalBeforeCoupon)}</span>

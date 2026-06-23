@@ -40,7 +40,8 @@ function RentalHalfDayTimeGrid({
   const labelByStart = new Map(windows.map((h) => [h.startAt, h.label]))
   return (
     <OpenBookingTimeWindowGrid
-      headline={`Available half-day blocks for ${formatOpenBookingDateDisplay(pickedDay)}`}
+      title="Select a time"
+      headline={`Half-day blocks for ${formatOpenBookingDateDisplay(pickedDay)}`}
       windows={asWindows}
       selectedWindow={selectedWindow}
       onSelectedWindowChange={(w) => {
@@ -157,7 +158,7 @@ export function RentalWeekSlotPicker({
     isHourly && selectedSlotStartAt.length > 0 && selectedSlotEndAt.length > 0
 
   return (
-    <section id="rental-dates" className="space-y-4 rounded-xl border border-border bg-card p-4">
+    <section id="rental-dates" className="space-y-6 rounded-xl bg-nav-cream p-4 sm:p-5">
       <p className="text-sm text-muted-foreground">{subtitle}</p>
 
       <CompactAvailabilityDateStrip
@@ -175,7 +176,8 @@ export function RentalWeekSlotPicker({
 
       {pickedDay && isHourly ? (
         <OpenBookingTimeWindowGrid
-          headline={`Available times for ${formatOpenBookingDateDisplay(pickedDay)}`}
+          title="Select a time"
+          headline={`Times for ${formatOpenBookingDateDisplay(pickedDay)}`}
           windows={hourlyWindows}
           selectedWindow={selectedWindow}
           showTimeRange

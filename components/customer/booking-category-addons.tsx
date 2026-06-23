@@ -3,7 +3,8 @@
 
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
-import { formatPrice } from '@/lib/utils'
+import { BOOKING_CART_OPTION_ROW_CLASS } from '@/components/customer/booking-cart-card'
+import { cn, formatPrice } from '@/lib/utils'
 import type { SchedulingServiceAddOn } from '@/lib/types'
 
 export interface BookingCategoryAddonsProps {
@@ -22,7 +23,7 @@ export function BookingCategoryAddons({
   }
 
   return (
-    <div className="space-y-3 rounded-lg border border-border p-3">
+    <div className={cn('space-y-3 p-3', BOOKING_CART_OPTION_ROW_CLASS)}>
       <Label className="text-sm font-semibold">Add-ons</Label>
       <ul className="space-y-2">
         {optional.map((addOn) => (

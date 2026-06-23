@@ -44,13 +44,13 @@ export function CatalogItemNameList({
   const listHeading = categoryName ? `${categoryName} ${listHeadingSuffix}` : listHeadingSuffix
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card">
-      <div className="shrink-0 border-b border-border px-4 py-3">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-nav-cream">
+      <div className="shrink-0 border-b border-border bg-nav-cream px-4 py-3">
         <h3 className="text-sm font-bold text-foreground">{listHeading}</h3>
         <p className="mt-0.5 text-xs text-muted-foreground">{listDescription}</p>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-2 py-2 [overflow-anchor:none]">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain bg-nav-cream px-2 py-2 [overflow-anchor:none]">
         {isLoading ? (
           <ul className="space-y-2 pb-2" aria-busy="true" aria-label={loadingAriaLabel}>
             {Array.from({ length: 5 }).map((_, index) => (
@@ -77,7 +77,7 @@ export function CatalogItemNameList({
                 <div
                   className={cn(
                     'flex min-h-[5.25rem] w-full items-center gap-2 rounded-lg border border-transparent',
-                    'bg-background transition-colors hover:bg-muted/40',
+                    'bg-nav-cream transition-colors hover:bg-white/55',
                   )}
                 >
                   <div className="flex min-w-0 flex-1 items-center gap-4 px-4 py-3">

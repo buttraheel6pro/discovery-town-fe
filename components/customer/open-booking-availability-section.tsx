@@ -71,7 +71,7 @@ import {
   type SchedulingSlot,
 } from '@/lib/types'
 
-const AVAILABILITY_TITLE = 'Availability'
+const AVAILABILITY_TITLE = 'Select a date'
 
 export type OpenBookingAvailabilityMode = 'facility' | 'private_hire'
 
@@ -572,7 +572,7 @@ function OpenBookingEventScheduleAvailabilitySection({
   }
 
   return (
-    <section>
+    <section className="space-y-6 rounded-xl bg-nav-cream p-4 sm:p-5">
       {learnFullProgramEnrollment ? (
         learnProgramBounds ? (
         <>
@@ -587,7 +587,8 @@ function OpenBookingEventScheduleAvailabilitySection({
           />
           {learnProgramStartDayWindows.length > 0 ? (
             <OpenBookingTimeWindowGrid
-              headline={`Select a time on ${formatOpenBookingDateDisplay(learnProgramBounds.startYmd)}`}
+              title="Select a time"
+              headline={`Program starts ${formatOpenBookingDateDisplay(learnProgramBounds.startYmd)}`}
               windows={learnProgramStartDayWindows}
               selectedWindow={learnStartDayWindow}
               onSelectedWindowChange={handleLearnStartDayWindowChange}
@@ -646,7 +647,7 @@ function OpenBookingEventScheduleAvailabilitySection({
       {showTimeSelection && isPerHour && hourAvailability ? (
         hourAvailability.windows.length > 0 ? (
           <OpenBookingTimeWindowGrid
-            headline={`Available times for ${formatOpenBookingDateDisplay(selectedDate)}`}
+            title="Select a time"
             windows={hourAvailability.windows}
             selectedWindow={selectedWindow}
             onSelectedWindowChange={(window) => {
@@ -677,7 +678,7 @@ function OpenBookingEventScheduleAvailabilitySection({
 
       {!showTimeSelection && isPerEvent && sessionTimeBlocks.length > 0 ? (
         <OpenBookingTimeWindowGrid
-          headline="Session time"
+          title="Session time"
           windows={sessionTimeBlocks.map((block) => block.window)}
           selectedWindow={selectedWindow}
           onSelectedWindowChange={onSelectedWindowChange}
@@ -761,7 +762,7 @@ function OpenBookingServiceAvailabilitySection({
   )
 
   return (
-    <section>
+    <section className="space-y-6 rounded-xl bg-nav-cream p-4 sm:p-5">
       {mode === 'private_hire' && durationOptions.length > 0 ? (
         <div className="mb-6 space-y-2">
           <Label>Duration</Label>
@@ -818,7 +819,7 @@ function OpenBookingServiceAvailabilitySection({
       {availability && (mode === 'facility' || availabilityChecked) ? (
         availability.windows.length > 0 ? (
           <OpenBookingTimeWindowGrid
-            headline={`Available times for ${formatOpenBookingDateDisplay(selectedDate)}`}
+            title="Select a time"
             windows={availability.windows}
             selectedWindow={selectedWindow}
             onSelectedWindowChange={onSelectedWindowChange}

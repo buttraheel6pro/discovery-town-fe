@@ -122,10 +122,10 @@ export function OpenBookingWeekDayButtonGrid({
               'flex flex-col items-center rounded-lg border px-1 py-3 text-xs font-semibold transition-colors',
               notSelectable &&
                 'cursor-not-allowed border-border bg-muted text-muted-foreground opacity-40',
-              !notSelectable && selectedDate === date && 'border-accent bg-accent text-accent-foreground',
+              !notSelectable && selectedDate === date && 'border-brand-orange bg-brand-orange text-white shadow-sm',
               !notSelectable &&
                 selectedDate !== date &&
-                'border-border bg-card text-muted-foreground hover:bg-secondary hover:text-foreground',
+                'border-border/70 bg-white text-muted-foreground hover:border-border hover:text-foreground',
             ),
             'aria-pressed': selectedDate === date,
           } satisfies OpenBookingWeekDayVisual)

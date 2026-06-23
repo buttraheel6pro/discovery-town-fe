@@ -73,6 +73,9 @@ function buildVisibleDates(
   return dates
 }
 
+const TODAY_CELL_WIDTH_CLASS = 'w-[8.505rem]'
+const DATE_ROW_CELL_HEIGHT_CLASS = 'h-14'
+
 export function CompactAvailabilityDateStrip({
   selectedDate,
   isDateDisabled,
@@ -107,7 +110,7 @@ export function CompactAvailabilityDateStrip({
   }
 
   return (
-    <div className={cn('space-y-3', isCompact ? 'mb-4' : 'mb-6')}>
+    <div className={cn('space-y-3', isCompact ? 'mb-4' : 'mb-0')}>
       <div className="flex items-center justify-between gap-2">
         <h3
           className={cn(
@@ -122,7 +125,7 @@ export function CompactAvailabilityDateStrip({
           variant="outline"
           size="icon"
           className={cn(
-            'shrink-0 border-accent/40 bg-card text-accent shadow-sm hover:bg-accent/10',
+            'shrink-0 border-border/70 bg-white text-foreground shadow-sm hover:bg-white/90',
             isCompact ? 'h-9 w-9' : 'h-10 w-10',
           )}
           onClick={openCalendar}
@@ -135,12 +138,12 @@ export function CompactAvailabilityDateStrip({
         </Button>
       </div>
 
-      <p className="text-xs font-bold tracking-wide text-muted-foreground">{monthLabel}</p>
+      <p className="text-xs font-bold tracking-widest text-foreground/70">{monthLabel}</p>
 
-      <div className="flex min-w-0 items-stretch gap-1.5">
+      <div className="mt-6 flex min-w-0 items-stretch gap-2">
         <div
           className={cn(
-            'flex min-w-0 flex-1 items-stretch gap-1.5',
+            'flex min-w-0 flex-1 items-stretch gap-2',
             isCompact && 'overflow-x-auto overscroll-x-contain',
           )}
         >
@@ -159,6 +162,38 @@ export function CompactAvailabilityDateStrip({
             const isToday = dateStr === todayStr
             const date = ymdToDate(dateStr)
 
+            if (isToday) {
+              const todayInactive = !disabled && !isSelected && !isRangeMiddle
+
+              return (
+                <button
+                  key={dateStr}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => handleSelectDate(dateStr)}
+                  className={cn(
+                    'flex shrink-0 items-center justify-center rounded-[4px] border text-center transition-colors',
+                    TODAY_CELL_WIDTH_CLASS,
+                    DATE_ROW_CELL_HEIGHT_CLASS,
+                    disabled &&
+                      'cursor-not-allowed border-border bg-muted/50 text-muted-foreground opacity-60',
+                    !disabled &&
+                      isSelected &&
+                      'border-brand-orange bg-brand-orange text-nav-cream shadow-sm',
+                    !disabled &&
+                      isRangeMiddle &&
+                      'border-brand-orange/40 bg-brand-orange/15 text-foreground',
+                    todayInactive &&
+                      'cursor-pointer border-border bg-muted/35 text-muted-foreground',
+                  )}
+                  aria-pressed={isSelected || isRangeMiddle}
+                  aria-disabled={disabled}
+                >
+                  <span className="text-sm font-bold">Today</span>
+                </button>
+              )
+            }
+
             return (
               <button
                 key={dateStr}
@@ -166,35 +201,30 @@ export function CompactAvailabilityDateStrip({
                 disabled={disabled}
                 onClick={() => handleSelectDate(dateStr)}
                 className={cn(
-                  'flex flex-col items-center justify-center rounded-lg border text-center transition-colors',
+                  'flex flex-col items-center justify-center rounded-[4px] border text-center transition-colors',
+                  DATE_ROW_CELL_HEIGHT_CLASS,
                   isCompact
-                    ? 'min-w-[3rem] shrink-0 px-1.5 py-2'
-                    : 'min-w-[4.25rem] flex-1 px-2 py-3',
+                    ? 'min-w-[3.25rem] shrink-0 px-2'
+                    : 'min-w-[4.5rem] flex-1 px-2',
                   disabled &&
-                    'cursor-not-allowed border-border bg-muted text-muted-foreground line-through decoration-muted-foreground/70 opacity-70',
+                    'cursor-not-allowed border-border bg-muted/60 text-muted-foreground line-through opacity-60',
                   !disabled &&
                     isSelected &&
-                    'border-accent bg-accent text-accent-foreground ring-2 ring-accent',
+                    'border-brand-orange bg-brand-orange text-nav-cream shadow-sm',
                   !disabled &&
                     isRangeMiddle &&
-                    'border-accent/40 bg-accent/15 text-foreground',
+                    'border-brand-orange/40 bg-brand-orange/15 text-foreground',
                   !disabled &&
                     !isSelected &&
                     !isRangeMiddle &&
-                    isToday &&
-                    'border-foreground bg-card text-foreground ring-1 ring-foreground',
-                  !disabled &&
-                    !isSelected &&
-                    !isRangeMiddle &&
-                    !isToday &&
-                    'border-border bg-card text-foreground hover:bg-secondary',
+                    'border-border bg-white text-foreground hover:border-border/80',
                 )}
                 aria-pressed={isSelected || isRangeMiddle}
               >
                 <span
                   className={cn(
                     'text-[10px] font-semibold uppercase tracking-wide',
-                    isSelected ? 'text-accent-foreground/90' : 'text-muted-foreground',
+                    isSelected ? 'text-nav-cream/90' : 'text-muted-foreground',
                   )}
                 >
                   {date.toLocaleDateString('en-GB', { weekday: 'short' })}
@@ -203,6 +233,7 @@ export function CompactAvailabilityDateStrip({
                   className={cn(
                     'mt-0.5 font-bold leading-none',
                     isCompact ? 'text-base' : 'text-lg',
+                    isSelected && 'text-nav-cream',
                   )}
                 >
                   {date.getDate()}
@@ -217,8 +248,9 @@ export function CompactAvailabilityDateStrip({
           variant="outline"
           size="icon"
           className={cn(
-            'h-auto shrink-0 border-border bg-card text-foreground shadow-sm',
-            isCompact ? 'min-h-[3.25rem] w-8' : 'min-h-[4.5rem] w-10',
+            'shrink-0 rounded-[4px] border-border bg-white text-foreground shadow-sm hover:bg-white/90',
+            DATE_ROW_CELL_HEIGHT_CLASS,
+            isCompact ? 'w-9' : 'w-10',
           )}
           onClick={openCalendar}
           aria-label="Choose another date"

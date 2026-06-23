@@ -1,10 +1,13 @@
 /** Extra sibling passes beyond the primary pass count on open-play bookings. */
 'use client'
 
+import {
+  BOOKING_CART_OPTION_ROW_CLASS,
+  BOOKING_CART_STEPPER_CLASS,
+} from '@/components/customer/booking-cart-card'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
-import { formatPrice } from '@/lib/utils'
-
+import { cn, formatPrice } from '@/lib/utils'
 interface SiblingPassOption {
   readonly serviceId: string
   readonly name: string
@@ -89,13 +92,13 @@ export function BookingAdditionalSiblingField({
               return (
                 <div
                   key={option.serviceId}
-                  className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 transition-colors ${
+                  className={cn(
+                    'flex items-center justify-between gap-3 px-3 py-2.5 transition-colors',
                     checked
-                      ? 'border-accent bg-accent/5'
-                      : 'border-border bg-background'
-                  }`}
-                >
-                  <div className="flex min-w-0 flex-1 items-center gap-2">
+                      ? 'rounded-lg border border-accent bg-accent/5'
+                      : BOOKING_CART_OPTION_ROW_CLASS,
+                  )}
+                >                  <div className="flex min-w-0 flex-1 items-center gap-2">
                     <span className="truncate text-sm font-medium text-foreground">
                       {option.name}
                     </span>
@@ -103,8 +106,7 @@ export function BookingAdditionalSiblingField({
                       {formatPrice(option.unitPrice)}
                     </span>
                   </div>
-                  <div className="flex items-center gap-1 rounded-md border border-border bg-muted/20 px-1 py-0.5">
-                    <Button
+                  <div className={BOOKING_CART_STEPPER_CLASS}>                    <Button
                       type="button"
                       variant="outline"
                       size="icon"

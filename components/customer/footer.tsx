@@ -1,5 +1,4 @@
 /** Site-wide customer footer — wavy teal transition with logo, links, and contact. */
-import Image from 'next/image'
 import Link from 'next/link'
 import {
   Facebook,
@@ -10,12 +9,9 @@ import {
 } from 'lucide-react'
 
 import { ScallopDivider } from '@/components/customer/home-wave-divider'
+import { DiscoveryLogo } from '@/components/discovery-logo'
 import { locations } from '@/lib/mock-data'
 import { cn } from '@/lib/utils'
-
-const FOOTER_LOGO_SRC = '/Discovery-logo-transparent.svg'
-const FOOTER_LOGO_WIDTH = 1101
-const FOOTER_LOGO_HEIGHT = 643
 
 const mainLocation = locations[0]
 
@@ -57,13 +53,7 @@ export function CustomerFooter({ className }: Readonly<CustomerFooterProps>) {
         <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6 sm:py-14">
           <div className="grid grid-cols-1 gap-10 md:grid-cols-2 lg:grid-cols-6">
             <div className="space-y-4 lg:col-span-2">
-              <Image
-                src={FOOTER_LOGO_SRC}
-                alt="Discovery Town"
-                width={FOOTER_LOGO_WIDTH}
-                height={FOOTER_LOGO_HEIGHT}
-                className="h-14 w-auto object-contain object-left sm:h-16"
-              />
+              <DiscoveryLogo size="homeNav" variant="transparent" className="shrink-0" />
               <p className="max-w-sm text-sm leading-relaxed text-white/85">
                 An imaginative indoor play café where families explore, celebrate,
                 and make memories together.

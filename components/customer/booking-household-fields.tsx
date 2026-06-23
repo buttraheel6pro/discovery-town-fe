@@ -346,7 +346,7 @@ export function BookingHouseholdFields({
             type="button"
             variant="outline"
             id={`${idPrefix}-family-select`}
-            className="h-10 w-full justify-between font-normal"
+            className="h-10 w-full justify-between bg-white font-normal"
             aria-expanded={pickerOpen}
           >
             <span className="truncate text-left">
@@ -487,7 +487,7 @@ export function BookingHouseholdFields({
           return (
             <div
               key={`${member.role}-${member.contact.id}`}
-              className="flex items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2.5"
+              className="flex items-center justify-between gap-2 rounded-lg border border-border bg-white px-3 py-2.5"
             >
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-foreground">

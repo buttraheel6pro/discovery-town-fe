@@ -35,6 +35,7 @@
   --brand-gold: #f2a900;
   --brand-cream: #f6f4f1;
   --home-cream: #fff5e5;
+  --nav-cream: #fff7e9;
   --brand-navy: #2a4a5e;
   --highlight-pink-bg: oklch(0.95 0.04 350);
   --highlight-pink-fg: oklch(0.45 0.12 350);
@@ -125,6 +126,7 @@
   --color-brand-gold: var(--brand-gold);
   --color-brand-cream: var(--brand-cream);
   --color-home-cream: var(--home-cream);
+  --color-nav-cream: var(--nav-cream);
   --color-brand-navy: var(--brand-navy);
   --color-highlight-pink: var(--highlight-pink-bg);
   --color-highlight-pink-fg: var(--highlight-pink-fg);

@@ -11,11 +11,16 @@ import { BookingCategoryAddons } from '@/components/customer/booking-category-ad
 import { BookingFamilyMemberFields } from '@/components/customer/booking-family-member-fields'
 import { BookingHouseholdFields } from '@/components/customer/booking-household-fields'
 import { BookingPassCountField } from '@/components/customer/booking-pass-count-field'
+import {
+  BookingCartCard,
+  BookingCartCardContent,
+  BookingCartCardHeader,
+  BookingCartCardTitle,
+} from '@/components/customer/booking-cart-card'
 import { OpenBookingAvailabilitySection } from '@/components/customer/open-booking-availability-section'
 import { PackageSelector } from '@/components/customer/package-selector'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
@@ -59,11 +64,11 @@ function PlayFacilityBookingCart({
   const cartActionComplete = bookedOk || addedToCartKind !== null
 
   return (
-    <Card className="border-border shadow-xl">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-lg font-bold">Add to cart</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <BookingCartCard>
+      <BookingCartCardHeader>
+        <BookingCartCardTitle>Add to cart</BookingCartCardTitle>
+      </BookingCartCardHeader>
+      <BookingCartCardContent className="space-y-4">
         <div className="space-y-2 text-sm">
           <div className="flex justify-between">
             <span className="text-muted-foreground">Date</span>
@@ -154,18 +159,18 @@ function PlayFacilityBookingCart({
             </Button>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </BookingCartCardContent>
+    </BookingCartCard>
   )
 }
 
 export function PlayFacilityBookingEmptyCart() {
   return (
-    <Card className="border-border shadow-xl">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-lg font-bold">Add to cart</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <BookingCartCard>
+      <BookingCartCardHeader>
+        <BookingCartCardTitle>Add to cart</BookingCartCardTitle>
+      </BookingCartCardHeader>
+      <BookingCartCardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
           Select a pass or service from the list to begin booking.
         </p>
@@ -191,8 +196,8 @@ export function PlayFacilityBookingEmptyCart() {
         <Button type="button" className="h-11 w-full font-bold" disabled>
           Confirm and add to cart
         </Button>
-      </CardContent>
-    </Card>
+      </BookingCartCardContent>
+    </BookingCartCard>
   )
 }
 
@@ -265,13 +270,13 @@ function PlayFacilityBookingContent({
       ) : null}
 
       {(showBookingDetailsForm || bookedOk || addedToCartKind !== null) ? (
-        <Card className="border-border shadow-xl">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg font-bold">
+        <BookingCartCard>
+          <BookingCartCardHeader>
+            <BookingCartCardTitle>
               {isPassOffering ? 'Book this pass' : 'Book this facility'}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-5">
+            </BookingCartCardTitle>
+          </BookingCartCardHeader>
+          <BookingCartCardContent className="space-y-5">
             {bookedOk || addedToCartKind !== null ? (
               <div className="space-y-3 py-6 text-center">
                 <CheckCircle2 className="mx-auto h-12 w-12 text-green-500" />
@@ -427,7 +432,7 @@ function PlayFacilityBookingContent({
                         </Label>
                       </div>
                     ) : (
-                      <div className="space-y-2 rounded-lg border border-border bg-card p-3">
+                      <div className="space-y-2 rounded-lg border border-border bg-white p-3">
                         <p className="text-sm font-semibold text-foreground">Required waivers</p>
                         <ul className="space-y-1">
                           {requiredWaiverDocs.map((document) => {
@@ -476,8 +481,8 @@ function PlayFacilityBookingContent({
                 </p>
               </>
             )}
-          </CardContent>
-        </Card>
+          </BookingCartCardContent>
+        </BookingCartCard>
       ) : !isPassOffering && openMode ? (
         <p className="text-sm text-muted-foreground">
           Select a time slot above to continue booking.

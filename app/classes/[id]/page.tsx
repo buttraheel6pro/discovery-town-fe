@@ -26,7 +26,12 @@ import { CustomerFooter } from '@/components/customer/footer'
 import { PackageSelector } from '@/components/customer/package-selector'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  BookingCartCard,
+  BookingCartCardContent,
+  BookingCartCardHeader,
+  BookingCartCardTitle,
+} from '@/components/customer/booking-cart-card'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
 import { Progress } from '@/components/ui/progress'
@@ -887,11 +892,11 @@ export function ClassDetailContent({ service }: Readonly<{ service: SchedulingSe
 
         {useSplitCartCheckoutLayout ? (
           <aside className="space-y-4 lg:col-span-1 lg:row-span-2 lg:self-start lg:sticky lg:top-24">
-            <Card className="border-border shadow-xl">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg font-bold">Add to cart</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
+            <BookingCartCard>
+              <BookingCartCardHeader>
+                <BookingCartCardTitle>Add to cart</BookingCartCardTitle>
+              </BookingCartCardHeader>
+              <BookingCartCardContent className="space-y-4">
                 {classCartSuccessKind !== null ? (
                   <div className="text-center py-6 space-y-3">
                     <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto" />
@@ -1025,25 +1030,25 @@ export function ClassDetailContent({ service }: Readonly<{ service: SchedulingSe
                     )}
                   </>
                 )}
-              </CardContent>
-            </Card>
+              </BookingCartCardContent>
+            </BookingCartCard>
           </aside>
         ) : null}
 
         {useSplitCartCheckoutLayout &&
         (showBookingDetailsForm || classCartSuccessKind !== null) ? (
           <aside className="lg:col-span-2">
-            <Card className="border-border shadow-xl">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg font-bold">
+            <BookingCartCard>
+              <BookingCartCardHeader>
+                <BookingCartCardTitle>
                   {learnCartCheckout
                     ? 'Enroll in this program'
                     : playMenuServiceEventSchedule
                       ? 'Enrol in this Class'
                       : 'Book this class'}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-5">
+                </BookingCartCardTitle>
+              </BookingCartCardHeader>
+              <BookingCartCardContent className="space-y-5">
                 {classCartSuccessKind !== null ? (
                   <div className="text-center py-6 space-y-3">
                     <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto" />
@@ -1317,21 +1322,21 @@ export function ClassDetailContent({ service }: Readonly<{ service: SchedulingSe
                     </p>
                   </>
                 )}
-              </CardContent>
-            </Card>
+              </BookingCartCardContent>
+            </BookingCartCard>
           </aside>
         ) : !useSplitCartCheckoutLayout &&
           (showBookingDetailsForm || enrolled || classCartSuccessKind !== null) ? (
         <aside>
-          <Card className="sticky top-24 shadow-xl">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg font-bold">
+          <BookingCartCard className="sticky top-24">
+            <BookingCartCardHeader>
+              <BookingCartCardTitle>
                 {eventClassCartCheckout || playClassCartCheckout
                   ? 'Book this class'
                   : 'Enrol in this Class'}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-5">
+              </BookingCartCardTitle>
+            </BookingCartCardHeader>
+            <BookingCartCardContent className="space-y-5">
               {enrolled || classCartSuccessKind !== null ? (
                 <div className="text-center py-6 space-y-3">
                   <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto" />
@@ -1720,8 +1725,8 @@ export function ClassDetailContent({ service }: Readonly<{ service: SchedulingSe
                   </p>
                 </>
               )}
-            </CardContent>
-          </Card>
+            </BookingCartCardContent>
+          </BookingCartCard>
         </aside>
         ) : null}
       </div>

@@ -112,7 +112,7 @@ export function useRentalsCategories(): UseRentalsCategoriesResult {
     }
 
     if (!isApiEnabled) {
-      return []
+      return inventoryCategories
     }
 
     if (!apiReady) {
@@ -120,7 +120,7 @@ export function useRentalsCategories(): UseRentalsCategoriesResult {
     }
 
     if (apiCategories.length === 0) {
-      return []
+      return inventoryCategories
     }
 
     return apiCategories

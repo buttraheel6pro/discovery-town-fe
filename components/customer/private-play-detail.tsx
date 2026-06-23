@@ -7,9 +7,15 @@ import Link from 'next/link'
 import { ArrowLeft, Clock3, Users } from 'lucide-react'
 
 import { EventBookingWidget } from '@/components/customer/event-booking-widget'
+import {
+  BookingCartCard,
+  BookingCartCardContent,
+  BookingCartCardHeader,
+  BookingCartCardTitle,
+  BOOKING_CART_OPTION_ROW_CLASS,
+} from '@/components/customer/booking-cart-card'
 import { PrivatePlayPackageSelector } from '@/components/customer/private-play-package-selector'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { getSchedulingConsumerBackLink } from '@/lib/scheduling-consumer-categories'
 import {
@@ -18,7 +24,7 @@ import {
   resolvePrivatePlayListingPackages,
 } from '@/lib/private-play-packages'
 import { useScheduling } from '@/lib/scheduling-store'
-import { formatPrice } from '@/lib/utils'
+import { cn, formatPrice } from '@/lib/utils'
 import type { EventOccasion, SchedulingService } from '@/lib/types'
 
 interface PrivatePlayDetailProps {
@@ -134,13 +140,13 @@ export function PrivatePlayDetail({ service }: Readonly<PrivatePlayDetailProps>)
         </div>
 
         <aside>
-          <Card className="sticky top-24 border-border shadow-xl">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg font-bold">Plan your private event</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
+          <BookingCartCard className="sticky top-24">
+            <BookingCartCardHeader>
+              <BookingCartCardTitle>Plan your private event</BookingCartCardTitle>
+            </BookingCartCardHeader>
+            <BookingCartCardContent className="space-y-4">
               {selectedPackage ? (
-                <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
+                <div className={cn('p-3 text-sm', BOOKING_CART_OPTION_ROW_CLASS)}>
                   <p className="font-semibold text-foreground">
                     Selected: {selectedPackage.name}
                   </p>
@@ -156,7 +162,12 @@ export function PrivatePlayDetail({ service }: Readonly<PrivatePlayDetailProps>)
               )}
 
               {flowSummary ? (
-                <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
+                <div
+                  className={cn(
+                    'p-3 text-sm text-muted-foreground',
+                    BOOKING_CART_OPTION_ROW_CLASS,
+                  )}
+                >
                   <p>
                     Occasion: {flowSummary.occasion.replace(/_/g, ' ')}
                   </p>
@@ -182,8 +193,8 @@ export function PrivatePlayDetail({ service }: Readonly<PrivatePlayDetailProps>)
                 canStart
                 onProgressChange={setFlowSummary}
               />
-            </CardContent>
-          </Card>
+            </BookingCartCardContent>
+          </BookingCartCard>
         </aside>
       </div>
     </>

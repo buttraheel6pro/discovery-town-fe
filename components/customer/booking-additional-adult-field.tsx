@@ -1,9 +1,13 @@
 /** Paying extra adults — separate from category-linked add-ons. */
 'use client'
 
+import {
+  BOOKING_CART_OPTION_ROW_CLASS,
+  BOOKING_CART_STEPPER_CLASS,
+} from '@/components/customer/booking-cart-card'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
-import { formatPrice } from '@/lib/utils'
+import { cn, formatPrice } from '@/lib/utils'
 
 export interface BookingAdditionalAdultFieldProps {
   readonly count: number
@@ -30,11 +34,16 @@ export function BookingAdditionalAdultField({
             : 'Add supervising adults beyond those included in your booking.'}
         </p>
       </div>
-      <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/20 px-4 py-3">
+      <div
+        className={cn(
+          'mt-3 flex items-center justify-between gap-3 px-4 py-3',
+          BOOKING_CART_OPTION_ROW_CLASS,
+        )}
+      >
         <span className="text-sm text-foreground">
           Additional Adult ({formatPrice(unitPrice)})
         </span>
-        <div className="flex items-center gap-1">
+        <div className={BOOKING_CART_STEPPER_CLASS}>
           <Button
             type="button"
             variant="outline"

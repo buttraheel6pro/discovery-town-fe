@@ -88,9 +88,9 @@ export function RentalPerDayCalendarSection({
   }
 
   return (
-    <section id="rental-dates" className="space-y-4 rounded-xl border border-border bg-card p-4">
+    <section id="rental-dates" className="space-y-4 rounded-xl bg-nav-cream p-4 sm:p-5">
       <CompactAvailabilityDateStrip
-        title="Availability"
+        title="Select a date"
         selectedDate={from || todayStr}
         selectedToDate={to}
         selectionMode="range"

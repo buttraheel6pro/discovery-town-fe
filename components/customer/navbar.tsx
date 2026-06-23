@@ -168,8 +168,7 @@ export function CustomerNavbar({ priority = false }: CustomerNavbarProps) {
     <>
       <header
         className={cn(
-          'sticky top-0 z-50 w-full',
-          isHome ? 'bg-home-cream' : 'bg-brand-cream',
+          'sticky top-0 z-50 w-full bg-nav-cream',
           isHome && 'relative overflow-x-clip',
         )}
       >
@@ -243,8 +242,7 @@ export function CustomerNavbar({ priority = false }: CustomerNavbarProps) {
         {mobileOpen ? (
           <div
             className={cn(
-              'border-t border-brand-navy/10 px-3 py-3 lg:hidden',
-              isHome ? 'bg-home-cream' : 'bg-brand-cream',
+              'border-t border-brand-navy/10 bg-nav-cream px-3 py-3 lg:hidden',
             )}
           >
             <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">

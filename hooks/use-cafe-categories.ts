@@ -112,7 +112,7 @@ export function useCafeCategories(): UseCafeCategoriesResult {
     }
 
     if (!isApiEnabled) {
-      return []
+      return inventoryCategories
     }
 
     if (!apiReady) {
@@ -120,7 +120,7 @@ export function useCafeCategories(): UseCafeCategoriesResult {
     }
 
     if (apiCategories.length === 0) {
-      return []
+      return inventoryCategories
     }
 
     return apiCategories
